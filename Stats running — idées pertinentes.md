@@ -475,7 +475,7 @@ Environ 6 mois au total, en temps de loisir (quelques soirées par semaine), Cla
 
 ## 9. Points à vérifier avant de coder
 
-- [ ] Format et fuseau horaire de `Activity Date` dans `activities.csv` (export Strava), à comparer avec une activité connue.
+- [x] Format et fuseau horaire de `Activity Date` dans `activities.csv` (export Strava), à comparer avec une activité connue. Voir section 10, « Export Strava ».
 - [ ] Fonctions disponibles dans la version de `garminconnect` utilisée : téléchargement du FIT original, `set_activity_name`, création et planification de séances.
 - [ ] Durée du premier import complet via Garmin Connect et pause nécessaire entre deux téléchargements.
 - [ ] Liste des montres de Greg et présence d'un baromètre sur chacune.
@@ -511,3 +511,9 @@ Audit de l'existant et plan module par module, validés avant la phase 1.
   La Forerunner 245 illustre la règle de la section 2 : son FIT contient une altitude, mais d'origine GPS, donc le MNT fait foi.
 - **FC max** : la valeur de `.env` (190) est dépassée dans l'historique (195 observé) ; l'admin signalera le maximum observé.
 - **GitHub** : dépôt `georgieboyfr/garmin-fitness-trend`, image `ghcr.io/georgieboyfr/garmin-fitness-trend`.
+- **Export Strava** (vérifié le 2 novembre 2026 sur deux archives, 693 activités) :
+  - export **localisé en français** : en-têtes traduits (`ID de l'activité`, `Date de l'activité`, `Nom de l'activité`, `Type d'activité`…), certains en double (`Distance` en km avec virgule puis en m, `Temps écoulé` deux fois). Le parseur reconnaît les en-têtes français et anglais et prend la première occurrence ;
+  - `Date de l'activité` au format `7 nov. 2020, 15:54:37`, mois abrégés en français, **en UTC** (identique à la seconde au `start_time` du FIT, en hiver comme en été) ;
+  - appariement par heure UTC avec 2 min de tolérance : 660 activités appariées sur 682 dans la période couverte par Garmin. Les 22 restantes : séances de PPG et randonnées sans équivalent, une saisie manuelle, et une dizaine de sorties (août–sept. 2026, 2021, 2025) **absentes de la base actuelle**, que la nouvelle liste complète des activités Garmin devra rattraper ;
+  - 435 des noms appariés sont les noms génériques de Strava (« Course à pied le midi »…) : ils ne sont pas repris, le nom Garmin est gardé ;
+  - quand plusieurs archives sont déposées, seule la plus récente compte.
