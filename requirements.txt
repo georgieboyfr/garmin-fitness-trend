@@ -3,3 +3,4 @@ uvicorn[standard]==0.32.*
 garminconnect==0.3.20
 curl_cffi==0.17.*
 argon2-cffi==23.*
+tzdata

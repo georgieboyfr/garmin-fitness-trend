@@ -9,22 +9,27 @@ from . import __version__, admin, db
 from .auth import AdminAuth, LoginThrottle, load_or_create_secret
 from .config import Config, load_config
 from .garmin_account import GarminAccount
+from .garmin_sync import GarminSync
+from .scheduler import DailyScheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("main")
 
 
-def create_app(config: Config | None = None, garmin_class=None) -> FastAPI:
+def create_app(config: Config | None = None, garmin_class=None, sync_options=None,
+               start_scheduler=True) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         cfg = config or load_config()
         cfg.ensure_dirs()
         conn = db.connect(cfg.db_path)
-        applied = db.migrate(conn)
-        log.info("Garmin Fitness Trend %s, base en version %d (%d migration(s) appliquée(s))",
-                 __version__, db.schema_version(conn), len(applied))
+        try:
+            applied = db.migrate(conn)
+            log.info("Garmin Fitness Trend %s, base en version %d (%d migration(s) appliquée(s))",
+                     __version__, db.schema_version(conn), len(applied))
+        finally:
+            conn.close()
         app.state.config = cfg
-        app.state.db = conn
         app.state.auth = AdminAuth(cfg.admin_user, cfg.admin_password_hash,
                                    load_or_create_secret(cfg.session_secret_path))
         app.state.login_throttle = LoginThrottle()
@@ -32,19 +37,27 @@ def create_app(config: Config | None = None, garmin_class=None) -> FastAPI:
             cfg.garmin_tokens_dir, cfg.garmin_state_path,
             env_email=cfg.garmin_email, env_password=cfg.garmin_password, garmin_class=garmin_class,
         )
+        app.state.garmin_sync = GarminSync(cfg, app.state.garmin_account, **(sync_options or {}))
+        scheduler = DailyScheduler(cfg, app.state.garmin_sync, app.state.garmin_account)
+        if start_scheduler:
+            scheduler.start()
         if not app.state.auth.enabled:
             log.warning("ADMIN_PASSWORD_HASH non défini : l'administration (/admin) est désactivée.")
         try:
             yield
         finally:
-            conn.close()
+            scheduler.stop()
 
     app = FastAPI(title="Garmin Fitness Trend", version=__version__, lifespan=lifespan)
 
     @app.get("/health")
     def health():
         try:
-            version = db.schema_version(app.state.db)
+            conn = db.connect(app.state.config.db_path)
+            try:
+                version = db.schema_version(conn)
+            finally:
+                conn.close()
         except Exception as e:
             return JSONResponse({"status": "error", "error": str(e)}, status_code=503)
         return {"status": "ok", "version": __version__, "schema_version": version}

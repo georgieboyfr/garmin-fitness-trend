@@ -136,6 +136,35 @@ input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); ou
 
 .error-text { color: var(--error); margin: 0 0 12px; }
 
+.stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px; margin: 16px 0;
+}
+.stat { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+.stat b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 12px; color: var(--muted); }
+
+.progress { margin: 16px 0 0; }
+.progress-label { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.progress-track { height: 6px; background: var(--bg); border-radius: 99px; overflow: hidden; }
+.progress-bar { height: 100%; width: 0; background: var(--accent); transition: width 0.4s; }
+
+.settings .switch { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; cursor: pointer; }
+.settings .switch input { accent-color: var(--accent); width: 18px; height: 18px; }
+.field.inline { display: inline-block; margin-right: 16px; }
+select, input[type="date"] {
+  padding: 8px 10px; font: inherit; color: var(--text);
+  background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+}
+
+.table-wrap { overflow-x: auto; }
+table.runs { width: 100%; border-collapse: collapse; font-size: 14px; }
+.runs th { text-align: left; font-weight: 500; font-size: 12px; color: var(--muted); padding: 6px 8px; }
+.runs td { padding: 8px; border-top: 1px solid var(--border); vertical-align: top; }
+.runs td:first-child { white-space: nowrap; }
+.runs .status-error { color: var(--error); }
+.runs .status-running { color: var(--warn); }
+
 footer { text-align: center; padding: 0 16px 24px; }
 
 @media (max-width: 480px) {

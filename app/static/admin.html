@@ -85,6 +85,52 @@
       <p class="muted small" id="garmin-mfa-timer"></p>
       <p class="error-text" id="garmin-mfa-error" hidden></p>
     </section>
+
+    <!-- ----- synchro ----- -->
+    <section class="card" id="sync-card">
+      <div class="card-head">
+        <h2>Synchronisation</h2>
+        <span class="pill" id="sync-pill"></span>
+      </div>
+      <div class="progress" id="sync-progress" hidden>
+        <div class="progress-label" id="sync-progress-label"></div>
+        <div class="progress-track"><div class="progress-bar" id="sync-progress-bar"></div></div>
+      </div>
+      <div class="stats" id="sync-stats"></div>
+      <p class="error-text" id="sync-error" hidden></p>
+      <div class="row">
+        <button class="btn primary" id="sync-now">Synchroniser maintenant</button>
+        <button class="btn" id="sync-full"
+                title="Relit toute la liste Garmin depuis la date de début et retente les FIT en erreur. Les FIT déjà présents ne sont pas retéléchargés.">
+          Réimporter tout l'historique</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Synchro automatique</h2>
+      <form id="sync-settings-form" class="settings">
+        <label class="switch"><input type="checkbox" id="ss-enabled"> Une synchro chaque jour</label>
+        <label class="field inline"><span>Heure</span>
+          <select id="ss-hour"></select></label>
+        <label class="field inline"><span>Début de l'historique</span>
+          <input type="date" id="ss-history-start" required></label>
+        <p class="error-text" id="ss-error" hidden></p>
+        <div class="row">
+          <button class="btn" type="submit">Enregistrer</button>
+          <span class="muted small" id="ss-saved" hidden>Enregistré.</span>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Dernières synchros</h2>
+      <div class="table-wrap">
+        <table class="runs">
+          <thead><tr><th>Début</th><th>Type</th><th>Résultat</th></tr></thead>
+          <tbody id="sync-runs"></tbody>
+        </table>
+      </div>
+    </section>
   </div>
 </main>
 

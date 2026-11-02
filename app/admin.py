@@ -5,13 +5,17 @@ Les actions exigent la session de l'admin ET, hors GET, l'en-tête
 X-Requested-With: admin-ui, qu'une page tierce ne peut pas envoyer (protection CSRF).
 """
 import logging
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
+from . import db, settings
 from .auth import SESSION_COOKIE
+from .garmin_sync import SyncAlreadyRunning
+from .sports import RUNNING_TYPES
 
 log = logging.getLogger("admin")
 
@@ -147,3 +151,78 @@ def garmin_forget_password(request: Request):
     account = request.app.state.garmin_account
     account.forget_password()
     return account.status()
+
+
+# ---------- synchro ----------
+
+class SyncBody(BaseModel):
+    full_history: bool = False
+
+
+def _sync_status(request: Request):
+    sync = request.app.state.garmin_sync
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        counts = conn.execute(
+            "SELECT COUNT(*) AS total,"
+            " COALESCE(SUM(deleted_in_garmin = 0 AND fit_status = 'stored'), 0) AS fit_stored,"
+            " COALESCE(SUM(deleted_in_garmin = 0 AND fit_status = 'pending'), 0) AS fit_pending,"
+            " COALESCE(SUM(deleted_in_garmin = 0 AND fit_status = 'error'), 0) AS fit_error,"
+            " COALESCE(SUM(deleted_in_garmin), 0) AS deleted,"
+            " MIN(start_time_local) AS first, MAX(start_time_local) AS last"
+            " FROM activities"
+        ).fetchone()
+        running = conn.execute(
+            "SELECT COUNT(*) FROM activities WHERE deleted_in_garmin = 0 AND activity_type IN"
+            f" ({','.join('?' * len(RUNNING_TYPES))})", tuple(RUNNING_TYPES),
+        ).fetchone()[0]
+        runs = conn.execute(
+            "SELECT kind, started_at, finished_at, status, summary, error FROM sync_runs"
+            " ORDER BY id DESC LIMIT 10"
+        ).fetchall()
+        return {
+            "running": sync.running,
+            "progress": sync.progress,
+            "settings": settings.get(conn, "garmin_sync"),
+            "first_import_done": settings.get_state(conn, "garmin_first_import_done", False),
+            "counts": {**dict(counts), "running_activities": running},
+            "runs": [dict(r) for r in runs],
+        }
+    finally:
+        conn.close()
+
+
+@protected.get("/sync")
+def sync_status(request: Request):
+    return _sync_status(request)
+
+
+@protected.post("/sync", status_code=202)
+def sync_start(body: SyncBody, request: Request):
+    sync, account = request.app.state.garmin_sync, request.app.state.garmin_account
+    if not account.is_configured():
+        raise HTTPException(400, "Compte Garmin non connecté")
+    if sync.running:
+        raise HTTPException(409, "Une synchronisation est déjà en cours")
+
+    def target():
+        try:
+            sync.run(full_history=body.full_history)
+        except SyncAlreadyRunning:
+            pass
+        except Exception:
+            pass  # journalisée et enregistrée dans sync_runs
+
+    threading.Thread(target=target, daemon=True, name="garmin-sync").start()
+    return _sync_status(request)
+
+
+@protected.post("/sync/settings")
+def sync_settings(values: dict, request: Request):
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        return settings.update(conn, "garmin_sync", values)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    finally:
+        conn.close()

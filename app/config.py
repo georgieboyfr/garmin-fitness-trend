@@ -7,6 +7,7 @@ seules les variables d'environnement et le dossier des jetons les connaissent.
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,7 @@ class Config:
     hr_rest: float = 50.0
     lthr: float = 170.0
     sex: str = "m"
+    timezone: str = "Europe/Paris"
     admin_user: str = "admin"
     admin_password_hash: str = field(default="", repr=False)
     garmin_email: str = ""
@@ -23,7 +25,7 @@ class Config:
 
     @property
     def db_path(self) -> Path:
-        return self.data_dir / "fitness.db"
+        return self.data_dir / "trend.db"
 
     @property
     def fit_dir(self) -> Path:
@@ -75,6 +77,7 @@ def load_config(env=None) -> Config:
         hr_rest=_float(env, "HR_REST", 50.0),
         lthr=_float(env, "LTHR", 170.0),
         sex=sex,
+        timezone=(env.get("TZ") or "Europe/Paris").strip(),
         admin_user=(env.get("ADMIN_USER") or "admin").strip(),
         admin_password_hash=(env.get("ADMIN_PASSWORD_HASH") or "").strip(),
         garmin_email=(env.get("GARMIN_EMAIL") or "").strip(),
@@ -82,4 +85,8 @@ def load_config(env=None) -> Config:
     )
     if not cfg.hr_rest < cfg.lthr < cfg.hr_max:
         raise ValueError("Il faut HR_REST < LTHR < HR_MAX")
+    try:
+        ZoneInfo(cfg.timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ValueError(f"TZ inconnu : {cfg.timezone!r} (exemple : Europe/Paris)") from None
     return cfg

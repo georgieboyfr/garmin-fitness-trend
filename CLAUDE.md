@@ -24,7 +24,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 - [ ] Phase 1 — Socle (en cours)
   - [x] 1. Squelette : `app/`, migrations, tests, Dockerfile
   - [x] 2. Connexion Garmin depuis l'admin (`garminconnect` 0.3.20), admin protégée minimale
-  - [ ] 3. Synchro : reprise des FIT existants, métadonnées, incrémental
+  - [x] 3. Synchro : reprise des FIT existants, métadonnées, incrémental
   - [ ] 4. Parsing FIT vers Parquet, modèle de montre
   - [ ] 5. D+ altimètre ou MNT, calibré sur 3 parcours
   - [ ] 6. Noms Strava (archive attendue dans `data/strava/`)
@@ -48,4 +48,4 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 
 ## Existant (avant refonte)
 
-`backend/` : FastAPI + SQLite + fitparse + APScheduler + `garminconnect<0.3` (garth), page unique Chart.js. Données locales : `data/fitness.db`, `data/fit/` (662 FIT, 2020-12 → 2026-10), `data/garth_tokens/`.
+`backend/` : FastAPI + SQLite + fitparse + APScheduler + `garminconnect<0.3` (garth), page unique Chart.js. Données locales : `data/fitness.db` (ancienne base ; la nouvelle est `data/trend.db`), `data/fit/` (662 FIT, 2020-12 → 2026-10), `data/garth_tokens/`.

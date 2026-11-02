@@ -1,4 +1,5 @@
 import dataclasses
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,7 +23,9 @@ def client(config, admin_hash, monkeypatch):
     monkeypatch.setattr(FakeGarmin, "needs_mfa", False)
     monkeypatch.setattr(FakeGarmin, "fail_token_login", False)
     cfg = dataclasses.replace(config, admin_user="greg", admin_password_hash=admin_hash)
-    with TestClient(create_app(cfg, garmin_class=lambda: FakeGarmin)) as c:
+    app = create_app(cfg, garmin_class=lambda: FakeGarmin, sync_options={"sleep": lambda s: None},
+                     start_scheduler=False)
+    with TestClient(app) as c:
         yield c
 
 
@@ -99,6 +102,41 @@ def test_garmin_wrong_password(client):
                     json={"email": "a@b.c", "password": "faux", "remember": True})
     assert r.status_code == 400 and "Garmin a refusé" in r.json()["detail"]
     assert client.get("/admin/api/garmin").json()["state"] == "disconnected"
+
+
+def connect_garmin(client):
+    login(client)
+    client.post("/admin/api/garmin/login", headers=UI,
+                json={"email": "a@b.c", "password": PASSWORD, "remember": False})
+
+
+def test_sync_requires_connected_account(client):
+    login(client)
+    r = client.post("/admin/api/sync", headers=UI, json={})
+    assert r.status_code == 400 and "non connecté" in r.json()["detail"]
+
+
+def test_sync_start_and_status(client):
+    connect_garmin(client)
+    st = client.get("/admin/api/sync").json()
+    assert not st["first_import_done"] and st["counts"]["total"] == 0 and st["runs"] == []
+    assert st["settings"] == {"enabled": True, "hour": 4, "history_start": "2015-01-01"}
+    assert client.post("/admin/api/sync", headers=UI, json={}).status_code == 202
+    deadline = time.monotonic() + 5
+    while client.get("/admin/api/sync").json()["running"] and time.monotonic() < deadline:
+        time.sleep(0.05)
+    st = client.get("/admin/api/sync").json()
+    assert not st["running"] and st["first_import_done"]
+    assert st["runs"][0]["status"] == "ok" and st["runs"][0]["kind"] == "garmin"
+
+
+def test_sync_settings(client):
+    login(client)
+    r = client.post("/admin/api/sync/settings", headers=UI, json={"hour": 6, "enabled": False})
+    assert r.json()["hour"] == 6 and not r.json()["enabled"]
+    assert client.get("/admin/api/sync").json()["settings"]["hour"] == 6
+    r = client.post("/admin/api/sync/settings", headers=UI, json={"hour": 25})
+    assert r.status_code == 400
 
 
 def test_garmin_remember_then_forget(client):

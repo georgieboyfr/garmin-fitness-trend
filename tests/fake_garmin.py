@@ -53,3 +53,6 @@ class FakeGarmin:
 
     def get_activities(self, start, limit):
         return []
+
+    def get_activities_by_date(self, start, end):
+        return []

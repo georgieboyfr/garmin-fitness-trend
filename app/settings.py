@@ -1,0 +1,80 @@
+"""
+Réglages modifiables depuis l'admin, stockés en JSON dans la table settings.
+
+Chaque groupe a ses valeurs par défaut et sa validation ; seules les valeurs
+différentes des défauts sont enregistrées.
+"""
+import json
+from datetime import date
+
+DEFAULTS = {
+    "garmin_sync": {
+        "enabled": True,                  # synchro automatique quotidienne
+        "hour": 4,                        # heure locale de la synchro quotidienne
+        "history_start": "2015-01-01",    # début du premier import complet
+    },
+}
+
+
+def _validate_garmin_sync(values: dict) -> dict:
+    out = {}
+    for key, value in values.items():
+        if key == "enabled":
+            if not isinstance(value, bool):
+                raise ValueError("enabled doit valoir true ou false")
+        elif key == "hour":
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 23:
+                raise ValueError("hour doit être un entier entre 0 et 23")
+        elif key == "history_start":
+            try:
+                d = date.fromisoformat(value)
+            except (TypeError, ValueError):
+                raise ValueError("history_start doit être une date AAAA-MM-JJ") from None
+            if not date(2000, 1, 1) <= d <= date.today():
+                raise ValueError("history_start doit être entre 2000 et aujourd'hui")
+        else:
+            raise ValueError(f"réglage inconnu : {key}")
+        out[key] = value
+    return out
+
+
+VALIDATORS = {"garmin_sync": _validate_garmin_sync}
+
+
+def get(conn, group: str) -> dict:
+    row = conn.execute("SELECT value FROM settings WHERE key=?", (group,)).fetchone()
+    stored = json.loads(row[0]) if row else {}
+    return {**DEFAULTS[group], **stored}
+
+
+def update(conn, group: str, values: dict) -> dict:
+    if group not in VALIDATORS:
+        raise ValueError(f"groupe de réglages inconnu : {group}")
+    merged = {**get(conn, group), **VALIDATORS[group](values)}
+    diff = {k: v for k, v in merged.items() if DEFAULTS[group].get(k) != v}
+    with conn:
+        if diff:
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (group, json.dumps(diff)),
+            )
+        else:
+            conn.execute("DELETE FROM settings WHERE key=?", (group,))
+    return merged
+
+
+# --- état interne (pas un réglage) : même table, clé préfixée ---
+
+def get_state(conn, key: str, default=None):
+    row = conn.execute("SELECT value FROM settings WHERE key=?", (f"state.{key}",)).fetchone()
+    return json.loads(row[0]) if row else default
+
+
+def set_state(conn, key: str, value):
+    with conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (f"state.{key}", json.dumps(value)),
+        )
