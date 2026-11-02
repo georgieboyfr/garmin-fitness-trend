@@ -139,6 +139,28 @@ def test_sync_settings(client):
     assert r.status_code == 400
 
 
+def wait_idle(client):
+    deadline = time.monotonic() + 5
+    while client.get("/admin/api/sync").json()["running"] and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+
+def test_elevation_status_settings_and_recompute(client):
+    login(client)
+    st = client.get("/admin/api/elevation").json()
+    assert st["pending"] == 0 and st["by_source"] == []
+    assert st["settings"]["threshold_dem"] == 4.0
+    assert {d["model"]: d["has_barometer"] for d in st["devices"]}["Forerunner 255"] == 1
+    r = client.post("/admin/api/elevation/settings", headers=UI, json={"threshold_dem": 5})
+    assert r.json()["threshold_dem"] == 5.0
+    assert client.post("/admin/api/elevation/settings", headers=UI, json={"window": 4}).status_code == 400
+    # recalcul local : possible sans compte Garmin connecté
+    assert client.post("/admin/api/recompute", headers=UI).status_code == 202
+    wait_idle(client)
+    run = client.get("/admin/api/sync").json()["runs"][0]
+    assert run["kind"] == "recalcul" and run["status"] == "ok"
+
+
 def test_garmin_remember_then_forget(client):
     login(client)
     st = client.post("/admin/api/garmin/login", headers=UI,

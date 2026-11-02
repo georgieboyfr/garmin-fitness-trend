@@ -13,7 +13,32 @@ DEFAULTS = {
         "hour": 4,                        # heure locale de la synchro quotidienne
         "history_start": "2015-01-01",    # début du premier import complet
     },
+    "elevation": {
+        "step_m": 10.0,                   # pas de rééchantillonnage du profil
+        "window": 5,                      # fenêtre du filtre médian (points, impair)
+        "threshold_barometer": 2.5,       # seuil d'hystérésis, altitude du baromètre (m)
+        "threshold_dem": 4.0,             # seuil d'hystérésis, MNT le long de la trace GPS (m)
+    },
 }
+
+
+def _validate_elevation(values: dict) -> dict:
+    limits = {"step_m": (5.0, 50.0), "threshold_barometer": (0.0, 20.0), "threshold_dem": (0.0, 20.0)}
+    out = {}
+    for key, value in values.items():
+        if key == "window":
+            odd_int = isinstance(value, int) and not isinstance(value, bool) and value % 2 == 1
+            if not odd_int or not 1 <= value <= 21:
+                raise ValueError("window doit être un entier impair entre 1 et 21")
+            out[key] = value
+        elif key in limits:
+            lo, hi = limits[key]
+            if isinstance(value, bool) or not isinstance(value, int | float) or not lo <= value <= hi:
+                raise ValueError(f"{key} doit être un nombre entre {lo:g} et {hi:g}")
+            out[key] = float(value)
+        else:
+            raise ValueError(f"réglage inconnu : {key}")
+    return out
 
 
 def _validate_garmin_sync(values: dict) -> dict:
@@ -38,7 +63,7 @@ def _validate_garmin_sync(values: dict) -> dict:
     return out
 
 
-VALIDATORS = {"garmin_sync": _validate_garmin_sync}
+VALIDATORS = {"garmin_sync": _validate_garmin_sync, "elevation": _validate_elevation}
 
 
 def get(conn, group: str) -> dict:

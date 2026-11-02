@@ -1,10 +1,11 @@
 """
 Traitements locaux après la synchro, à partir des FIT stockés (aucun appel à Garmin).
 
-Lecture des FIT : chaque activité dont le FIT est stocké et qui n'a pas encore été
+1. Lecture des FIT : chaque activité dont le FIT est stocké et qui n'a pas encore été
 lue avec la version courante du lecteur est lue, sa série écrite en Parquet et le
 modèle de montre enregistré. Une lecture en échec n'est retentée qu'à la version
 suivante du lecteur. Les lectures sont réparties sur plusieurs processus.
+2. D+ / D− (elevation_job.py).
 """
 import logging
 import os
@@ -89,4 +90,13 @@ def parse_pending(config, conn, progress=None, workers=None) -> Counter:
             for index, (activity_id, r) in enumerate(pool.map(_parse_one, jobs, chunksize=4), 1):
                 handle(index, activity_id, r)
     log.info("Lecture des FIT terminée : %d lu(s), %d erreur(s)", counts["parsed"], counts["parse_errors"])
+    return counts
+
+
+def run_all(config, conn, dem, progress=None) -> Counter:
+    """Enchaîne tous les traitements locaux : lecture des FIT, puis D+."""
+    from . import elevation_job
+
+    counts = parse_pending(config, conn, progress)
+    counts.update(elevation_job.compute_pending(config, conn, dem, progress))
     return counts

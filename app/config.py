@@ -36,6 +36,10 @@ class Config:
         return self.data_dir / "series"
 
     @property
+    def dem_dir(self) -> Path:
+        return self.data_dir / "dem"
+
+    @property
     def strava_dir(self) -> Path:
         return self.data_dir / "strava"
 

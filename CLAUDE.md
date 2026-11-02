@@ -26,7 +26,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 2. Connexion Garmin depuis l'admin (`garminconnect` 0.3.20), admin protégée minimale
   - [x] 3. Synchro : reprise des FIT existants, métadonnées, incrémental
   - [x] 4. Parsing FIT vers Parquet, modèle de montre
-  - [ ] 5. D+ altimètre ou MNT, calibré sur 3 parcours
+  - [x] 5. D+ altimètre ou MNT (calibration croisée MNT/baromètre, voir section 10 du brief)
   - [ ] 6. Noms Strava (archive attendue dans `data/strava/`)
   - [ ] 7. CI GitHub, image amd64/arm64 sur ghcr
 - [ ] Phase 2 — Statistiques

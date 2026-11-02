@@ -6,3 +6,6 @@ argon2-cffi==23.*
 tzdata
 fitdecode==0.11.*
 pyarrow==26.*
+numpy==2.*
+tifffile==2026.*
+imagecodecs==2026.*

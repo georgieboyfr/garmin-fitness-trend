@@ -65,6 +65,7 @@ def parse_activity(act: dict) -> dict | None:
         "moving_duration_s": act.get("movingDuration"),
         "avg_hr": act.get("averageHR"),
         "max_hr": act.get("maxHR"),
+        "garmin_elevation_gain_m": act.get("elevationGain"),
     }
 
 
@@ -132,6 +133,7 @@ def summary_text(counts) -> str:
         ("deleted", "supprimée(s) dans Garmin"), ("restored", "réapparue(s)"),
         ("downloaded", "FIT téléchargé(s)"), ("reused", "FIT repris du disque"),
         ("fit_errors", "FIT en erreur"), ("parsed", "FIT lu(s)"), ("parse_errors", "FIT illisible(s)"),
+        ("elevation", "D+ calculé(s)"), ("elevation_postponed", "D+ reporté(s) (MNT indisponible)"),
     ]
     text = ", ".join(f"{counts[k]} {label}" for k, label in parts if counts.get(k))
     return text or "rien de nouveau"
@@ -157,14 +159,17 @@ class GarminSync:
     def running(self) -> bool:
         return self._lock.locked()
 
-    def run(self, full_history=False, kind="garmin") -> dict:
-        """Lance une synchro (bloquant). Retourne les compteurs."""
+    def run(self, full_history=False, kind="garmin", local_only=False) -> dict:
+        """Lance une synchro (bloquant). Retourne les compteurs.
+
+        local_only : seulement les traitements locaux (recalcul après un changement de
+        réglage), sans appel à Garmin, sous le même verrou que la synchro."""
         if not self._lock.acquire(blocking=False):
             raise SyncAlreadyRunning("Une synchronisation Garmin est déjà en cours.")
         try:
             conn = db.connect(self.config.db_path)
             try:
-                return self._run(conn, full_history, kind)
+                return self._run(conn, full_history, kind, local_only)
             finally:
                 conn.close()
         finally:
@@ -182,13 +187,31 @@ class GarminSync:
                 (_now_iso(), summary_text(counts), str(exc)[:2000] or exc.__class__.__name__, run_id),
             )
 
-    def _run(self, conn, full_history, kind):
+    def _run(self, conn, full_history, kind, local_only=False):
         with conn:
             run_id = conn.execute(
                 "INSERT INTO sync_runs (kind, started_at, status) VALUES (?, ?, 'running')",
                 (kind, _now_iso()),
             ).lastrowid
         counts = Counter()
+        if not local_only:
+            self._garmin_part(conn, run_id, full_history, counts)
+        # traitements locaux (lecture des FIT, D+...), sans appel à Garmin
+        if self.after_sync:
+            try:
+                counts.update(self.after_sync(conn, self._set_progress))
+            except Exception as e:
+                log.exception("Traitements après la synchro échoués")
+                self._fail_run(conn, run_id, counts, e)
+                raise
+        text = summary_text(counts)
+        with conn:
+            conn.execute("UPDATE sync_runs SET finished_at=?, status='ok', summary=? WHERE id=?",
+                         (_now_iso(), text, run_id))
+        log.info("%s terminée : %s", "Recalcul" if local_only else "Synchro Garmin", text)
+        return dict(counts)
+
+    def _garmin_part(self, conn, run_id, full_history, counts):
         try:
             self._set_progress("connexion à Garmin")
             client = self.account.client()
@@ -214,20 +237,6 @@ class GarminSync:
             self._fail_run(conn, run_id, counts, e)
             raise
         self.account.record_sync(counts["downloaded"])
-        # traitements locaux (lecture des FIT...), sans appel à Garmin
-        if self.after_sync:
-            try:
-                counts.update(self.after_sync(conn, self._set_progress))
-            except Exception as e:
-                log.exception("Traitements après la synchro échoués")
-                self._fail_run(conn, run_id, counts, e)
-                raise
-        text = summary_text(counts)
-        with conn:
-            conn.execute("UPDATE sync_runs SET finished_at=?, status='ok', summary=? WHERE id=?",
-                         (_now_iso(), text, run_id))
-        log.info("Synchro Garmin terminée : %s", text)
-        return dict(counts)
 
     def _ranges(self, conn, first):
         today = self.today()
@@ -261,15 +270,19 @@ class GarminSync:
                         counts["restored"] += 1
                 conn.execute(
                     "INSERT INTO activities (id, start_time_utc, start_time_local, activity_type,"
-                    " garmin_name, distance_m, duration_s, moving_duration_s, avg_hr, max_hr, first_seen_at,"
-                    " updated_at)"
+                    " garmin_name, distance_m, duration_s, moving_duration_s, avg_hr, max_hr,"
+                    " garmin_elevation_gain_m,"
+                    " first_seen_at, updated_at)"
                     " VALUES (:id, :start_time_utc, :start_time_local, :activity_type, :garmin_name,"
-                    " :distance_m, :duration_s, :moving_duration_s, :avg_hr, :max_hr, :now, :now)"
+                    " :distance_m, :duration_s, :moving_duration_s, :avg_hr, :max_hr,"
+                    " :garmin_elevation_gain_m,"
+                    " :now, :now)"
                     " ON CONFLICT(id) DO UPDATE SET start_time_utc=excluded.start_time_utc,"
                     " start_time_local=excluded.start_time_local, activity_type=excluded.activity_type,"
                     " garmin_name=excluded.garmin_name, distance_m=excluded.distance_m,"
                     " duration_s=excluded.duration_s, moving_duration_s=excluded.moving_duration_s,"
-                    " avg_hr=excluded.avg_hr, max_hr=excluded.max_hr, deleted_in_garmin=0,"
+                    " avg_hr=excluded.avg_hr, max_hr=excluded.max_hr,"
+                    " garmin_elevation_gain_m=excluded.garmin_elevation_gain_m, deleted_in_garmin=0,"
                     " updated_at=excluded.updated_at",
                     {**row, "now": now},
                 )

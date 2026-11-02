@@ -46,6 +46,7 @@ async function init() {
   if (s.authenticated) {
     refreshGarmin();
     refreshSync(true);
+    refreshElevation(true);
   }
 }
 
@@ -275,6 +276,72 @@ async function startSync(fullHistory) {
     showError("sync-error", err);
   }
 }
+
+// ---------- dénivelé ----------
+
+const SOURCES = { barometer: "Baromètre", dem: "MNT", none: "Sans GPS (D+ = 0)" };
+const PROVIDERS = { ign: "IGN", copernicus: "Copernicus", "ign+copernicus": "IGN + Copernicus" };
+const fmtM = (v) => v == null ? "—" : `${Math.round(v).toLocaleString("fr-FR")} m`;
+
+function renderElevation(st, fillSettings) {
+  const pill = $("elev-pill");
+  pill.textContent = st.pending ? `${st.pending} à calculer` : "À jour";
+  pill.className = "pill " + (st.pending ? "warn" : "ok");
+  $("elev-sources").replaceChildren(...st.by_source.map((r) => {
+    const tr = document.createElement("tr");
+    const label = SOURCES[r.source] + (r.dem_provider ? ` (${PROVIDERS[r.dem_provider] || r.dem_provider})` : "");
+    [label, r.n, fmtM(r.gain_m), fmtM(r.garmin_gain_m)].forEach((text, i) => {
+      const td = document.createElement("td"); td.textContent = text;
+      if (i) td.className = "num";
+      tr.append(td);
+    });
+    return tr;
+  }));
+  if (fillSettings) {
+    $("ev-step").value = st.settings.step_m;
+    $("ev-window").value = st.settings.window;
+    $("ev-thr-baro").value = st.settings.threshold_barometer;
+    $("ev-thr-dem").value = st.settings.threshold_dem;
+  }
+}
+
+async function refreshElevation(fillSettings) {
+  try { renderElevation(await api("/elevation"), fillSettings); } catch (err) { /* session gérée ailleurs */ }
+}
+
+function flash(id, text) {
+  $(id).textContent = text;
+  $(id).hidden = false;
+  setTimeout(() => { $(id).hidden = true; }, 3000);
+}
+
+$("elev-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  busy(e.submitter, async () => {
+    try {
+      await api("/elevation/settings", {
+        step_m: Number($("ev-step").value), window: Number($("ev-window").value),
+        threshold_barometer: Number($("ev-thr-baro").value), threshold_dem: Number($("ev-thr-dem").value),
+      });
+      showError("ev-error", null);
+      flash("ev-saved", "Enregistré : le D+ sera recalculé à la prochaine synchro, ou maintenant.");
+      refreshElevation(false);
+    } catch (err) {
+      showError("ev-error", err);
+    }
+  });
+});
+
+$("ev-recompute").addEventListener("click", (e) => {
+  busy(e.currentTarget, async () => {
+    try {
+      renderSync(await api("/recompute", {}), false);
+      showError("ev-error", null);
+    } catch (err) {
+      showError("ev-error", err);
+    }
+  });
+});
 
 $("sync-now").addEventListener("click", () => startSync(false));
 $("sync-full").addEventListener("click", () => startSync(true));

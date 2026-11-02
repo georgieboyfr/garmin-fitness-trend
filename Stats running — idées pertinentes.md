@@ -479,7 +479,7 @@ Environ 6 mois au total, en temps de loisir (quelques soirées par semaine), Cla
 - [ ] Fonctions disponibles dans la version de `garminconnect` utilisée : téléchargement du FIT original, `set_activity_name`, création et planification de séances.
 - [ ] Durée du premier import complet via Garmin Connect et pause nécessaire entre deux téléchargements.
 - [ ] Liste des montres de Greg et présence d'un baromètre sur chacune.
-- [ ] Source du MNT : téléchargement et licence des tuiles RGE ALTI et Copernicus, ou limites de l'API altimétrie IGN.
+- [x] Source du MNT : téléchargement et licence des tuiles RGE ALTI et Copernicus, ou limites de l'API altimétrie IGN. Voir section 10.
 - [ ] Conditions de l'accès gratuit OVHcloud AI Endpoints et modèles disponibles.
 - [ ] Seuils d'hystérésis, de détection des courses et de séparation route/trail : valeurs de départ à calibrer sur les données réelles.
 - [ ] Modèle OVHcloud AI Endpoints capable d'appels d'outils (function calling) en français, pour le coach conversationnel.
@@ -518,3 +518,6 @@ Audit de l'existant et plan module par module, validés avant la phase 1.
   - 435 des noms appariés sont les noms génériques de Strava (« Course à pied le midi »…) : ils ne sont pas repris, le nom Garmin est gardé ;
   - **dépôt léger** : le dossier surveillé et l'upload de l'admin acceptent l'archive zip complète **ou** le seul `activities.csv` extrait (quelques centaines de Ko au lieu de 200 Mo et plus) ;
   - quand plusieurs fichiers sont déposés, seul le plus récent compte (date de dernière activité qu'il contient, pas date du fichier). Un fichier déjà traité n'est pas relu.
+- **Calibration du D+** (décision de Greg, 2 novembre 2026) : pas de parcours de référence pour l'instant. Le critère de fin de phase 1 « D+ calibré sur au moins 3 parcours connus » est remplacé par une calibration croisée sur les sorties Forerunner 255 : sur une même sortie, D+ baromètre et D+ MNT, et le seuil MNT est réglé pour que les deux concordent. Ajustement possible plus tard depuis l'admin.
+- **Source du MNT** (point de la section 9) : service de calcul altimétrique IGN de la Géoplateforme (RGE ALTI, gratuit, sans clé, 5 requêtes/s) interrogé une fois par activité, profil mis en cache ; Copernicus GLO-30 hors de France (4 sorties : Rome, Madrid, Brühl), dalles téléchargées une fois depuis le dépôt public AWS. Évite de stocker plusieurs Go de dalles RGE ALTI sur le NAS.
+

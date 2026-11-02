@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__, admin, db, processing
 from .auth import AdminAuth, LoginThrottle, load_or_create_secret
 from .config import Config, load_config
+from .dem import CopernicusDem, Dem, IgnDem
 from .garmin_account import GarminAccount
 from .garmin_sync import GarminSync
 from .scheduler import DailyScheduler
@@ -17,7 +18,7 @@ log = logging.getLogger("main")
 
 
 def create_app(config: Config | None = None, garmin_class=None, sync_options=None,
-               start_scheduler=True) -> FastAPI:
+               start_scheduler=True, dem_factory=None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         cfg = config or load_config()
@@ -37,9 +38,10 @@ def create_app(config: Config | None = None, garmin_class=None, sync_options=Non
             cfg.garmin_tokens_dir, cfg.garmin_state_path,
             env_email=cfg.garmin_email, env_password=cfg.garmin_password, garmin_class=garmin_class,
         )
+        dem = dem_factory() if dem_factory else Dem(IgnDem(), CopernicusDem(cfg.dem_dir / "copernicus"))
         app.state.garmin_sync = GarminSync(
             cfg, app.state.garmin_account,
-            after_sync=lambda conn, progress: processing.parse_pending(cfg, conn, progress),
+            after_sync=lambda conn, progress: processing.run_all(cfg, conn, dem, progress),
             **(sync_options or {}),
         )
         scheduler = DailyScheduler(cfg, app.state.garmin_sync, app.state.garmin_account)

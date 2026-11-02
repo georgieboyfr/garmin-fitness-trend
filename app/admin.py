@@ -1,5 +1,5 @@
 """
-Routes de l'admin : session (connexion / déconnexion) et compte Garmin.
+Routes de l'admin : session (connexion / déconnexion), compte Garmin, synchro, D+.
 
 Les actions exigent la session de l'admin ET, hors GET, l'en-tête
 X-Requested-With: admin-ui, qu'une page tierce ne peut pas envoyer (protection CSRF).
@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
-from . import db, settings
+from . import db, elevation_job, settings
 from .auth import SESSION_COOKIE
 from .garmin_sync import SyncAlreadyRunning
 from .sports import RUNNING_TYPES
@@ -199,22 +199,67 @@ def sync_status(request: Request):
 
 @protected.post("/sync", status_code=202)
 def sync_start(body: SyncBody, request: Request):
-    sync, account = request.app.state.garmin_sync, request.app.state.garmin_account
-    if not account.is_configured():
+    if not request.app.state.garmin_account.is_configured():
         raise HTTPException(400, "Compte Garmin non connecté")
+    _start_background(request, full_history=body.full_history)
+    return _sync_status(request)
+
+
+def _start_background(request: Request, **run_args):
+    sync = request.app.state.garmin_sync
     if sync.running:
-        raise HTTPException(409, "Une synchronisation est déjà en cours")
+        raise HTTPException(409, "Une synchronisation ou un recalcul est déjà en cours")
 
     def target():
         try:
-            sync.run(full_history=body.full_history)
+            sync.run(**run_args)
         except SyncAlreadyRunning:
             pass
         except Exception:
             pass  # journalisée et enregistrée dans sync_runs
 
     threading.Thread(target=target, daemon=True, name="garmin-sync").start()
+
+
+@protected.post("/recompute", status_code=202)
+def recompute(request: Request):
+    """Traitements locaux seulement (après un changement de réglage), sans appel à Garmin."""
+    _start_background(request, kind="recalcul", local_only=True)
     return _sync_status(request)
+
+
+@protected.get("/elevation")
+def elevation_status(request: Request):
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        by_source = conn.execute(
+            "SELECT source, dem_provider, COUNT(*) AS n, ROUND(SUM(gain_m)) AS gain_m,"
+            " ROUND(SUM(a.garmin_elevation_gain_m)) AS garmin_gain_m"
+            " FROM activity_elevation e JOIN activities a ON a.id = e.activity_id"
+            " GROUP BY source, dem_provider ORDER BY n DESC"
+        ).fetchall()
+        return {
+            "settings": settings.get(conn, "elevation"),
+            "pending": len(elevation_job.pending_elevation(conn)),
+            "by_source": [dict(r) for r in by_source],
+            "devices": [dict(r) for r in conn.execute(
+                "SELECT d.garmin_product, d.model, d.has_barometer, COUNT(a.id) AS activities"
+                " FROM devices d LEFT JOIN activities a ON a.garmin_product = d.garmin_product"
+                " GROUP BY d.garmin_product ORDER BY d.garmin_product")],
+        }
+    finally:
+        conn.close()
+
+
+@protected.post("/elevation/settings")
+def elevation_settings(values: dict, request: Request):
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        return settings.update(conn, "elevation", values)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    finally:
+        conn.close()
 
 
 @protected.post("/sync/settings")

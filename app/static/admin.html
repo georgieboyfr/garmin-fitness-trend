@@ -124,6 +124,40 @@
     </section>
 
     <section class="card">
+      <div class="card-head">
+        <h2>Dénivelé</h2>
+        <span class="pill" id="elev-pill"></span>
+      </div>
+      <p class="muted small">Altimètre pour les montres à baromètre, sinon MNT (IGN RGE ALTI en France,
+        Copernicus ailleurs) le long de la trace. D+ recalculé : profil rééchantillonné, filtre médian
+        puis seuil d'hystérésis.</p>
+      <div class="table-wrap">
+        <table class="runs">
+          <thead><tr><th>Source</th><th>Activités</th><th>D+ total</th><th>D+ Garmin</th></tr></thead>
+          <tbody id="elev-sources"></tbody>
+        </table>
+      </div>
+      <form id="elev-form" class="settings">
+        <div class="row">
+          <label class="field inline"><span>Pas (m)</span>
+            <input type="number" id="ev-step" min="5" max="50" step="1" required></label>
+          <label class="field inline"><span>Filtre médian (points)</span>
+            <input type="number" id="ev-window" min="1" max="21" step="2" required></label>
+          <label class="field inline"><span>Seuil baromètre (m)</span>
+            <input type="number" id="ev-thr-baro" min="0" max="20" step="0.5" required></label>
+          <label class="field inline"><span>Seuil MNT (m)</span>
+            <input type="number" id="ev-thr-dem" min="0" max="20" step="0.5" required></label>
+        </div>
+        <p class="error-text" id="ev-error" hidden></p>
+        <div class="row">
+          <button class="btn" type="submit">Enregistrer</button>
+          <button class="btn" type="button" id="ev-recompute">Recalculer maintenant</button>
+          <span class="muted small" id="ev-saved" hidden></span>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
       <h2>Dernières synchros</h2>
       <div class="table-wrap">
         <table class="runs">
