@@ -1,0 +1,11 @@
+services:
+  garmin-fitness-trend:
+    build: ./backend
+    container_name: garmin-fitness-trend
+    restart: unless-stopped
+    ports:
+      - "9193:8000"
+    volumes:
+      - ./data:/data
+    env_file:
+      - .env
