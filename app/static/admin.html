@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Admin · Fitness Trend</title>
+<link rel="stylesheet" href="/static/admin.css">
+<script src="/static/admin.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo" aria-hidden="true"></span>Fitness Trend <span class="muted">· admin</span></div>
+  <button class="btn ghost small" id="logout-btn" hidden>Se déconnecter</button>
+</header>
+
+<main>
+  <p id="disabled-msg" class="card notice" hidden>
+    L'administration est désactivée : génère un mot de passe avec
+    <code>docker compose run --rm garmin-fitness-trend python -m app.auth</code>,
+    copie la ligne <code>ADMIN_PASSWORD_HASH=…</code> dans <code>.env</code>, puis redémarre le conteneur.
+  </p>
+
+  <!-- ----- connexion à l'admin ----- -->
+  <section class="card narrow" id="login-card" hidden>
+    <h1>Connexion</h1>
+    <form id="login-form">
+      <label class="field"><span>Identifiant</span>
+        <input id="login-user" autocomplete="username" required></label>
+      <label class="field"><span>Mot de passe</span>
+        <input id="login-password" type="password" autocomplete="current-password" required></label>
+      <p class="error-text" id="login-error" hidden></p>
+      <button class="btn primary" type="submit">Se connecter</button>
+    </form>
+  </section>
+
+  <!-- ----- compte Garmin ----- -->
+  <div id="admin-content" hidden>
+    <section class="card">
+      <div class="card-head">
+        <h2>Compte Garmin Connect</h2>
+        <span class="pill" id="garmin-pill"></span>
+      </div>
+      <dl class="facts" id="garmin-facts"></dl>
+      <p class="error-text" id="garmin-last-error" hidden></p>
+      <div class="row" id="garmin-actions"></div>
+    </section>
+
+    <section class="card" id="garmin-login-card" hidden>
+      <h2 id="garmin-login-title">Connecter le compte</h2>
+      <form id="garmin-login-form">
+        <label class="field"><span>Email Garmin Connect</span>
+          <input id="garmin-email" type="email" autocomplete="username" required></label>
+        <label class="field"><span>Mot de passe Garmin</span>
+          <input id="garmin-password" type="password" autocomplete="current-password" required></label>
+        <fieldset class="choice">
+          <legend>Mot de passe</legend>
+          <label class="choice-item">
+            <input type="radio" name="remember" value="no" checked>
+            <span><strong>Ne pas le mémoriser</strong> <em class="badge">recommandé</em>
+              <small>Il sert uniquement à obtenir un jeton de session, puis il est oublié.
+                Si la session expire un jour, il faudra te reconnecter ici.</small></span>
+          </label>
+          <label class="choice-item">
+            <input type="radio" name="remember" value="yes">
+            <span><strong>Le mémoriser sur le serveur</strong>
+              <small>Enregistré dans le dossier des jetons (lisible du seul service), pour te reconnecter
+                tout seul si la session expire. Un code MFA redemandé nécessitera quand même une reconnexion ici.</small></span>
+          </label>
+        </fieldset>
+        <p class="error-text" id="garmin-login-error" hidden></p>
+        <button class="btn primary" type="submit" id="garmin-login-btn">Se connecter à Garmin</button>
+      </form>
+    </section>
+
+    <section class="card" id="garmin-mfa-card" hidden>
+      <h2>Code de vérification</h2>
+      <p>Garmin a envoyé un code (email ou application). Saisis-le pour terminer la connexion.</p>
+      <form id="garmin-mfa-form" class="row">
+        <input id="garmin-mfa-code" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"
+               required class="mfa-input">
+        <button class="btn primary" type="submit">Valider</button>
+        <button class="btn ghost" type="button" id="garmin-mfa-cancel">Annuler</button>
+      </form>
+      <p class="muted small" id="garmin-mfa-timer"></p>
+      <p class="error-text" id="garmin-mfa-error" hidden></p>
+    </section>
+  </div>
+</main>
+
+<footer class="muted small" id="footer"></footer>
+</body>
+</html>

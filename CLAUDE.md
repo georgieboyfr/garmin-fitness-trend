@@ -23,7 +23,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 - [x] Phase 0 — Audit et plan validés (2 novembre 2026, voir section 10 du brief)
 - [ ] Phase 1 — Socle (en cours)
   - [x] 1. Squelette : `app/`, migrations, tests, Dockerfile
-  - [ ] 2. Connexion Garmin depuis l'admin (`garminconnect` 0.3.20), admin protégée minimale
+  - [x] 2. Connexion Garmin depuis l'admin (`garminconnect` 0.3.20), admin protégée minimale
   - [ ] 3. Synchro : reprise des FIT existants, métadonnées, incrémental
   - [ ] 4. Parsing FIT vers Parquet, modèle de montre
   - [ ] 5. D+ altimètre ou MNT, calibré sur 3 parcours

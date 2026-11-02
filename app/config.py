@@ -5,7 +5,7 @@ Les secrets (identifiants Garmin, mot de passe admin) ne passent jamais par la b
 seules les variables d'environnement et le dossier des jetons les connaissent.
 """
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -16,6 +16,10 @@ class Config:
     hr_rest: float = 50.0
     lthr: float = 170.0
     sex: str = "m"
+    admin_user: str = "admin"
+    admin_password_hash: str = field(default="", repr=False)
+    garmin_email: str = ""
+    garmin_password: str = field(default="", repr=False)
 
     @property
     def db_path(self) -> Path:
@@ -36,6 +40,14 @@ class Config:
     @property
     def garmin_tokens_dir(self) -> Path:
         return self.data_dir / "garmin_tokens"
+
+    @property
+    def garmin_state_path(self) -> Path:
+        return self.data_dir / "garmin_state.json"
+
+    @property
+    def session_secret_path(self) -> Path:
+        return self.data_dir / "session_secret"
 
     def ensure_dirs(self):
         for d in (self.data_dir, self.fit_dir, self.series_dir, self.strava_dir, self.garmin_tokens_dir):
@@ -63,6 +75,10 @@ def load_config(env=None) -> Config:
         hr_rest=_float(env, "HR_REST", 50.0),
         lthr=_float(env, "LTHR", 170.0),
         sex=sex,
+        admin_user=(env.get("ADMIN_USER") or "admin").strip(),
+        admin_password_hash=(env.get("ADMIN_PASSWORD_HASH") or "").strip(),
+        garmin_email=(env.get("GARMIN_EMAIL") or "").strip(),
+        garmin_password=env.get("GARMIN_PASSWORD") or "",
     )
     if not cfg.hr_rest < cfg.lthr < cfg.hr_max:
         raise ValueError("Il faut HR_REST < LTHR < HR_MAX")
