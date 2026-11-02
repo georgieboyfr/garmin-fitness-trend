@@ -500,6 +500,14 @@ Audit de l'existant et plan module par module, validés avant la phase 1.
 - **Interface** : réécrite. FastAPI, templates Jinja et JavaScript simple sans étape de build ; **ECharts** remplace Chart.js (calendrier heatmap, zoom et thème sombre natifs).
 - **Zones FC** : calées sur la **LTHR** (modèle de Friel), plus sur la FC max.
 - **LTHR** : `LTHR` dans `.env` reste la valeur de référence. L'application en propose une estimation à partir des efforts soutenus de 30 à 60 min (fenêtre glissante dans les FIT), affichée dans l'admin à côté de la valeur réglée. Elle ne la remplace jamais automatiquement.
-- **Montres** (lues dans les FIT de course) : `garmin_product` 2503 (déc. 2020 → déc. 2021, 112 activités) **n'enregistre aucune altitude** : MNT obligatoire pour ces sorties ; 3076 (déc. 2021 → sept. 2024, 264 activités) et 3992 (sept. 2024 → aujourd'hui, 258 activités) enregistrent une altitude, présence d'un baromètre à confirmer par Greg.
+- **Montres** (lues dans les FIT de course, modèles confirmés par Greg) :
+
+  | `garmin_product` | Modèle | Période | Sorties | Baromètre | Source d'altitude |
+  | --- | --- | --- | --- | --- | --- |
+  | 2503 | Forerunner 35 | déc. 2020 → déc. 2021 | 112 | non (aucune altitude dans le FIT) | MNT |
+  | 3076 | Forerunner 245 | déc. 2021 → sept. 2024 | 264 | non (altitude GPS seulement) | MNT |
+  | 3992 | Forerunner 255 | depuis sept. 2024 | 258 | oui | altimètre |
+
+  La Forerunner 245 illustre la règle de la section 2 : son FIT contient une altitude, mais d'origine GPS, donc le MNT fait foi.
 - **FC max** : la valeur de `.env` (190) est dépassée dans l'historique (195 observé) ; l'admin signalera le maximum observé.
 - **GitHub** : dépôt `georgieboyfr/garmin-fitness-trend`, image `ghcr.io/georgieboyfr/garmin-fitness-trend`.
