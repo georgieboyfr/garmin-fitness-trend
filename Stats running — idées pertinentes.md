@@ -516,4 +516,5 @@ Audit de l'existant et plan module par module, validés avant la phase 1.
   - `Date de l'activité` au format `7 nov. 2020, 15:54:37`, mois abrégés en français, **en UTC** (identique à la seconde au `start_time` du FIT, en hiver comme en été) ;
   - appariement par heure UTC avec 2 min de tolérance : 660 activités appariées sur 682 dans la période couverte par Garmin. Les 22 restantes : séances de PPG et randonnées sans équivalent, une saisie manuelle, et une dizaine de sorties (août–sept. 2026, 2021, 2025) **absentes de la base actuelle**, que la nouvelle liste complète des activités Garmin devra rattraper ;
   - 435 des noms appariés sont les noms génériques de Strava (« Course à pied le midi »…) : ils ne sont pas repris, le nom Garmin est gardé ;
-  - quand plusieurs archives sont déposées, seule la plus récente compte.
+  - **dépôt léger** : le dossier surveillé et l'upload de l'admin acceptent l'archive zip complète **ou** le seul `activities.csv` extrait (quelques centaines de Ko au lieu de 200 Mo et plus) ;
+  - quand plusieurs fichiers sont déposés, seul le plus récent compte (date de dernière activité qu'il contient, pas date du fichier). Un fichier déjà traité n'est pas relu.
