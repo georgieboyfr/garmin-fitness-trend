@@ -21,11 +21,30 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 ## État d'avancement
 
 - [x] Phase 0 — Audit et plan validés (2 novembre 2026, voir section 10 du brief)
-- [ ] Phase 1 — Socle
+- [ ] Phase 1 — Socle (en cours)
+  - [x] 1. Squelette : `app/`, migrations, tests, Dockerfile
+  - [ ] 2. Connexion Garmin depuis l'admin (`garminconnect` 0.3.20), admin protégée minimale
+  - [ ] 3. Synchro : reprise des FIT existants, métadonnées, incrémental
+  - [ ] 4. Parsing FIT vers Parquet, modèle de montre
+  - [ ] 5. D+ altimètre ou MNT, calibré sur 3 parcours
+  - [ ] 6. Noms Strava (archive attendue dans `data/strava/`)
+  - [ ] 7. CI GitHub, image amd64/arm64 sur ghcr
 - [ ] Phase 2 — Statistiques
 - [ ] Phase 3 — Estimateur
 - [ ] Phase 4 — Coach
 - [ ] Phase 5 — Extensions
+
+## Commandes
+
+- Tests : `.venv/Scripts/python -m pytest -q` ; lint : `.venv/Scripts/python -m ruff check app tests`
+- Lancer en local : `DATA_DIR=./data-dev .venv/Scripts/python -m uvicorn app.main:app`
+- Pas de Docker sur le poste de dev : l'image est construite par la CI (étape 7) ou sur le Synology.
+
+## Structure
+
+- `app/` : nouvelle application (FastAPI). `app/migrations/NNNN_nom.sql` : migrations, jamais modifiées une fois commitées.
+- `tests/` : pytest.
+- `backend/` : ancienne application, encore utilisée par `docker-compose.yml` jusqu'à ce que `app/` la remplace ; à supprimer ensuite.
 
 ## Existant (avant refonte)
 
