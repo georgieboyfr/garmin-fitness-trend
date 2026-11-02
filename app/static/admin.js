@@ -100,6 +100,7 @@ function renderGarmin(st) {
     return [dt, dd];
   }));
   dl.hidden = facts.length === 0;
+  $("garmin-empty").hidden = st.state !== "disconnected";
 
   showError("garmin-last-error", st.last_error ? new Error(`Dernière erreur (${fmtDate(st.last_error_at)}) : ${st.last_error}`) : null);
 

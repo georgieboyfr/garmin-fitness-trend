@@ -44,6 +44,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -78,6 +79,7 @@ h2 { font-size: 17px; }
 .card.narrow { max-width: 400px; margin: 40px auto; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .card-head h2 { margin: 0; }
+.card-head + p { margin: 14px 0 0; }
 .notice { border-color: var(--warn); }
 
 .muted { color: var(--muted); }
