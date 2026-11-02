@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, admin, db
+from . import __version__, admin, db, processing
 from .auth import AdminAuth, LoginThrottle, load_or_create_secret
 from .config import Config, load_config
 from .garmin_account import GarminAccount
@@ -37,7 +37,11 @@ def create_app(config: Config | None = None, garmin_class=None, sync_options=Non
             cfg.garmin_tokens_dir, cfg.garmin_state_path,
             env_email=cfg.garmin_email, env_password=cfg.garmin_password, garmin_class=garmin_class,
         )
-        app.state.garmin_sync = GarminSync(cfg, app.state.garmin_account, **(sync_options or {}))
+        app.state.garmin_sync = GarminSync(
+            cfg, app.state.garmin_account,
+            after_sync=lambda conn, progress: processing.parse_pending(cfg, conn, progress),
+            **(sync_options or {}),
+        )
         scheduler = DailyScheduler(cfg, app.state.garmin_sync, app.state.garmin_account)
         if start_scheduler:
             scheduler.start()

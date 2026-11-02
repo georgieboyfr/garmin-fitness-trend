@@ -245,6 +245,37 @@ def test_login_failure_is_recorded(setup):
     assert settings.get_state(conn, "garmin_first_import_done") is None
 
 
+def test_after_sync_runs_with_progress_and_counts(setup):
+    config, conn = setup
+    calls = []
+
+    def after(c, progress):
+        progress("lecture des FIT", 1, 1, "1")
+        calls.append(c.execute("SELECT COUNT(*) FROM activities").fetchone()[0])
+        return {"parsed": 1}
+
+    sync = GarminSync(config, FakeAccount(FakeClient([garmin_act(1, "2026-03-05 08:00:00")])),
+                      sleep=lambda s: None, today=lambda: date(2026, 3, 10), after_sync=after)
+    assert sync.run() == {"new": 1, "downloaded": 1, "parsed": 1}
+    assert calls == [1]
+    assert "1 FIT lu(s)" in conn.execute("SELECT summary FROM sync_runs").fetchone()[0]
+
+
+def test_after_sync_failure_is_not_a_garmin_error(setup):
+    config, conn = setup
+
+    def after(c, progress):
+        raise RuntimeError("disque plein")
+
+    sync = GarminSync(config, FakeAccount(FakeClient([])), sleep=lambda s: None,
+                      today=lambda: date(2026, 3, 10), after_sync=after)
+    with pytest.raises(RuntimeError):
+        sync.run()
+    assert sync.account.errors == [] and sync.account.synced == [0]
+    run = conn.execute("SELECT * FROM sync_runs").fetchone()
+    assert run["status"] == "error" and run["error"] == "disque plein"
+
+
 def test_concurrent_run_is_refused(setup):
     config, conn = setup
     sync, _ = make_sync(config, FakeClient([]))

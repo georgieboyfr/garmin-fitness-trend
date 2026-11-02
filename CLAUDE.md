@@ -25,7 +25,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 1. Squelette : `app/`, migrations, tests, Dockerfile
   - [x] 2. Connexion Garmin depuis l'admin (`garminconnect` 0.3.20), admin protégée minimale
   - [x] 3. Synchro : reprise des FIT existants, métadonnées, incrémental
-  - [ ] 4. Parsing FIT vers Parquet, modèle de montre
+  - [x] 4. Parsing FIT vers Parquet, modèle de montre
   - [ ] 5. D+ altimètre ou MNT, calibré sur 3 parcours
   - [ ] 6. Noms Strava (archive attendue dans `data/strava/`)
   - [ ] 7. CI GitHub, image amd64/arm64 sur ghcr
@@ -43,7 +43,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 ## Structure
 
 - `app/` : nouvelle application (FastAPI). `app/migrations/NNNN_nom.sql` : migrations, jamais modifiées une fois commitées.
-- `tests/` : pytest.
+- `tests/` : pytest. `tests/fit_builder.py` fabrique des FIT de test : jamais de vrai FIT de Greg dans le dépôt (traces GPS).
 - `backend/` : ancienne application, encore utilisée par `docker-compose.yml` jusqu'à ce que `app/` la remplace ; à supprimer ensuite.
 
 ## Existant (avant refonte)

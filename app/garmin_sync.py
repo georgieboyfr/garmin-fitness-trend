@@ -131,7 +131,7 @@ def summary_text(counts) -> str:
         ("new", "nouvelle(s) activité(s)"), ("renamed", "renommée(s)"),
         ("deleted", "supprimée(s) dans Garmin"), ("restored", "réapparue(s)"),
         ("downloaded", "FIT téléchargé(s)"), ("reused", "FIT repris du disque"),
-        ("fit_errors", "FIT en erreur"),
+        ("fit_errors", "FIT en erreur"), ("parsed", "FIT lu(s)"), ("parse_errors", "FIT illisible(s)"),
     ]
     text = ", ".join(f"{counts[k]} {label}" for k, label in parts if counts.get(k))
     return text or "rien de nouveau"
@@ -141,9 +141,11 @@ def summary_text(counts) -> str:
 
 class GarminSync:
     def __init__(self, config, account, sleep=time.sleep, today=None,
-                 list_delay=LIST_DELAY_S, download_delay=DOWNLOAD_DELAY_S):
+                 list_delay=LIST_DELAY_S, download_delay=DOWNLOAD_DELAY_S, after_sync=None):
         self.config = config
         self.account = account
+        # after_sync(conn, progress) -> Counter : traitements locaux enchaînés après la synchro
+        self.after_sync = after_sync
         self.sleep = sleep
         self.today = today or (lambda: datetime.now(ZoneInfo(config.timezone)).date())
         self.list_delay = list_delay
@@ -171,6 +173,14 @@ class GarminSync:
 
     def _set_progress(self, stage, index=None, total=None, detail=None):
         self.progress = {"stage": stage, "index": index, "total": total, "detail": detail}
+
+    @staticmethod
+    def _fail_run(conn, run_id, counts, exc):
+        with conn:
+            conn.execute(
+                "UPDATE sync_runs SET finished_at=?, status='error', summary=?, error=? WHERE id=?",
+                (_now_iso(), summary_text(counts), str(exc)[:2000] or exc.__class__.__name__, run_id),
+            )
 
     def _run(self, conn, full_history, kind):
         with conn:
@@ -201,13 +211,17 @@ class GarminSync:
             log.exception("Synchro Garmin échouée")
             self.account.record_error(e)
             self.account.invalidate()
-            with conn:
-                conn.execute(
-                    "UPDATE sync_runs SET finished_at=?, status='error', summary=?, error=? WHERE id=?",
-                    (_now_iso(), summary_text(counts), str(e)[:2000] or e.__class__.__name__, run_id),
-                )
+            self._fail_run(conn, run_id, counts, e)
             raise
         self.account.record_sync(counts["downloaded"])
+        # traitements locaux (lecture des FIT...), sans appel à Garmin
+        if self.after_sync:
+            try:
+                counts.update(self.after_sync(conn, self._set_progress))
+            except Exception as e:
+                log.exception("Traitements après la synchro échoués")
+                self._fail_run(conn, run_id, counts, e)
+                raise
         text = summary_text(counts)
         with conn:
             conn.execute("UPDATE sync_runs SET finished_at=?, status='ok', summary=? WHERE id=?",
