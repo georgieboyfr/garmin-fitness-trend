@@ -488,7 +488,10 @@ Environ 6 mois au total, en temps de loisir (quelques soirées par semaine), Cla
 
 Audit de l'existant et plan module par module, validés avant la phase 1.
 
-- **Synchro Garmin** : refactorée. On garde la connexion avec repli, le verrou, l'écriture atomique des FIT et `generate_token.py`. On sépare la synchro des calculs. `garminconnect` reste en 0.2.x ; `set_activity_name` et le passage à la 0.3 sont vérifiés au début de la phase 1.
+- **Synchro Garmin** : refactorée sur le modèle du projet `wmts-gpx-heatmap` de Greg. On garde le verrou et l'écriture atomique des FIT ; on sépare la synchro des calculs.
+- **Connexion Garmin depuis l'admin** (comme `wmts-gpx-heatmap`) : email et mot de passe saisis dans l'admin, code MFA saisi dans l'admin si Garmin le demande (connexion en attente quelques minutes), puis jeton de session enregistré sur le volume et renouvelé par la librairie. Au moment de la connexion, Greg **choisit** : ne pas mémoriser le mot de passe (recommandé, il sert seulement à obtenir le jeton) ou le mémoriser dans un fichier privé du dossier des jetons pour une reconnexion automatique. `GARMIN_EMAIL`/`GARMIN_PASSWORD` dans `.env` restent possibles et valent mémorisation. Le mot de passe n'est jamais en base ni dans le dépôt. Cela remplace `generate_token.py`.
+- **`garminconnect` 0.3.x** (0.3.20, déjà en production dans `wmts-gpx-heatmap`), qui abandonne garth : le jeton actuel `data/garth_tokens` devra être régénéré une fois via l'admin. Fonctions vérifiées en 0.2.40 : `set_activity_name`, `upload_running_workout`, `schedule_workout`, `download_activity` ; à revérifier en 0.3.20.
+- **Réglages de synchro dans l'admin** : activation, heure ou intervalle, profondeur du premier import.
 - **Parsing FIT** : réécrit (modèle de montre et séries complètes). fitparse est conservé sauf s'il se révèle trop lent sur l'historique, auquel cas on passe à `fitdecode`.
 - **Séries par activité** : fichiers **Parquet**, `/data/series/<activity_id>.parquet`, régénérables depuis les FIT.
 - **Calculs** : réécrits en fonctions pures testées et versionnées. TRIMP/HRSS et Banister repris tels quels.
@@ -497,5 +500,6 @@ Audit de l'existant et plan module par module, validés avant la phase 1.
 - **Interface** : réécrite. FastAPI, templates Jinja et JavaScript simple sans étape de build ; **ECharts** remplace Chart.js (calendrier heatmap, zoom et thème sombre natifs).
 - **Zones FC** : calées sur la **LTHR** (modèle de Friel), plus sur la FC max.
 - **LTHR** : `LTHR` dans `.env` reste la valeur de référence. L'application en propose une estimation à partir des efforts soutenus de 30 à 60 min (fenêtre glissante dans les FIT), affichée dans l'admin à côté de la valeur réglée. Elle ne la remplace jamais automatiquement.
+- **Montres** (lues dans les FIT de course) : `garmin_product` 2503 (déc. 2020 → déc. 2021, 112 activités) **n'enregistre aucune altitude** : MNT obligatoire pour ces sorties ; 3076 (déc. 2021 → sept. 2024, 264 activités) et 3992 (sept. 2024 → aujourd'hui, 258 activités) enregistrent une altitude, présence d'un baromètre à confirmer par Greg.
 - **FC max** : la valeur de `.env` (190) est dépassée dans l'historique (195 observé) ; l'admin signalera le maximum observé.
 - **GitHub** : dépôt `georgieboyfr/garmin-fitness-trend`, image `ghcr.io/georgieboyfr/garmin-fitness-trend`.
