@@ -4,6 +4,11 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 
 ## [Non publié]
 
+## [0.1.1] - 2026-11-03
+
+### Corrigé
+- La racine du site (`/`) renvoyait « Not Found » : elle redirige vers l'admin en attendant les pages de statistiques (phase 2).
+
 ## [0.1.0] - 2026-11-03
 
 Phase 1 (socle) : nouvelle application qui remplace l'ancien backend.
