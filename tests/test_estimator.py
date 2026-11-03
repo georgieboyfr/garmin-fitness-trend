@@ -254,3 +254,9 @@ def test_grade_pace_model_period_and_whole_history():
     assert m["activities"] == 4 and m["start"] == "2023-05-01"
     assert estimator.grade_pace_model(acts, DAY, 730) is None                  # deux sorties seulement
     assert estimator.grade_pace_model(acts, DAY, 1100)["activities"] == 3
+
+
+def test_error_summary_never_shows_a_negative_zero_bias():
+    s = estimator.error_summary([{"e": 0.1}, {"e": -0.1}, {"e": -0.05}], "e")
+    assert s["bias_pct"] == 0 and f"{s['bias_pct']:+.1f}" == "+0.0"
+    assert estimator.error_summary([{"e": None}], "e") is None

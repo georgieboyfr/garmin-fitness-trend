@@ -13,8 +13,11 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Page Estimateur : période de la forme actuelle (6, 8, 10 ou 12 semaines, aussi utilisée par l'estimateur route et sa validation) et période du modèle allure-pente (6 mois, 12 mois, 2 ans ou tout l'historique) réglables, choix mémorisés dans un cookie.
 - Estimateur trail sur GPX (page Estimateur) : import d'un GPX (gardé dans `data/gpx`, derniers parcours rappelés), distance équivalente plat selon le modèle allure-pente personnel, temps total (Riegel jusqu'à 2 h, puis exposant de fatigue calé sur la courbe allure-durée longue), fourchette, profil avec les temps de passage, tronçons homogènes par pente (plat, douce, moyenne, forte, vallonné : découpage optimal du profil en pentes régulières) avec D+ et D−, temps, allure et passage. Altitude du MNT (IGN, Copernicus hors de France) interrogé une fois par parcours et mis en cache, celle du GPX à défaut ; D+ et D− filtrés avec les réglages de l'admin (le D+ brut d'un GPX bruité était surestimé de 10 %).
 - Ravitaillements sur le parcours d'un GPX (page Estimateur) : proposés d'après les points nommés du GPX, modifiables et enregistrés avec le parcours (km, nom, durée d'arrêt) ; passage estimé à chaque ravito avec sa fourchette, temps, D+ et D− depuis le point précédent, arrêt et départ ; arrêts ajoutés au temps final ; repères sur le profil.
+- Estimation trail en temps total : arrêts saisis aux ravitos, sinon part d'arrêt calée sur tes courses trail passées (croît avec le carré de la durée), répartie dans les temps de passage.
+- Précision de l'estimateur trail : rejeu sur chaque course trail confirmée, sa propre trace servant de GPX, avec la forme de la veille ; erreur moyenne et biais face au temps total, part des résultats dans la fourchette, arrêts réels et estimés, écart en mouvement pour diagnostic.
 
 ### Modifié
+- Page Estimateur : biais affiché « sans biais » au lieu de « −0,0 % ».
 - Estimateur route : exposant standard de Riegel (1,06) au lieu de l'exposant personnel, qui se trompait davantage sur les courses passées (8,4 % d'erreur moyenne contre 4,4 %) ; l'exposant personnel reste affiché pour comparaison.
 
 ## [0.2.0] - 2026-11-03

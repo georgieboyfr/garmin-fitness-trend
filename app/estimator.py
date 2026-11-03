@@ -276,12 +276,12 @@ def road_table(efforts, day: date, window_days: int = WINDOW_DAYS) -> list[dict]
 
 # ---------- validation sur les courses passées ----------
 
-def _error_summary(rows, key) -> dict | None:
+def error_summary(rows, key) -> dict | None:
     errors = [r[key] for r in rows if r.get(key) is not None]
     if not errors:
         return None
     return {"n": len(errors), "mae_pct": round(sum(abs(e) for e in errors) / len(errors), 1),
-            "bias_pct": round(sum(errors) / len(errors), 1)}
+            "bias_pct": round(sum(errors) / len(errors), 1) + 0.0}     # + 0.0 : pas de « −0,0 »
 
 
 def validate_road(acts, efforts, confirmed_ids, window_days: int = WINDOW_DAYS) -> dict:
@@ -310,11 +310,11 @@ def validate_road(acts, efforts, confirmed_ids, window_days: int = WINDOW_DAYS) 
                         "personal_error_pct": round((personal["realistic_s"] / actual - 1) * 100, 1)})
         rows.append(row)
     rows.sort(key=lambda r: r["date"], reverse=True)
-    summary = _error_summary(rows, "error_pct")
+    summary = error_summary(rows, "error_pct")
     if summary:
         summary["within"] = sum(1 for r in rows if r["within"])
     return {"version": ESTIMATE_VERSION, "races": rows, "used": summary,
-            "personal": _error_summary(rows, "personal_error_pct")}
+            "personal": error_summary(rows, "personal_error_pct")}
 
 
 # ---------- modèle allure-pente personnel ----------

@@ -110,6 +110,7 @@
   <p class="small muted">Derniers parcours :
     {% for g in gpx_recent %}<a href="?gpx={{ g.id }}#trail" {% if gpx and g.id == gpx.id %}aria-current="true" class="strong"{% endif %}>{{ g.name }}</a>{{ " · " if not loop.last }}{% endfor %}</p>
   {% endif %}
+  <p class="small muted">{% if trail_validation.total %}Erreur moyenne de {{ trail_validation.total.mae_pct | string | replace(".", ",") }} % sur tes {{ trail_validation.total.n }} courses trail passées, en temps total (<a href="#precision-trail">détail</a>).{% else %}Précision non encore mesurée : aucune course trail confirmée.{% endif %}</p>
 
   {% if trail and trail.error %}
   <p class="muted">{{ trail.error }}</p>
@@ -135,7 +136,8 @@
     · calé sur ton meilleur {{ t.reference.label }} récent ({{ effort_link(t.reference) }})
     {% if t.fatigue_applies %}· exposant de fatigue {{ "%.2f" | format(t.fatigue.value) | replace(".", ",") }}{% if t.fatigue.personal %} (ta courbe au-delà de 2 h{% if t.fatigue.fitted != t.fatigue.value %}, borné{% endif %}){% else %} (valeur par défaut, pas assez de sorties longues){% endif %}{% endif %}
     {% if t.fallback %}· aucun effort route en {{ weeks }} semaines : références des 6 derniers mois{% endif %}
-    {% if t.stops_s %}· dont <span data-duration="{{ t.stops_s }}"></span> d'arrêts aux ravitos (<span data-chrono="{{ t.moving_s }}"></span> en mouvement, allures en mouvement){% else %}· temps en mouvement, sans arrêt aux ravitos{% endif %}.
+    {% if t.stops_source == "ravitos" %}· temps total, dont <span data-duration="{{ t.stops_s }}"></span> d'arrêts saisis aux ravitos{% elif t.stops_source == "history" %}· temps total, dont <span data-duration="{{ t.stops_s }}"></span> d'arrêts ({{ t.stop_share_pct | string | replace(".", ",") }} % du temps{% if t.stop_rate.personal %}, d'après tes {{ t.stop_rate.points | length }} courses trail passées{% else %}, valeur par défaut faute de course trail passée{% endif %} ; tes arrêts saisis aux ravitos la remplacent) {{ tip("Part du temps passée à l'arrêt en course, qui croît avec le carré de la durée (les ravitos s'allongent sur les longues courses), calée sur tes courses trail confirmées : temps écoulé comparé au temps en mouvement. Les pauses de tes sorties d'entraînement ne comptent pas. Si tu saisis une durée d'arrêt à au moins un ravito, seuls tes arrêts saisis comptent.") }}{% else %}· temps en mouvement, sans arrêt{% endif %}
+    · <span data-chrono="{{ t.moving_s }}"></span> en mouvement, allures en mouvement.
   </p>
   <div class="chart" id="chart-trail" role="img" aria-label="Profil du parcours avec les temps de passage"></div>
   <div class="table-wrap">
@@ -159,7 +161,7 @@
     </table>
   </div>
 
-  <h3 id="ravitos">Ravitaillements {{ tip("Passage estimé à chaque ravito : temps en mouvement depuis le point précédent, heure d'arrivée depuis le départ (fourchette optimiste – prudent entre parenthèses), arrêt prévu et départ. Chaque arrêt s'ajoute aux passages suivants et au temps final. Les ravitos sont proposés d'après les points nommés du GPX proches de la trace ; corrige-les, complète-les et enregistre.") }}</h3>
+  <h3 id="ravitos">Ravitaillements {{ tip("Passage estimé à chaque ravito : temps en mouvement depuis le point précédent, heure d'arrivée depuis le départ (fourchette optimiste – prudent entre parenthèses), arrêt prévu et départ. Chaque arrêt s'ajoute aux passages suivants et au temps final ; sans durée d'arrêt saisie, la part d'arrêt de tes courses passées est répartie au prorata du temps. Les ravitos sont proposés d'après les points nommés du GPX proches de la trace ; corrige-les, complète-les et enregistre.") }}</h3>
   {% if t.aid_stations | length > 1 %}
   <div class="table-wrap">
     <table class="data">
@@ -195,8 +197,9 @@
 </section>
 <section class="card" id="precision">
   <div class="card-head">
-    <h2>Précision sur tes courses passées {{ tip("L'estimateur route est rejoué sur chacune de tes courses route confirmées, avec uniquement les sorties jusqu'à la veille (forme de la veille), puis comparé à ton temps réel (temps écoulé). Écart positif : estimation trop lente. L'erreur moyenne est la moyenne des écarts en valeur absolue ; le biais, leur moyenne signée. La colonne « Exposant personnel » montre ce qu'aurait donné l'exposant calé sur tes meilleurs efforts route des 2 années précédant la course.") }}</h2>
+    <h2>Précision sur tes courses passées</h2>
   </div>
+  <h3>Route {{ tip("L'estimateur route est rejoué sur chacune de tes courses route confirmées, avec uniquement les sorties jusqu'à la veille (forme de la veille), puis comparé à ton temps réel (temps écoulé). Écart positif : estimation trop lente. L'erreur moyenne est la moyenne des écarts en valeur absolue ; le biais, leur moyenne signée. La colonne « Exposant personnel » montre ce qu'aurait donné l'exposant calé sur tes meilleurs efforts route des 2 années précédant la course.") }}</h3>
   {% if v.used %}
   <section class="kpis">
     <article class="kpi">
@@ -207,7 +210,7 @@
     <article class="kpi">
       <header>Biais</header>
       <div class="kpi-value">{{ ('%+.1f' % v.used.bias_pct) | replace('-', '−') | replace('.', ',') }}<span class="kpi-unit">%</span></div>
-      <footer class="muted">{{ "estimation trop lente" if v.used.bias_pct > 0 else "estimation trop rapide" }}</footer>
+      <footer class="muted">{{ "estimation trop lente" if v.used.bias_pct > 0 else "estimation trop rapide" if v.used.bias_pct < 0 else "sans biais" }}</footer>
     </article>
     <article class="kpi">
       <header>Dans la fourchette</header>
@@ -248,6 +251,62 @@
   </div>
   {% else %}
   <p class="muted">Aucune course route confirmée. Valide tes courses dans <a href="/admin">l'admin</a> pour mesurer la précision de l'estimateur.</p>
+  {% endif %}
+
+  {% set tv = trail_validation %}
+  <h3 id="precision-trail">Trail {{ tip("L'estimateur trail est rejoué sur chacune de tes courses trail confirmées : sa propre trace sert de GPX (altitude retenue pour le D+ de la sortie, baromètre ou MNT), avec uniquement les sorties jusqu'à la veille (niveau route, modèle allure-pente sur la période choisie en haut de page, exposant de fatigue, part d'arrêt de tes courses précédentes). Le temps total estimé, arrêts compris, est comparé à ton temps réel (temps écoulé), car c'est lui qui compte en course. Pour diagnostic, l'écart en mouvement compare le temps de course estimé hors arrêts à ton temps en mouvement. Écart positif : estimation trop lente.") }}</h3>
+  {% if tv.total %}
+  <section class="kpis">
+    <article class="kpi">
+      <header>Erreur moyenne</header>
+      <div class="kpi-value">{{ tv.total.mae_pct | string | replace(".", ",") }}<span class="kpi-unit">%</span></div>
+      <footer class="muted">{{ tv.total.n }} course{{ "s" if tv.total.n > 1 }} trail, temps total</footer>
+    </article>
+    <article class="kpi">
+      <header>Biais</header>
+      <div class="kpi-value">{{ ('%+.1f' % tv.total.bias_pct) | replace('-', '−') | replace('.', ',') }}<span class="kpi-unit">%</span></div>
+      <footer class="muted">{{ "estimation trop lente" if tv.total.bias_pct > 0 else "estimation trop rapide" if tv.total.bias_pct < 0 else "sans biais" }}</footer>
+    </article>
+    <article class="kpi">
+      <header>Dans la fourchette</header>
+      <div class="kpi-value">{{ tv.total.within }}<span class="kpi-unit">/ {{ tv.total.n }}</span></div>
+      <footer class="muted">entre optimiste et prudent</footer>
+    </article>
+    <article class="kpi">
+      <header>En mouvement</header>
+      <div class="kpi-value">{% if tv.moving %}{{ tv.moving.mae_pct | string | replace(".", ",") }}<span class="kpi-unit">%</span>{% else %}—{% endif %}</div>
+      {% if tv.moving %}<footer class="muted">biais {{ ('%+.1f' % tv.moving.bias_pct) | replace('-', '−') | replace('.', ',') }} %, hors arrêts</footer>{% endif %}
+    </article>
+  </section>
+  {% endif %}
+  {% if tv.races %}
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Course</th><th>Distance</th><th>D+</th><th>Temps réel</th><th>Estimé la veille</th><th>Écart</th><th>Fourchette</th><th>Arrêts réels / estimés</th><th>En mouvement</th><th>Fatigue</th></tr></thead>
+      <tbody>
+        {% for r in tv.races %}
+        <tr>
+          <td><a class="act-name" href="/sorties/{{ r.activity_id }}">{{ r.name or "Sans nom" }}</a> <span class="muted" data-short-date="{{ r.date }}"></span></td>
+          <td data-num="{{ r.distance_km }}" data-dec="1" data-unit="km"></td>
+          <td data-num="{{ r.gain_m }}" data-unit="m"></td>
+          <td class="strong" {% if r.elapsed_s %}data-chrono="{{ r.elapsed_s }}"{% endif %}></td>
+          {% if r.estimate %}
+          <td data-chrono="{{ r.estimate.realistic_s }}"></td>
+          <td>{% if r.error_pct is not none %}<span class="delta {{ 'down' if r.error_pct > 0 else 'up' }}">{{ ('%+.1f' % r.error_pct) | replace('-', '−') | replace('.', ',') }} %</span>{% endif %}</td>
+          <td class="muted">{% if r.within is not none %}{{ "oui" if r.within else "non" }}{% endif %}</td>
+          <td class="muted">{% if r.elapsed_s and r.moving_s %}<span data-duration="{{ r.elapsed_s - r.moving_s }}"></span>{% else %}—{% endif %} / <span data-duration="{{ r.estimate.stops_s }}"></span></td>
+          <td class="muted">{% if r.moving_s %}<span data-chrono="{{ r.moving_s }}"></span>{% if r.moving_error_pct is not none %} ({{ ('%+.1f' % r.moving_error_pct) | replace('-', '−') | replace('.', ',') }} %){% endif %}{% endif %}</td>
+          <td class="muted">{% if r.estimate.fatigue_applies %}{{ "%.2f" | format(r.estimate.fatigue.value) | replace(".", ",") }}{% else %}—{% endif %}</td>
+          {% else %}
+          <td colspan="6" class="muted">{{ r.reason }}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Aucune course trail confirmée. Valide tes courses dans <a href="/admin">l'admin</a> pour mesurer la précision de l'estimateur trail.</p>
   {% endif %}
 </section>
 

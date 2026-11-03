@@ -22,6 +22,7 @@ from fastapi.templating import Jinja2Templates
 
 from . import __version__, courses, db, detail, estimator, metrics_job, queries, settings, stats, trail
 from .auth import SESSION_COOKIE
+from .series import read_series
 from .track_parser import parse_route, parse_waypoints
 
 TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -242,11 +243,14 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
         trail_result = trail.estimate_gpx(lats, lons, eles, acts, efforts, today, window,
                                           estimator.MODEL_PERIODS[months_value],
                                           _gpx_dem(request, gpx, lats, lons), elevation_params,
-                                          gpx_meta["aid_stations"])
+                                          gpx_meta["aid_stations"], confirmed)
     response = render(request, "estimateur.html", "/estimateur",
                       profile=estimator.current_form(acts, efforts, today, lthr, window),
                       table=estimator.road_table(efforts, today, window), estimate=estimate,
                       validation=estimator.validate_road(acts, efforts, confirmed, window),
+                      trail_validation=trail.validate_trail(
+                          _race_profiles(cfg, acts, confirmed, elevation_params), acts, efforts, confirmed,
+                          window, estimator.MODEL_PERIODS[months_value]),
                       weeks=weeks_value, months=months_value, form_weeks=estimator.FORM_WEEKS,
                       personal_exponent=estimator.personal_exponent(efforts, today),
                       model=model, model_table=estimator.model_table(model) if model else [],
@@ -256,6 +260,24 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
         response.set_cookie(ESTIMATOR_COOKIE, f"{weeks_value}-{months_value}", max_age=365 * 86400,
                             httponly=True, samesite="lax")
     return response
+
+
+def _race_profiles(cfg, acts, confirmed, params) -> list[tuple[dict, dict | None]]:
+    """Courses trail confirmées et le profil de leur propre trace (altitude retenue pour le D+ :
+    baromètre ou MNT), qui sert de GPX pour rejouer l'estimateur trail."""
+    out = []
+    for a in acts:
+        if a["id"] not in confirmed or a.get("terrain") != "trail":
+            continue
+        profile = None
+        try:
+            table = read_series(cfg.series_dir, a["id"])
+            dist, alt = detail.retained_altitude(cfg, a["id"], table, a.get("elevation_source"))
+            profile = trail.altitude_profile(dist, alt, a.get("elevation_source") or "dem", params)
+        except (OSError, KeyError, ValueError):
+            pass
+        out.append((a, profile))
+    return out
 
 
 # ---------- GPX des courses à estimer ----------

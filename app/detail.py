@@ -27,7 +27,7 @@ PROFILE_POINTS = 800        # points des profils et du tracé envoyés à la pag
 PACE_WINDOW_M = 200.0       # allure lissée sur 200 m
 
 
-def _altitude(config, activity_id, table, source):
+def retained_altitude(config, activity_id, table, source):
     """(distance, altitude) retenue pour le D+ : baromètre, ou profil MNT en cache."""
     if source == "barometer":
         alt = table.column("altitude_m").to_numpy(zero_copy_only=False).astype(float)
@@ -86,7 +86,7 @@ def profiles(config, activity_id, source, fit_path=None, terrain=None) -> dict:
         pace = np.where(span > 0, (t_hi - t_lo) / span * 1000, np.nan)
     pace = np.where((pace >= 120) & (pace <= 1200), pace, np.nan)   # 2'00" à 20'00" /km
 
-    alt_d, alt = _altitude(config, activity_id, table, source)
+    alt_d, alt = retained_altitude(config, activity_id, table, source)
     alt_at = (np.interp(grid, alt_d, median_filter(alt, 3), left=np.nan, right=np.nan)
               if alt.size > 1 else np.full(grid.size, np.nan))
 

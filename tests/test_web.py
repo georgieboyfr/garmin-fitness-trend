@@ -172,6 +172,7 @@ def test_estimateur_page(client):
     for q in ("", "?distance=10", "?distance=12,5&gain=150", "?distance=abc"):
         r = client.get("/estimateur" + q)
         assert r.status_code == 200 and "Forme actuelle" in r.text
+    assert "Aucune course trail confirmée" in r.text
     assert 'href="/estimateur"' in client.get("/").text
 
 

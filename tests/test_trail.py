@@ -228,3 +228,84 @@ def test_predict_trail_adds_stops_after_each_aid_station():
     assert sum(s["time_s"] for s in r["segments"]) == pytest.approx(r["moving_s"], abs=len(r["segments"]))
     assert r["chart"]["time"][-1] == r["realistic_s"] and len(r["chart"]["aid"]) == 2
     assert [a["name"] for a in base["aid_stations"]] == ["Arrivée"]
+
+
+def test_altitude_profile_uses_the_threshold_of_its_source():
+    d = np.arange(0, 3001, 10.0)
+    alt = 2 * np.sin(d / 40)                                            # ondulations de 4 m
+    baro = trail.altitude_profile(d, alt, "barometer")
+    dem = trail.altitude_profile(d, alt, "ign")
+    assert baro["threshold_m"] == 1.0 and dem["threshold_m"] == 3.5
+    assert baro["gain_m"] > 0 and dem["gain_m"] == 0
+    assert trail.altitude_profile(d[:50], alt[:50], "barometer") is None    # moins de 1 km
+
+
+def test_stop_rate_from_past_trail_races_only():
+    def race(i, day, hours, stop_s, terrain="trail"):
+        start = datetime.fromisoformat(day + "T08:00:00")
+        return {"id": i, "name": f"c{i}", "start": start, "terrain": terrain,
+                "moving_duration_s": hours * 3600, "elapsed_s": hours * 3600 + stop_s}
+    acts = [race(1, "2025-05-01", 2, 72), race(2, "2025-06-01", 4, 960),
+            race(3, "2025-07-01", 4, 3600, "road"),
+            race(4, "2025-08-01", 4, 3600), race(5, "2027-01-01", 10, 9000)]
+    r = trail.stop_rate(acts, {1, 2, 3, 5}, DAY)                 # 4 : pas une course ; 5 : après le jour
+    shares = [(72 / (7200 + 72), 2), (960 / (14400 + 960), 4)]
+    a = sum(s * h ** 2 for s, h in shares) / sum(h ** 4 for _, h in shares)
+    assert r["personal"] and r["a"] == pytest.approx(a) and [p["activity_id"] for p in r["points"]] == [1, 2]
+    assert trail.stop_rate(acts, set(), DAY) == {"a": trail.STOP_DEFAULT, "personal": False, "points": []}
+
+
+def test_predict_trail_adds_history_stops_unless_aid_stops_are_entered():
+    lats, lons, eles = parse_route(gpx(line(30)))
+    profile = trail.route_profile(lats, lons, eles)
+    efforts = [eff("distance", 10000, 3000, "2026-10-01")]
+    stops = {"a": 0.01, "personal": True, "points": []}
+    base = trail.predict_trail(profile, FLAT_MODEL, efforts, DAY)
+    r = trail.predict_trail(profile, FLAT_MODEL, efforts, DAY, stops=stops)
+    share = 0.01 * (base["moving_s"] / 3600) ** 2
+    assert base["stops_source"] is None and base["stops_s"] == 0
+    assert r["stops_source"] == "history" and r["stop_share_pct"] == round(share * 100, 1)
+    assert r["realistic_s"] == pytest.approx(base["realistic_s"] / (1 - share), abs=1)
+    assert r["prudent_s"] == pytest.approx(base["prudent_s"] / (1 - share), abs=1)
+    assert r["realistic_pace_s_km"] == base["realistic_pace_s_km"]
+    assert r["aid_stations"][-1]["arrival_s"] == pytest.approx(r["realistic_s"], abs=1)
+    assert r["segments"][-1]["passage_s"] == pytest.approx(r["realistic_s"], abs=1)
+    zero = trail.predict_trail(profile, FLAT_MODEL, efforts, DAY, stops=stops,
+                               aid_stations=[{"km": 10.0, "name": "R", "stop_min": 0.0}])
+    assert zero["stops_source"] == "history"                     # ravito sans arrêt saisi
+    own = trail.predict_trail(profile, FLAT_MODEL, efforts, DAY, stops=stops,
+                              aid_stations=[{"km": 10.0, "name": "R", "stop_min": 2.0}])
+    assert own["stops_source"] == "ravitos" and own["realistic_s"] == base["realistic_s"] + 120
+    huge = trail.predict_trail(profile, FLAT_MODEL, efforts, DAY, stops={**stops, "a": 5.0})
+    assert huge["stop_share_pct"] == trail.STOP_MAX_SHARE * 100
+
+
+def test_validate_trail_replays_races_with_the_form_of_the_day_before():
+    def act(i, day, terrain="road", **kw):
+        bins = [[-2, 600, 1800], [0, 600, 1800], [10, 300, 600]]
+        start = datetime.fromisoformat(day + "T09:00:00")
+        return {"id": i, "name": f"s{i}", "start": start, "terrain": terrain,
+                "grade_bins": json.dumps(bins), "distance_km": 10.0, "gain_m": 0.0, **kw}
+    acts = [act(1, "2026-09-01"), act(2, "2026-09-10"), act(3, "2026-09-20"),
+            act(10, "2026-10-10", "trail", moving_duration_s=3300, elapsed_s=3500),
+            act(11, "2020-05-01", "trail", moving_duration_s=3000, elapsed_s=3300),
+            act(12, "2026-10-20", "trail", moving_duration_s=3000, elapsed_s=3000)]
+    efforts = [eff("distance", 10000, 3000, "2026-10-01"),
+               eff("distance", 10000, 2000, "2026-10-10")]                 # le jour de la course : ignoré
+    d = np.arange(0, 10001, 10.0)
+    flat = {"distance": d, "altitude": np.zeros(d.size), "threshold_m": 3.5}
+    races = [(acts[3], flat), (acts[4], flat), (acts[5], None)]
+    v = trail.validate_trail(races, acts, efforts, {10, 11, 12})
+    by_id = {r["activity_id"]: r for r in v["races"]}
+    r = by_id[10]
+    # part d'arrêt de la course 11 (même durée en mouvement) : 300 s sur 3 300
+    assert r["estimate"]["moving_s"] == 3000 and r["estimate"]["realistic_s"] == 3300
+    assert "segments" not in r["estimate"]
+    assert r["error_pct"] == round((3300 / 3500 - 1) * 100, 1) and r["within"] is False
+    assert r["moving_error_pct"] == round((3000 / 3300 - 1) * 100, 1)
+    assert by_id[11]["reason"] == "pas de modèle allure-pente avant la course"
+    assert by_id[12]["reason"] == "trace ou altitude indisponible"
+    assert [x["date"] for x in v["races"]] == ["2026-10-20", "2026-10-10", "2020-05-01"]
+    assert v["total"] == {"n": 1, "mae_pct": abs(r["error_pct"]), "bias_pct": r["error_pct"], "within": 0}
+    assert v["moving"]["n"] == 1
+    assert trail.validate_trail([], acts, efforts, set())["total"] is None
