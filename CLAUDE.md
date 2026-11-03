@@ -38,14 +38,15 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 
 - Tests : `.venv/Scripts/python -m pytest -q` ; lint : `.venv/Scripts/python -m ruff check app tests`
 - Lancer en local : `DATA_DIR=./data-dev .venv/Scripts/python -m uvicorn app.main:app`
-- Pas de Docker sur le poste de dev : l'image est construite par la CI (étape 7) ou sur le Synology.
+- Pas de Docker sur le poste de dev : l'image est construite par la CI (tag `vX.Y.Z`) ou sur le Synology.
 
 ## Structure
 
 - `app/` : nouvelle application (FastAPI). `app/migrations/NNNN_nom.sql` : migrations, jamais modifiées une fois commitées.
 - `tests/` : pytest. `tests/fit_builder.py` fabrique des FIT de test : jamais de vrai FIT de Greg dans le dépôt (traces GPS).
-- `backend/` : ancienne application, encore utilisée par `docker-compose.yml` jusqu'à ce que `app/` la remplace ; à supprimer ensuite.
+- `.github/workflows/` : CI (lint, tests) et publication de l'image sur tag `vX.Y.Z`.
+- Dépôt : `github.com/georgieboyfr/garmin-fitness-trend` (public), poussé en SSH via l'alias `github-garmin-fitness-trend` (clé de déploiement du serveur de dev).
 
-## Existant (avant refonte)
+## Données locales (poste de dev)
 
-`backend/` : FastAPI + SQLite + fitparse + APScheduler + `garminconnect<0.3` (garth), page unique Chart.js. Données locales : `data/fitness.db` (ancienne base ; la nouvelle est `data/trend.db`), `data/fit/` (662 FIT, 2020-12 → 2026-10), `data/garth_tokens/`.
+`data/trend.db`, `data/fit/`, `data/series/`, `data/dem/`, `data/strava/`, `data/garmin_tokens/`. L'ancienne application (supprimée en 0.1.0, voir l'historique Git) utilisait `data/fitness.db` et `data/garth_tokens/`.

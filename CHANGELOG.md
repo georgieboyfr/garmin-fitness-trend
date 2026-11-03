@@ -4,6 +4,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 
 ## [Non publié]
 
+## [0.1.0] - 2026-11-03
+
+Phase 1 (socle) : nouvelle application qui remplace l'ancien backend.
+
 ### Ajouté
 - Brief de refonte, décisions de la phase 0, `CLAUDE.md`.
 - Nouveau squelette `app/` : configuration par variables d'environnement, base SQLite avec migrations numérotées appliquées au démarrage, table des montres (Forerunner 35, 245, 255), point de santé `/health`.
@@ -18,4 +22,9 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Admin : carte « Noms Strava » (envoi du fichier, noms repris, sorties sans activité Garmin, fichiers traités).
 - Nouvelle base `trend.db` (l'ancienne `fitness.db` n'est pas touchée).
 - Tests unitaires (pytest) et lint (ruff).
+- CI GitHub Actions (lint et tests à chaque push) ; image Docker amd64 et arm64 publiée sur ghcr.io à chaque tag `v*`.
+- `docker-compose.yml` utilise l'image publiée, conteneur sous l'utilisateur du NAS (`PUID` / `PGID`).
+
+### Supprimé
+- Ancienne application (`backend/`, page unique Chart.js, `generate_token.py`) : remplacée par `app/`.
 - Dockerfile multi-étapes, utilisateur non root, healthcheck, version injectée au build.

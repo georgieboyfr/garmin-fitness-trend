@@ -1,212 +1,107 @@
 # Garmin Fitness Trend
 
-Récupère tes activités Garmin Connect (via FIT), calcule un stress score
-(TRIMP / HRSS) par activité, et affiche une courbe Fitness / Fatigue / Form
-(modèle de Banister, façon TrainingPeaks / Elevate) sur une page web,
-le tout en Docker — sur le même principe que ton `strava-heatmap-proxy`.
+Statistiques de course à pied à partir des activités Garmin Connect, hébergées en
+Docker sur un NAS Synology.
 
-## Ce que ça fait
+- Synchro Garmin quotidienne : métadonnées et FIT originaux, conservés une fois pour toutes.
+- Lecture des FIT : séries de points (temps, distance, GPS, altitude, FC…) en Parquet.
+- D+ recalculé : altimètre pour les montres à baromètre, sinon modèle numérique de
+  terrain le long de la trace (IGN RGE ALTI en France, Copernicus ailleurs).
+- Noms et descriptions repris de l'export de compte Strava ; sorties sans montre importées.
+- Page d'admin protégée : compte Garmin, synchro, réglages du D+, import Strava.
 
-- Se connecte à Garmin Connect et liste les activités de la période demandée
-  (la librairie Garmin pagine automatiquement les résultats par blocs de 20)
-- Télécharge le fichier FIT original de chaque activité
-- Conserve chaque FIT dans `/data/fit/<activityId>.fit` (donc dans
-  `./data/fit` sur l'hôte grâce au volume Docker)
-- Calcule le TRIMP puis le HRSS à partir de tes échantillons de FC,
-  ta FC max, ta FC repos et ta LTHR (formules Banister/TrainingPeaks)
-- Agrège un stress score quotidien, et en déduit Fitness / Fatigue / Form
-  jour par jour
-- Sert une page web (Chart.js) avec :
-  - la courbe Fitness / Fatigue / Form et ses zones d'entraînement
-  - des cartes de synthèse (distance/dénivelé cumulés sur l'année, avec
-    variation en % vs la même période l'an dernier)
-  - un graphique de distance cumulée par année, toutes années superposées
-    (pour comparer visuellement ta progression d'une année sur l'autre)
-  - le même graphique pour le dénivelé cumulé
-  - des histogrammes distance/dénivelé par mois, groupés par année
-  - un encart records (plus longue distance, plus gros dénivelé, effort
-    HRSS le plus intense)
-  - le tableau des dernières activités (distance, D+, durée, FC, HRSS)
-- Re-synchronise automatiquement toutes les `SYNC_INTERVAL_HOURS` heures
+Le cahier des charges et les décisions sont dans
+[`Stats running — idées pertinentes.md`](Stats%20running%20—%20idées%20pertinentes.md),
+l'historique des versions dans [`CHANGELOG.md`](CHANGELOG.md).
 
-## Installation
+## Installation sur le Synology
 
-1. **Configure tes paramètres physiologiques**
+1. **Dossier** : créer un dossier (par exemple `/volume1/docker/garmin-fitness-trend`)
+   et y copier [`docker-compose.yml`](docker-compose.yml) et [`.env.example`](.env.example),
+   renommé en `.env`.
+
+2. **`.env`** : renseigner `HR_MAX`, `HR_REST`, `LTHR`, `SEX`, et `PUID` / `PGID`
+   (propriétaire du dossier `data`, commande `id` en SSH ; souvent 1026 et 100 sur un
+   Synology). Le conteneur ne tourne pas en root.
+
+3. **Mot de passe de l'admin** :
 
    ```bash
-   cp .env.example .env
+   docker compose run --rm garmin-fitness-trend python -m app.auth
    ```
 
-   Renseigne `HR_MAX`, `HR_REST`, `LTHR` et `SEX` (m/f) dans `.env`.
-   Ce sont ces valeurs qui déterminent la précision du HRSS — une LTHR
-   mal réglée fausse toute la courbe.
+   Copier la ligne `ADMIN_PASSWORD_HASH='…'` affichée dans `.env`, en gardant les
+   guillemets simples (le hash contient des `$`).
 
-2. **Authentification Garmin (étape à faire une seule fois)**
-
-   Renseigne `GARMIN_EMAIL` et `GARMIN_PASSWORD` dans `.env`, puis lance
-   l'authentification **dans le conteneur** (mêmes versions de
-   `garminconnect`/`garth` que le service en continu — pas de risque
-   d'incompatibilité de version entre un script local et l'image Docker) :
-
-   ```bash
-   docker compose build
-   docker compose run --rm garmin-fitness-trend python generate_token.py
-   ```
-
-   Saisis le code MFA si Garmin le demande. Le jeton est écrit dans
-   `./data/garth_tokens` (volume partagé avec le service principal), qui
-   pourra ensuite le recharger sans interaction à chaque synchro.
-
-3. **Lancer le service**
+4. **Démarrer** :
 
    ```bash
    docker compose up -d
    ```
 
-   La page est ensuite accessible sur `http://<ip-du-nas>:8090`.
+   L'application écoute sur le port 9193. Pour un accès depuis l'extérieur, ajouter une
+   règle de reverse proxy HTTPS dans DSM vers ce port.
 
-4. **Exposition à l'extérieur**
+5. **Connecter Garmin** : ouvrir `/admin`, se connecter, puis renseigner les identifiants
+   Garmin (code MFA saisi dans l'admin si Garmin le demande). Au choix : ne pas mémoriser
+   le mot de passe (recommandé, seul le jeton de session est gardé) ou le mémoriser sur le
+   serveur. Lancer ensuite le premier import.
 
-   Comme pour `strava-heatmap-proxy`, ajoute une entrée de reverse proxy
-   sur ton Synology pointant vers le port `8090` du conteneur, pour y
-   accéder depuis ton téléphone hors réseau local.
+   Le premier import liste l'historique mois par mois (quelques minutes), télécharge les FIT
+   manquants, lit tous les FIT (10 à 15 min sur un DS218+) et interroge le service
+   d'altitude IGN pour les montres sans baromètre (une dizaine de minutes). Tout cela n'a
+   lieu qu'une fois ; ensuite, la synchro quotidienne ne traite que les nouvelles sorties.
 
-## Limites connues / points à vérifier
+## Export Strava
 
-- **API Garmin non testée en direct ici** : ce code a été écrit sans accès
-  réseau à garmin.com dans cet environnement. Les noms de méthodes de
-  `garminconnect`/`garth` (`login`, `download_activity`,
-  `ActivityDownloadFormat.ORIGINAL`, gestion MFA) peuvent avoir légèrement
-  changé selon la version installée — vérifie le dépôt
-  [cyberjunky/python-garminconnect](https://github.com/cyberjunky/python-garminconnect)
-  si une erreur apparaît au premier lancement.
-- **RFTP/pace non utilisés** : le calcul se base uniquement sur la FC
-  (HRSS), pas sur l'allure (RSS), car c'est la méthode la plus fiable
-  sans capteur de puissance.
-- **Activités sans FC** : ignorées (pas de stress score calculable).
-- **Constantes 42/7 jours** : ce sont les valeurs standard du modèle de
-  Banister, pas calibrées spécifiquement sur ton profil.
+Demander l'export de compte sur strava.com (Paramètres > Mon compte > Télécharger ou
+supprimer votre compte), puis déposer dans `data/strava/` (ou envoyer depuis l'admin) :
 
-### Erreurs rencontrées et déjà corrigées
+- l'archive `.zip` complète, au moins une fois : elle contient les traces des sorties
+  faites sans montre Garmin, qui sont alors importées ;
+- ensuite, le seul fichier `activities.csv` extrait de l'archive suffit pour les noms.
 
-- **Flux d'authentification cassé (bug principal, v1)** : la première
-  version utilisait deux clients `Garmin` différents (un pour recharger
-  le token, un autre pour le login frais) avec un `dump()` manuel
-  déconnecté du reste. Remplacé par un seul client construit avec
-  `email/password/prompt_mfa`.
-- **`FileNotFoundError: .../oauth1_token.json` au tout premier lancement
-  (bug principal, v2)** : dans la version installée de `garminconnect`
-  (`>=0.2.30,<0.3`), `client.login(tokenstore)` ne fait **aucun
-  fallback automatique** vers un login complet si le dossier de token
-  n'existe pas encore — il essaie juste de le charger et plante si rien
-  n'est là (contrairement à d'autres versions/forks de la lib où ce
-  fallback est intégré). `_login_with_fallback()` dans `garmin_sync.py`
-  gère maintenant explicitement les deux cas : token déjà là → simple
-  rechargement ; pas de token → `client.login()` sans argument (login
-  complet email/mdp + MFA), puis `client.garth.dump(tokenstore)` à la
-  main. `generate_token.py` et `get_client()` réutilisent tous les deux
-  cette même fonction, pour ne jamais diverger.
-- `AssertionError: assert isinstance(self._profile, dict)` dans
-  `garth/http.py` au login : bug connu (issues #73, #312, #349 de
-  cyberjunky/python-garminconnect), généralement causé par une version
-  de `garminconnect`/`garth` trop ancienne face à un changement de l'API
-  Garmin. Si ça revient après une mise à jour de Garmin, refais
-  `docker compose build --no-cache` pour prendre la dernière version de
-  la lib, puis régénère le token.
-- `pydantic.ValidationError: ... for OAuth1Token` au chargement du token
-  en cache : le fichier dans `./data/garth_tokens` a été écrit par une
-  version différente de `garth`. Supprime le contenu de ce dossier
-  (`rm -rf ./data/garth_tokens`) et relance `generate_token.py`.
-- Si le compte a une vérification MFA active, le conteneur qui tourne en
-  continu ne peut pas la saisir seul (pas de terminal) : c'est pour ça
-  que l'authentification passe toujours par `generate_token.py`, lancé
-  ponctuellement en interactif via `docker compose run`.
-- **Note pour la suite** : `garminconnect` a connu une réécriture plus
-  récente (0.3.x) qui abandonne complètement `garth` au profit d'un flux
-  d'auth mobile différent (fichier `garmin_tokens.json`, méthodes
-  `return_on_mfa`/`resume_login`). Si une future mise à jour bascule sur
-  cette version, `garmin_sync.py` devra être adapté en conséquence — la
-  fourchette `garminconnect>=0.2.30,<0.3` dans `requirements.txt` évite
-  ce saut de version pour l'instant.
+Seul l'export le plus récent compte ; un fichier déjà traité n'est pas relu.
 
-## Prochaines pistes possibles
+## Mise à jour
 
-- Ajouter une analyse par tronçon (montée/descente) en réutilisant les
-  données GPS + FC du FIT
-- Comparer plusieurs courses sur un même parcours
-- Exporter les stress scores en CSV pour croiser avec tes plans
-  d'entraînement Excel
-
-
-## Correction importante : import qui semblait se bloquer
-
-La version précédente téléchargeait les FIT **uniquement en mémoire** :
-
-```text
-Garmin -> raw bytes -> extraction ZIP -> fitparse -> SQLite
-                                  └-> supprimé
-```
-
-Il n'y avait donc aucun `.fit` visible sur le NAS.
-
-Elle avait également deux problèmes qui pouvaient donner l'impression que
-l'import s'était arrêté :
-
-1. les écritures SQLite n'étaient faites qu'à la fin de toute la synchro.
-   Si un gros FIT bloquait le parsing, les activités déjà traitées restaient
-   non validées en base ;
-2. le bouton web et le scheduler pouvaient lancer deux synchronisations
-   simultanément ;
-3. les activités sans FC n'étaient pas mémorisées comme telles et pouvaient
-   être retéléchargées à chaque synchro ;
-4. le parser parcourait tous les champs de chaque `record` alors que seuls
-   `timestamp` et `heart_rate` sont nécessaires.
-
-La version corrigée :
-
-- écrit le FIT de façon atomique dans `./data/fit/` ;
-- réutilise un FIT déjà téléchargé après un redémarrage ;
-- committe chaque activité immédiatement ;
-- empêche les synchronisations concurrentes ;
-- affiche dans `/api/status` l'ID de l'activité, l'étape et le chemin du FIT
-  actuellement traité ;
-- mémorise les activités sans FC ;
-- réduit le travail du parser en ne lisant que `timestamp` et `heart_rate`.
-
-### Où regarder pendant une synchro
+Changer la version de l'image dans `docker-compose.yml`, puis :
 
 ```bash
-docker compose logs -f garmin-fitness-trend
+docker compose pull && docker compose up -d
 ```
 
-Tu verras notamment :
+Les migrations de la base sont appliquées automatiquement au démarrage.
 
-```text
-[12/47] activité 123456789 : début ...
-[123456789] téléchargement FIT...
-[123456789] FIT écrit : 842.3 Ko
-[123456789] parsing FIT...
-[123456789] parsing terminé : 7214 échantillons FC
-[12/47] activité 123456789 OK : HRSS=83.4
-```
+## Migration depuis l'ancienne version (backend Chart.js)
 
-Et les FIT seront sur l'hôte dans :
+- Les FIT déjà téléchargés (`data/fit/`) sont repris tels quels, sans nouveau téléchargement.
+- L'ancienne base `data/fitness.db` n'est pas utilisée (la nouvelle est `data/trend.db`) :
+  elle peut être supprimée une fois la nouvelle version validée, de même que
+  `data/garth_tokens/` et `data/sync.lock`.
+- L'ancien conteneur tournait en root : rendre le dossier à l'utilisateur du NAS avant
+  de démarrer la nouvelle version, par exemple `sudo chown -R 1026:100 data`.
+- La session Garmin est à recréer une fois depuis l'admin (nouvelle version de la
+  librairie `garminconnect`).
 
-```text
-./data/fit/
-```
-
-### Importer tout l'historique
-
-Le bouton **Importer l'historique** demande 3650 jours (10 ans).
-La librairie `garminconnect` pagine les activités par blocs, donc il ne s'agit
-pas d'une limite arbitraire de 20 activités.
-
-Pour une première récupération très importante, laisse le conteneur tourner
-jusqu'à la fin et surveille :
+## Développement
 
 ```bash
-docker compose logs -f garmin-fitness-trend
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements-dev.txt   # .venv/bin/python sous Linux
+.venv/Scripts/python -m pytest -q
+.venv/Scripts/python -m ruff check app tests
+DATA_DIR=./data-dev .venv/Scripts/python -m uvicorn app.main:app --port 8765
 ```
 
-Les activités déjà en base ne seront pas retraitées.
+La CI (GitHub Actions) lance le lint et les tests à chaque push. Un tag `vX.Y.Z` construit
+l'image pour amd64 et arm64 et la publie sur `ghcr.io/georgieboyfr/garmin-fitness-trend`
+(`X.Y.Z`, `X.Y` et `latest`), avec la version affichée dans l'admin.
+
+## Limites connues
+
+- L'API Garmin Connect utilisée (`garminconnect`) n'est pas officielle : elle peut changer.
+  Les appels sont espacés, les FIT sont conservés en local et les erreurs sont visibles
+  dans l'admin.
+- Le service d'altitude IGN demande une connexion Internet au moment du calcul ; en cas
+  de coupure, le D+ est simplement reporté à la synchro suivante.
