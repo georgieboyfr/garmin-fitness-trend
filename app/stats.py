@@ -7,6 +7,8 @@ et ne jamais dépendre de l'horloge.
 import math
 from datetime import date, timedelta
 
+from .bests import CLIMB_GAINS_M
+
 
 def km_effort(distance_km: float, gain_m: float) -> float:
     """Convention ITRA : 100 m de D+ valent 1 km. Rend comparables route et trail."""
@@ -352,15 +354,17 @@ def performance(efforts, terrain: str = "road", year: int | None = None) -> dict
                       key=lambda e: e["value"])[:TOP]
         records.append({"key": key, "label": label, "top": [{
             "time_s": e["value"], "pace_s_km": e["value"] / (key / 1000), "date": e["date"],
+            "avg_hr": round(e["avg_hr"]) if e.get("avg_hr") else None,
             "name": e["name"], "description": e.get("description"), "activity_id": e["id"]} for e in rows]})
 
-    # meilleur temps de chaque année pour chaque distance
+    # meilleur temps de chaque année pour chaque distance, avec la sortie
     by_year = {}
     for e in efforts:
         if e["kind"] == "distance" and e["terrain"] == terrain:
             cell = by_year.setdefault(e["year"], {})
-            if e["key"] not in cell or e["value"] < cell[e["key"]]:
-                cell[e["key"]] = e["value"]
+            if e["key"] not in cell or e["value"] < cell[e["key"]]["time_s"]:
+                cell[e["key"]] = {"time_s": e["value"], "activity_id": e["id"], "date": e["date"],
+                                  "name": e["name"]}
 
     # courbe allure-durée : meilleure allure tenue (s/km) sur chaque durée, par année
     curve = {}
@@ -371,14 +375,21 @@ def performance(efforts, terrain: str = "road", year: int | None = None) -> dict
             if e["key"] not in cell or pace < cell[e["key"]]:
                 cell[e["key"]] = round(pace, 1)
 
-    climbs = [e for e in efforts if e["kind"] == "climb"]
+    climbs = [e for e in efforts if e["kind"] == "climb" and e["key"] == 0]
     vam_years = {}
     for e in climbs:
         if e["year"] not in vam_years or e["value"] > vam_years[e["year"]]["vam"]:
             vam_years[e["year"]] = {"vam": round(e["value"]), "gain": round(e["extra"] or 0),
                                     "date": e["date"], "name": e["name"], "id": e["id"]}
-    top_climbs = sorted((e for e in climbs if year is None or e["year"] == year),
-                        key=lambda e: -e["value"])[:TOP]
+    # top 10 par palier de D+ (100, 200, 500, 1000 m) : VAM de la portion la plus rapide
+    climb_steps = []
+    for gain in CLIMB_GAINS_M:
+        rows = sorted((e for e in in_year if e["kind"] == "climb" and e["key"] == gain),
+                      key=lambda e: -e["value"])[:TOP]
+        climb_steps.append({"gain": gain, "top": [{
+            "vam": round(e["value"]), "time_s": gain / e["value"] * 3600, "date": e["date"],
+            "avg_hr": round(e["avg_hr"]) if e.get("avg_hr") else None,
+            "name": e["name"], "description": e.get("description"), "activity_id": e["id"]} for e in rows]})
 
     return {
         "terrain": terrain, "year": year, "years": years,
@@ -389,9 +400,7 @@ def performance(efforts, terrain: str = "road", year: int | None = None) -> dict
         "curve": {y: [curve[y].get(k) for k in DURATION_LABELS] for y in sorted(curve)},
         "duration_labels": list(DURATION_LABELS.values()),
         "vam_by_year": [{"year": y, **vam_years[y]} for y in sorted(vam_years)],
-        "top_climbs": [{"vam": round(e["value"]), "gain": round(e["extra"] or 0), "date": e["date"],
-                        "name": e["name"], "description": e.get("description"), "id": e["id"]}
-                       for e in top_climbs],
+        "climb_steps": climb_steps,
     }
 
 

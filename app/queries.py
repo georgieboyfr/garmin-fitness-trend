@@ -38,7 +38,8 @@ def best_efforts(conn) -> list[dict]:
     """Meilleurs efforts de chaque sortie de course (activity_bests), avec la sortie et son terrain."""
     types = tuple(RUNNING_TYPES)
     rows = conn.execute(
-        "SELECT b.kind, b.key, b.value, b.extra, a.id, a.start_time_local, n.name, n.description, m.terrain"
+        "SELECT b.kind, b.key, b.value, b.extra, b.avg_hr, a.id, a.start_time_local, n.name, n.description,"
+        " m.terrain"
         " FROM activity_bests b"
         " JOIN activities a ON a.id = b.activity_id"
         " JOIN activity_names n ON n.activity_id = a.id"

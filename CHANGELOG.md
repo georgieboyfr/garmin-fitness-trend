@@ -25,6 +25,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Fiche de sortie : classement de chaque meilleur effort dans l'année et sur toute la période (même terrain ; VAM route et trail confondus).
 - Liste des sorties : curseurs de distance et de D+ (minimum et maximum, bornés par l'historique), nombre de sorties par page au choix (25, 50, 100 ou 200, 50 par défaut, mémorisé), position (« 51–100 sur 659 ») et navigation en haut et en bas de la liste, ligne entière cliquable, jour de la semaine dans la date.
 - Fiche de sortie : bloc « Efficiency Factor » et « Découplage cardiaque » expliqués (unité, médiane de l'EF des 12 mois précédents sur le même terrain, lecture du découplage, conditions de calcul) ; zoom de la carte avec Ctrl + molette ou au pincement du pavé tactile ; charge par heure.
+- Page Performance : FC moyenne de chaque record (et de chaque montée) ; top 10 dépliés présentés en tableau (rang, temps, allure, FC, date, sortie et description) ; meilleurs temps par année cliquables (ouvrent la sortie) et années cliquables (tops 10 de l'année) ; meilleures montées par palier de 100, 200, 500 et 1 000 m de D+ (top 10), aussi classées sur la fiche de sortie. Métriques en version 4 : recalcul automatique de toutes les sorties.
 
 ### Modifié
 - Liste des sorties : colonne « vs parcours » retirée (l'écart au parcours reste sur la fiche de la sortie) ; temps en mouvement et temps écoulé réunis dans une colonne « Temps » (l'écoulé n'apparaît que s'il diffère d'au moins une minute) ; FC et charge en retrait, description sur une ligne.
@@ -36,6 +37,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 ### Corrigé
 - Fiche de sortie : le découplage n'est plus affiché sur les sorties vallonnées ou trail (comme sur la page Forme), et il est signalé comme non pertinent sur une séance fractionnée.
 - Carte : icône du choix des fonds de carte, absente faute des images de Leaflet.
+- VAM : le temps des montées était lu sur la distance nettoyée des pics GPS alors que le profil d'altitude suit la distance brute ; après un pic, des VAM invraisemblables apparaissaient (plus de 9 000 m/h). Les sauts d'altitude de plus de 1 m/s sont aussi ignorés.
 
 ## [0.1.1] - 2026-11-03
 

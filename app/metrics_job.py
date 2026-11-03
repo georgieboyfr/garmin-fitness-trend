@@ -28,7 +28,8 @@ from .sports import RUNNING_TYPES
 
 log = logging.getLogger("metrics")
 
-METRICS_VERSION = 3   # 2 : meilleurs efforts (bests.py) ; 3 : EF et découplage
+METRICS_VERSION = 4   # 2 : meilleurs efforts (bests.py) ; 3 : EF et découplage ;
+                      # 4 : FC moyenne des efforts, paliers de montée
 
 
 def _now_iso() -> str:
@@ -118,9 +119,10 @@ def compute_pending(config, conn, progress=None) -> Counter:
             )
             conn.execute("DELETE FROM activity_bests WHERE activity_id=?", (activity_id,))
             conn.executemany(
-                "INSERT INTO activity_bests (activity_id, kind, key, value, start_s, extra)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                [(activity_id, b["kind"], b["key"], b["value"], b["start_s"], b["extra"]) for b in bests],
+                "INSERT INTO activity_bests (activity_id, kind, key, value, start_s, extra, avg_hr)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [(activity_id, b["kind"], b["key"], b["value"], b["start_s"], b["extra"], b["avg_hr"])
+                 for b in bests],
             )
         counts["metrics"] += 1
     log.info("Métriques calculées pour %d sortie(s)", counts["metrics"])
@@ -143,7 +145,8 @@ def _altitude_profile(config, activity_id, table, source):
 def _bests(config, activity_id, table, source):
     t = _seconds(table.column("timestamp").to_numpy(zero_copy_only=False))
     dist, alt = _altitude_profile(config, activity_id, table, source)
-    return activity_bests(t, np.asarray(series_distance(table)), dist, alt)
+    hr = table.column("heart_rate").to_numpy(zero_copy_only=False).astype(float)
+    return activity_bests(t, np.asarray(series_distance(table)), dist, alt, hr)
 
 
 def lthr_estimate(conn, today: date, days=365) -> dict:

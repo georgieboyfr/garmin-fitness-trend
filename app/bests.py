@@ -7,6 +7,10 @@ Meilleurs efforts à l'intérieur d'une sortie, en fenêtre glissante (fonctions
 - Durées (1, 5, 20 min, 1 h, 2 h) : plus grande distance parcourue, d'où la meilleure
   allure tenue sur cette durée (courbe allure-durée).
 - Montées de plus de 200 m de D+ : VAM (vitesse ascensionnelle, m/h).
+- Paliers de montée (100, 200, 500, 1000 m de D+) : temps le plus court pour s'élever de ce
+  dénivelé à l'intérieur d'une même montée (les descentes de moins de 20 m ne l'interrompent
+  pas), d'où la VAM.
+- FC moyenne sur chaque effort (distances et montées), pondérée par le temps.
 
 Filtrage des pics GPS : un segment plus rapide que MAX_SPEED_MPS (sprint impossible en
 course à pied, typiquement un saut de position) ne fait pas avancer la distance. Le
@@ -19,6 +23,8 @@ DURATIONS_S = (60, 300, 1200, 3600, 7200)
 MAX_SPEED_MPS = 7.0            # 2'23" /km
 CLIMB_MIN_GAIN_M = 200.0
 CLIMB_DIP_M = 20.0             # une descente de moins de 20 m n'interrompt pas une montée
+CLIMB_GAINS_M = (100, 200, 500, 1000)
+MAX_VERTICAL_MPS = 1.0         # 3600 m/h : au-delà, saut d'altitude (GPS ou MNT), pas une montée
 
 
 def clean_distance(t, distance) -> tuple[np.ndarray, np.ndarray]:
@@ -115,23 +121,94 @@ def climbs(t_at, altitude, min_gain=CLIMB_MIN_GAIN_M, dip=CLIMB_DIP_M) -> list[d
     return out
 
 
-def activity_bests(t, distance, profile_distance=None, profile_altitude=None) -> list[dict]:
-    """Tous les meilleurs efforts d'une sortie : lignes (kind, key, value, start_s, extra)."""
+def clean_altitude(t_at, altitude) -> np.ndarray:
+    """Altitude sans sauts : une montée plus rapide que MAX_VERTICAL_MPS (ou sans temps écoulé) est
+    ramenée à zéro, comme les pics GPS pour la distance. Le défaut est de sous-estimer légèrement
+    une montée, jamais de créer une VAM impossible."""
+    alt = np.asarray(altitude, dtype=float)
+    if alt.size < 2:
+        return alt
+    da = np.diff(alt)
+    dt = np.diff(np.asarray(t_at, dtype=float))
+    jump = (da > 0) & (da > MAX_VERTICAL_MPS * np.maximum(dt, 0))
+    return np.concatenate([[alt[0]], alt[0] + np.cumsum(np.where(jump, 0.0, da))])
+
+
+def best_climb_for_gain(t_at, altitude, gain_m, dip=CLIMB_DIP_M) -> tuple[float, float] | None:
+    """(temps le plus court en s, départ en s) pour s'élever de gain_m mètres à l'intérieur d'une
+    même montée, ou None. L'altitude atteinte est le plus haut point déjà passé (un replat ou une
+    petite descente ne fait pas reculer)."""
+    alt = np.asarray(altitude, dtype=float)
+    t_at = np.asarray(t_at, dtype=float)
+    pts = turning_points(alt, dip)
+    best = None
+    for a, b in zip(pts, pts[1:], strict=False):
+        if alt[b] - alt[a] < gain_m:
+            continue
+        seg_t, seg = t_at[a:b + 1], alt[a:b + 1]
+        reached = np.maximum.accumulate(seg)
+        target = seg + gain_m
+        j = np.searchsorted(reached, target, side="left")
+        i = np.nonzero(j < seg.size)[0]
+        if not i.size:
+            continue
+        j = j[i]
+        r0, r1 = reached[j - 1], reached[j]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            frac = np.where(r1 > r0, (target[i] - r0) / (r1 - r0), 0.0)
+        times = seg_t[j - 1] + frac * (seg_t[j] - seg_t[j - 1]) - seg_t[i]
+        k = int(np.argmin(times))
+        if times[k] > 0 and (best is None or times[k] < best[0]):
+            best = (float(times[k]), float(seg_t[i[k]]))
+    return best
+
+
+def window_avg_hr(t, hr, start_s, duration_s) -> float | None:
+    """FC moyenne (pondérée par le temps) entre start_s et start_s + duration_s, ou None si la FC
+    couvre moins de 80 % de la fenêtre."""
+    if hr is None or duration_s <= 0:
+        return None
+    t = np.asarray(t, dtype=float)
+    hr = np.asarray(hr, dtype=float)
+    ok = np.isfinite(t) & np.isfinite(hr) & (hr > 0)
+    t, hr = t[ok], hr[ok]
+    end = start_s + duration_s
+    if t.size < 2 or t[0] > start_s + 0.2 * duration_s or t[-1] < end - 0.2 * duration_s:
+        return None
+    area = np.concatenate([[0.0], np.cumsum(np.diff(t) * (hr[1:] + hr[:-1]) / 2)])
+    lo, hi = max(start_s, t[0]), min(end, t[-1])
+    return float((np.interp(hi, t, area) - np.interp(lo, t, area)) / (hi - lo)) if hi > lo else None
+
+
+def activity_bests(t, distance, profile_distance=None, profile_altitude=None, hr=None) -> list[dict]:
+    """Tous les meilleurs efforts d'une sortie : lignes (kind, key, value, start_s, extra, avg_hr)."""
+    raw_t, raw_d = np.asarray(t, dtype=float), np.asarray(distance, dtype=float)
     t, d = clean_distance(t, distance)
     rows = []
     for dist in DISTANCES_M:
         best = best_time_for_distance(t, d, dist)
         if best:
             rows.append({"kind": "distance", "key": dist, "value": best[0], "start_s": best[1],
-                         "extra": None})
+                         "extra": None, "avg_hr": window_avg_hr(raw_t, hr, best[1], best[0])})
     for dur in DURATIONS_S:
         meters = best_distance_for_duration(t, d, dur)
         if meters:
-            rows.append({"kind": "duration", "key": dur, "value": meters, "start_s": None, "extra": None})
+            rows.append({"kind": "duration", "key": dur, "value": meters, "start_s": None, "extra": None,
+                         "avg_hr": None})
     if profile_distance is not None and len(profile_distance) > 1 and d.size > 1:
-        t_at = np.interp(profile_distance, d, t)
+        # le profil d'altitude suit la distance brute de la série : le temps s'y lit sur la même échelle
+        ok = np.isfinite(raw_t) & np.isfinite(raw_d)
+        t_at = np.interp(profile_distance, np.maximum.accumulate(raw_d[ok]), raw_t[ok])
+        profile_altitude = clean_altitude(t_at, profile_altitude)
         best = max(climbs(t_at, profile_altitude), key=lambda c: c["vam_mh"], default=None)
         if best:
             rows.append({"kind": "climb", "key": 0, "value": best["vam_mh"], "start_s": best["start_s"],
-                         "extra": best["gain_m"]})
+                         "extra": best["gain_m"],
+                         "avg_hr": window_avg_hr(raw_t, hr, best["start_s"], best["duration_s"])})
+        for gain in CLIMB_GAINS_M:
+            found = best_climb_for_gain(t_at, profile_altitude, gain)
+            if found:
+                rows.append({"kind": "climb", "key": gain, "value": gain / found[0] * 3600,
+                             "start_s": found[1], "extra": float(gain),
+                             "avg_hr": window_avg_hr(raw_t, hr, found[1], found[0])})
     return rows

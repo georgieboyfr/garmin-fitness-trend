@@ -152,24 +152,37 @@ def test_activity_list_sort_and_missing_values_last():
 
 # ---------- performance ----------
 
-def eff(kind, key, value, year, terrain="road", extra=None, name="x"):
-    return {"kind": kind, "key": key, "value": value, "extra": extra, "id": 1, "year": year,
-            "date": f"{year}-05-01", "name": name, "terrain": terrain}
+def eff(kind, key, value, year, terrain="road", extra=None, name="x", id=1, avg_hr=None):
+    return {"kind": kind, "key": key, "value": value, "extra": extra, "id": id, "year": year,
+            "date": f"{year}-05-01", "name": name, "terrain": terrain, "avg_hr": avg_hr}
 
 
 def test_performance():
-    efforts = [eff("distance", 5000, 1300, 2025), eff("distance", 5000, 1250, 2026, name="record"),
+    efforts = [eff("distance", 5000, 1300, 2025), eff("distance", 5000, 1250, 2026, name="record", id=7,
+                                                      avg_hr=171.4),
                eff("distance", 5000, 1200, 2026, terrain="trail"),
                eff("duration", 1200, 4500, 2025), eff("duration", 1200, 4800, 2026),
-               eff("climb", 0, 900, 2025, terrain="trail", extra=250), eff("climb", 0, 800, 2026, extra=300)]
+               eff("climb", 0, 900, 2025, terrain="trail", extra=250), eff("climb", 0, 800, 2026, extra=300),
+               eff("climb", 100, 1200, 2025, terrain="trail", extra=100),
+               eff("climb", 100, 1000, 2026, extra=100),
+               eff("climb", 200, 950, 2025, terrain="trail", extra=200)]
     p = stats.performance(efforts, "road")
     five = [r for r in p["records"] if r["key"] == 5000][0]
     assert [e["time_s"] for e in five["top"]] == [1250, 1300]      # le trail est à part
     assert five["top"][0]["pace_s_km"] == 250 and five["top"][0]["name"] == "record"
-    assert p["by_year"][0]["year"] == 2026 and p["by_year"][0]["times"]["5000"] == 1250
+    assert five["top"][0]["avg_hr"] == 171 and five["top"][1]["avg_hr"] is None
+    assert p["by_year"][0]["year"] == 2026
+    assert p["by_year"][0]["times"]["5000"] == {"time_s": 1250, "activity_id": 7, "date": "2026-05-01",
+                                                "name": "record"}
     assert p["by_year"][0]["times"]["10000"] is None
     assert p["curve"]["2026"][2] == pytest.approx(250)              # 1200 s pour 4,8 km
     assert [v["vam"] for v in p["vam_by_year"]] == [900, 800]       # VAM : route et trail confondus
+    steps = {c["gain"]: c["top"] for c in p["climb_steps"]}
+    assert [c["vam"] for c in steps[100]] == [1200, 1000]           # paliers : route et trail confondus
+    assert steps[100][0]["time_s"] == pytest.approx(300)            # 100 m à 1200 m/h
+    assert len(steps[200]) == 1 and steps[500] == [] and steps[1000] == []
+    in_2026 = stats.performance(efforts, "road", 2026)["climb_steps"]
+    assert [len(c["top"]) for c in in_2026] == [1, 0, 0, 0]
     assert stats.performance(efforts, "road", year=2025)["records"][2]["top"][0]["time_s"] == 1300
     assert stats.performance(efforts, "trail")["records"][2]["top"][0]["time_s"] == 1200
 

@@ -6,7 +6,7 @@ import numpy as np
 import pyarrow.parquet as pq
 
 from . import intervals
-from .bests import DISTANCES_M, DURATIONS_S, clean_distance
+from .bests import CLIMB_GAINS_M, DISTANCES_M, DURATIONS_S, clean_distance
 from .elevation import median_filter, resample, series_distance
 from .elevation_job import dem_profile_path
 from .metrics import _seconds
@@ -171,7 +171,7 @@ def activity_detail(config, conn, activity_id: int, acts, efforts=None) -> dict 
 
     def ranks(kind, key, higher=False):
         return effort_ranks(efforts or [], activity_id, kind, key, a.get("terrain"), year, higher)
-    climb_gain = next((b["extra"] for b in bests if b["kind"] == "climb"), None)
+    climb_gain = next((b["extra"] for b in bests if b["kind"] == "climb" and b["key"] == 0), None)
     return {
         "id": activity_id, "name": a["name"], "description": a["description"],
         "start": a["start"].isoformat(timespec="minutes"), "terrain": a.get("terrain"), "source": a["source"],
@@ -199,6 +199,9 @@ def activity_detail(config, conn, activity_id: int, acts, efforts=None) -> dict 
             "climb": {"vam": round(best[("climb", 0)]), "gain": round(climb_gain or 0),
                       "ranks": ranks("climb", 0, higher=True)}
             if ("climb", 0) in best else None,
+            "climb_steps": [{"gain": k, "vam": round(best[("climb", k)]),
+                             "time_s": k / best[("climb", k)] * 3600, "ranks": ranks("climb", k, higher=True)}
+                            for k in CLIMB_GAINS_M if ("climb", k) in best],
         },
         "route": cmp, "passages": passages,
         "profiles": profiles(config, activity_id, e["source"] if e else None,

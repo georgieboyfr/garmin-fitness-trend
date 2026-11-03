@@ -5,6 +5,32 @@
   <button class="tip" type="button" aria-label="Explication" data-tip="{{ text }}">i</button>
 {%- endmacro %}
 
+{% macro top_table(rows, kind) -%}
+  <div class="table-wrap top-wrap">
+    <table class="data top-table">
+      <thead><tr><th>#</th>
+        {% if kind == "time" %}<th>Temps</th><th>Allure</th>{% else %}<th>VAM</th><th>Temps</th>{% endif %}
+        <th>FC moy.</th><th class="col-date">Date</th><th class="col-name">Sortie</th></tr></thead>
+      <tbody>
+        {% for e in rows %}
+        <tr {% if loop.first %}class="is-best"{% endif %}>
+          <td class="muted">{{ loop.index }}</td>
+          {% if kind == "time" %}
+            <td class="strong" data-chrono="{{ e.time_s }}"></td><td data-pace="{{ e.pace_s_km }}"></td>
+          {% else %}
+            <td class="strong" data-num="{{ e.vam }}" data-unit="m/h"></td><td data-chrono="{{ e.time_s }}"></td>
+          {% endif %}
+          <td>{{ e.avg_hr or "—" }}</td>
+          <td class="col-date" data-short-date="{{ e.date }}"></td>
+          <td class="col-name"><a class="act-name" href="/sorties/{{ e.activity_id }}">{{ e.name or "Sans nom" }}</a>
+            {% if e.description %}<span class="top-desc muted" title="{{ e.description }}">{{ e.description }}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{%- endmacro %}
+
 {% block content %}
 <section class="hero hero-row">
   <div>
@@ -24,10 +50,11 @@
   </form>
 </section>
 
-<section class="card">
+<section class="card" id="records">
   <div class="card-head">
     <h2>Records {{ 'route' if data.terrain == 'road' else 'trail' }}{% if data.year %} {{ data.year }}{% endif %}
       {{ tip("Meilleur temps sur chaque distance, n'importe où dans une sortie (temps écoulé, arrêts compris). Les pics GPS sont filtrés. Route et trail sont séparés : une sortie est « trail » au-delà de 20 m de D+ par km. Le tapis n'est pas pris en compte. Clique sur une distance pour voir le top 10.") }}</h2>
+    {% if data.year %}<a class="small" href="?terrain={{ data.terrain }}#records">Toutes les années</a>{% endif %}
   </div>
   <div class="records">
     {% for r in data.records %}
@@ -38,21 +65,13 @@
             {% set b = r.top[0] %}
             <span class="record-time" data-chrono="{{ b.time_s }}"></span>
             <span class="record-pace muted" data-pace="{{ b.pace_s_km }}"></span>
-            <span class="record-where muted"><span data-short-date="{{ b.date }}"></span> · <a class="act-name" href="/sorties/{{ b.activity_id }}">{{ b.name }}</a></span>
-            {% if b.description %}<span class="record-desc muted">{{ b.description }}</span>{% endif %}
+            <span class="record-hr muted">{% if b.avg_hr %}{{ b.avg_hr }} bpm{% endif %}</span>
+            <span class="record-where muted"><span data-short-date="{{ b.date }}"></span> · {{ b.name }}</span>
           {% else %}
-            <span class="muted">—</span>
+            <span class="muted record-none">Pas encore de {{ r.label }}{% if data.year %} en {{ data.year }}{% endif %}</span>
           {% endif %}
         </summary>
-        {% if r.top | length > 1 %}
-        <ol class="top">
-          {% for e in r.top %}
-            <li><b data-chrono="{{ e.time_s }}"></b> <span class="muted" data-pace="{{ e.pace_s_km }}"></span>
-              <span class="muted"><span data-short-date="{{ e.date }}"></span> · <a class="act-name" href="/sorties/{{ e.activity_id }}">{{ e.name }}</a></span>
-              {% if e.description %}<span class="top-desc muted">{{ e.description }}</span>{% endif %}</li>
-          {% endfor %}
-        </ol>
-        {% endif %}
+        {% if r.top %}{{ top_table(r.top, "time") }}{% endif %}
       </details>
     {% endfor %}
   </div>
@@ -60,16 +79,18 @@
 
 <section class="card">
   <div class="card-head">
-    <h2>Meilleur temps par année {{ tip("Le meilleur temps de chaque année sur chaque distance : la progression d'une année sur l'autre.") }}</h2>
+    <h2>Meilleur temps par année {{ tip("Le meilleur temps de chaque année sur chaque distance : la progression d'une année sur l'autre. Clique sur un temps pour ouvrir la sortie, sur une année pour voir ses tops 10.") }}</h2>
   </div>
   <div class="table-wrap">
     <table class="data">
       <thead><tr><th>Année</th>{% for k, label in data.distance_labels.items() %}<th>{{ label }}</th>{% endfor %}</tr></thead>
       <tbody>
         {% for row in data.by_year %}
-        <tr><td><span class="year-dot" data-year="{{ row.year }}"></span>{{ row.year }}</td>
+        <tr {% if row.year == data.year %}class="is-selected"{% endif %}>
+          <td><a class="year-link" href="?terrain={{ data.terrain }}&amp;year={{ row.year }}#records" title="Tops 10 de {{ row.year }}"><span class="year-dot" data-year="{{ row.year }}"></span>{{ row.year }}</a></td>
           {% for k in data.distance_labels %}
-            <td {% if row.times[k] %}data-chrono="{{ row.times[k] }}"{% endif %}>{% if not row.times[k] %}—{% endif %}</td>
+            {% set c = row.times[k] %}
+            <td>{% if c %}<a class="time-link" href="/sorties/{{ c.activity_id }}" title="{{ c.name }}" data-chrono="{{ c.time_s }}"></a>{% else %}—{% endif %}</td>
           {% endfor %}</tr>
         {% endfor %}
       </tbody>
@@ -89,18 +110,27 @@
     <h2>VAM {{ tip("Vitesse ascensionnelle (mètres de dénivelé par heure) sur la meilleure montée de plus de 200 m de D+, route et trail confondus. L'équivalent trail d'un record de vitesse.") }}</h2>
   </div>
   <div class="chart chart-small" id="chart-vam" role="img" aria-label="Meilleure VAM de chaque année"></div>
-  {% if data.top_climbs %}
-  <details class="record record-single">
-    <summary><span class="record-label">Top 10 des montées{% if data.year %} {{ data.year }}{% endif %}</span></summary>
-    <ol class="top">
-      {% for c in data.top_climbs %}
-        <li><b data-num="{{ c.vam }}" data-unit="m/h"></b> <span class="muted">sur <span data-num="{{ c.gain }}" data-unit="m"></span>
-          · <span data-short-date="{{ c.date }}"></span> · <a class="act-name" href="/sorties/{{ c.id }}">{{ c.name }}</a></span>
-          {% if c.description %}<span class="top-desc muted">{{ c.description }}</span>{% endif %}</li>
-      {% endfor %}
-    </ol>
-  </details>
-  {% endif %}
+  <h3 class="subhead">Meilleures montées par palier de D+{% if data.year %} en {{ data.year }}{% endif %}
+    {{ tip("Pour chaque palier, la portion la plus rapide pour s'élever de ce dénivelé à l'intérieur d'une même montée (une descente de moins de 20 m ne l'interrompt pas), où qu'elle soit dans la sortie. Route et trail confondus.") }}</h3>
+  <div class="records">
+    {% for c in data.climb_steps %}
+      <details class="record">
+        <summary>
+          <span class="record-label">{{ c.gain if c.gain < 1000 else "1 000" }} m</span>
+          {% if c.top %}
+            {% set b = c.top[0] %}
+            <span class="record-time" data-num="{{ b.vam }}" data-unit="m/h"></span>
+            <span class="record-pace muted" data-chrono="{{ b.time_s }}"></span>
+            <span class="record-hr muted">{% if b.avg_hr %}{{ b.avg_hr }} bpm{% endif %}</span>
+            <span class="record-where muted"><span data-short-date="{{ b.date }}"></span> · {{ b.name }}</span>
+          {% else %}
+            <span class="muted record-none">Aucune montée de {{ c.gain }} m{% if data.year %} en {{ data.year }}{% endif %}</span>
+          {% endif %}
+        </summary>
+        {% if c.top %}{{ top_table(c.top, "climb") }}{% endif %}
+      </details>
+    {% endfor %}
+  </div>
 </section>
 
 <script type="application/json" id="page-data">{{ {"curve": data.curve, "duration_labels": data.duration_labels, "vam": data.vam_by_year} | tojson }}</script>

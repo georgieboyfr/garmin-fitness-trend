@@ -156,6 +156,10 @@
         <tr><td>VAM <span class="muted small">({{ d.bests.climb.gain }} m)</span></td>
           <td data-num="{{ d.bests.climb.vam }}" data-unit="m/h"></td><td class="ranks">{{ rank_line(d.bests.climb.ranks) }}</td></tr>
         {% endif %}
+        {% for c in d.bests.climb_steps %}
+        <tr><td>Montée {{ c.gain }} m <span class="muted small">(<span data-chrono="{{ c.time_s }}"></span>)</span></td>
+          <td data-num="{{ c.vam }}" data-unit="m/h"></td><td class="ranks">{{ rank_line(c.ranks) }}</td></tr>
+        {% endfor %}
       </tbody>
     </table>
     {% endif %}
