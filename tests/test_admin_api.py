@@ -161,6 +161,14 @@ def test_elevation_status_settings_and_recompute(client):
     assert run["kind"] == "recalcul" and run["status"] == "ok"
 
 
+def test_physiology(client):
+    login(client)
+    st = client.get("/admin/api/physiology").json()
+    assert st["settings"]["lthr"] == 170.0
+    assert st["zones"] == [144, 153, 162, 170]
+    assert st["last_12_months"]["best_60min"] is None
+
+
 def test_strava_upload_and_status(client):
     from .test_strava import FR_HEADER, row
 

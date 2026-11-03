@@ -14,9 +14,10 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
-from . import db, elevation_job, settings, strava
+from . import db, elevation_job, metrics_job, settings, strava
 from .auth import SESSION_COOKIE
 from .garmin_sync import SyncAlreadyRunning
+from .metrics import ZONE_BOUNDS
 from .sports import RUNNING_TYPES
 
 log = logging.getLogger("admin")
@@ -260,6 +261,24 @@ def elevation_settings(values: dict, request: Request):
         return settings.update(conn, "elevation", values)
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
+    finally:
+        conn.close()
+
+
+# ---------- physiologie ----------
+
+@protected.get("/physiology")
+def physiology(request: Request):
+    cfg = request.app.state.config
+    conn = db.connect(cfg.db_path)
+    try:
+        today = datetime.now().date()
+        return {
+            "settings": metrics_job.params_of(cfg),
+            "zones": [round(b * cfg.lthr) for b in ZONE_BOUNDS],
+            "last_12_months": metrics_job.lthr_estimate(conn, today),
+            "all_time": metrics_job.lthr_estimate(conn, today, days=100 * 365),
+        }
     finally:
         conn.close()
 

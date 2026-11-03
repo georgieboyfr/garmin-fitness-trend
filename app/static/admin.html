@@ -158,6 +158,16 @@
     </section>
 
     <section class="card">
+      <h2>Physiologie</h2>
+      <p class="muted small">Valeurs de référence du fichier <code>.env</code> (FC repos, FC max, LTHR, sexe) :
+        elles servent à la charge (HRSS) et aux zones. L'estimation ci-dessous n'est jamais appliquée
+        automatiquement : pour l'adopter, modifie <code>LTHR</code> dans <code>.env</code> et redémarre le conteneur.</p>
+      <div class="stats" id="phy-stats"></div>
+      <p class="muted small" id="phy-zones"></p>
+      <p class="muted small" id="phy-note"></p>
+    </section>
+
+    <section class="card">
       <div class="card-head">
         <h2>Noms Strava</h2>
         <span class="pill" id="strava-pill"></span>

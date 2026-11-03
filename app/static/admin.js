@@ -47,6 +47,7 @@ async function init() {
     refreshGarmin();
     refreshSync(true);
     refreshElevation(true);
+    refreshPhysiology();
     refreshStrava();
   }
 }
@@ -349,6 +350,31 @@ $("ev-recompute").addEventListener("click", (e) => {
     }
   });
 });
+
+// ---------- physiologie ----------
+
+async function refreshPhysiology() {
+  let st;
+  try { st = await api("/physiology"); } catch (err) { return; }
+  const s = st.settings, y = st.last_12_months, all = st.all_time;
+  const fmtDay = (d) => new Date(d + "T12:00:00").toLocaleDateString("fr-FR", { dateStyle: "medium" });
+  $("phy-stats").replaceChildren(
+    stat(`${s.lthr}`, "LTHR réglée (.env)"),
+    stat(y.best_60min ? `${y.best_60min.hr}` : "—", "LTHR estimée (12 mois)"),
+    stat(`${s.hr_max}`, "FC max réglée (.env)"),
+    stat(all.max_hr ? `${all.max_hr}` : "—", "FC max observée"),
+    stat(`${s.hr_rest}`, "FC repos (.env)"),
+  );
+  const z = st.zones;
+  $("phy-zones").textContent = `Zones (Friel, sur la LTHR réglée) : Z1 < ${z[0]}, Z2 ${z[0]}–${z[1] - 1}, `
+    + `Z3 ${z[1]}–${z[2] - 1}, Z4 ${z[2]}–${z[3] - 1}, Z5 ≥ ${z[3]}.`;
+  $("phy-note").textContent = y.best_60min
+    ? `Estimation : meilleure FC moyenne tenue une heure sur les 12 derniers mois (${y.best_60min.hr}, le `
+      + `${fmtDay(y.best_60min.date)}) ; sur 30 min : ${y.best_30min ? y.best_30min.hr : "—"}. Un effort d'une heure `
+      + `à fond se court au seuil. FC max observée sur 12 mois : ${y.max_hr ?? "—"} ; la plus haute de tout `
+      + `l'historique peut venir d'un artefact du capteur.`
+    : "Pas encore de sortie d'une heure avec FC sur les 12 derniers mois.";
+}
 
 // ---------- Strava ----------
 

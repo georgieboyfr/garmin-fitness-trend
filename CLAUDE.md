@@ -32,7 +32,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] Bascule du Synology et vérification de l'admin
 - [ ] Phase 2 — Statistiques (en cours)
   - [x] 1. Socle de l'interface : templates Jinja, navigation, thèmes clair/sombre, ECharts, accès protégé, page d'accueil
-  - [ ] 2. Métriques par activité versionnées : temps en mouvement, TRIMP/HRSS, zones FC (LTHR), route ou trail, estimation de la LTHR
+  - [x] 2. Métriques par activité versionnées : temps en mouvement, TRIMP/HRSS, zones FC (LTHR), route ou trail, estimation de la LTHR
   - [ ] 3. Page Volume et régularité
   - [ ] 4. Page Sorties : liste paginée
   - [ ] 5. Records en fenêtre glissante, courbe allure-durée, VAM : page Performance

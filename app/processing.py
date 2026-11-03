@@ -8,6 +8,7 @@ Traitements locaux après la synchro, à partir des traces stockées (aucun appe
    échec n'est retentée qu'à la version suivante du lecteur. Les lectures sont réparties
    sur plusieurs processus.
 3. D+ / D− (elevation_job.py).
+4. Métriques des sorties : temps en mouvement, charge, zones de FC… (metrics_job.py).
 """
 import logging
 import os
@@ -113,11 +114,12 @@ def parse_pending(config, conn, progress=None, workers=None) -> Counter:
 
 def run_all(config, conn, dem, progress=None) -> Counter:
     """Enchaîne tous les traitements locaux : appariement Strava (une nouvelle activité
-    Garmin peut remplacer une sortie importée de Strava), lecture des traces, puis D+."""
-    from . import elevation_job, strava
+    Garmin peut remplacer une sortie importée de Strava), lecture des traces, D+, métriques."""
+    from . import elevation_job, metrics_job, strava
 
     counts = Counter({f"strava_{k}": v for k, v in strava.match_all(config, conn).items()
                       if k in ("imported_new", "replaced")})
     counts.update(parse_pending(config, conn, progress))
     counts.update(elevation_job.compute_pending(config, conn, dem, progress))
+    counts.update(metrics_job.compute_pending(config, conn, progress))
     return counts

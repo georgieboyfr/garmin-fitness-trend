@@ -134,6 +134,7 @@ def summary_text(counts) -> str:
         ("downloaded", "FIT téléchargé(s)"), ("reused", "FIT repris du disque"),
         ("fit_errors", "FIT en erreur"), ("parsed", "FIT lu(s)"), ("parse_errors", "FIT illisible(s)"),
         ("elevation", "D+ calculé(s)"), ("elevation_postponed", "D+ reporté(s) (MNT indisponible)"),
+        ("metrics", "sortie(s) analysée(s)"), ("metrics_errors", "analyse(s) en erreur"),
     ]
     text = ", ".join(f"{counts[k]} {label}" for k, label in parts if counts.get(k))
     return text or "rien de nouveau"
