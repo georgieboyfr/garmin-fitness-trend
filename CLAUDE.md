@@ -52,7 +52,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 9. Vérification ordinateur et mobile, v0.2.0 (tag, CHANGELOG, image construite par la CI, mise à jour du Synology)
     - [x] Commit et tag `v0.2.0` (3 novembre 2026), pages vérifiées en local sur ordinateur et en largeur mobile
     - [x] Push du tag, image construite par la CI, mise à jour du Synology et vérification sur le téléphone (3 novembre 2026)
-- [ ] Phase 3 — Estimateur (en cours ; section 5 du brief ; terminé quand l'erreur moyenne, mesurée sur les courses passées, est affichée)
+- [x] Phase 3 — Estimateur (v0.3.0, 3 novembre 2026 ; section 5 du brief ; erreur moyenne mesurée sur les courses passées affichée)
   - [x] 1. Forme actuelle : profil calculé sur les 6 à 12 dernières semaines (courbe allure-durée récente, VAM, allure en descente, fitness, EF), fonction pure versionnée, visible sur une page Estimateur minimale (3 novembre 2026)
   - [x] 2. Route : Riegel à exposant personnel calé sur les meilleurs efforts récents, fourchette optimiste / réaliste / prudent, allure cible ; saisie d'une distance (et D+ éventuel), « si je courais maintenant » (3 novembre 2026 ; choix à valider par Greg, section 10 du brief)
   - [x] 3. Validation route : estimateur rejoué sur les courses confirmées avec la forme de la veille, erreur moyenne affichée (3 novembre 2026 : exposant standard 1,06 retenu par Greg, 4,4 % d'erreur sur 3 courses, estimation encore trop lente, biais non corrigé)
@@ -66,6 +66,8 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 10 bis. Fiche d'une course réalisée : bouton qui lance l'estimation sur la trace de la sortie (forme de la veille et forme d'aujourd'hui), graphique de l'écart cumulé au fil des km (choix de Greg) (demande de Greg du 3 novembre 2026, fait le même jour)
   - [x] 10 ter. Niveau ajusté par la FC (vitesse à 85 % de la LTHR, références sur 4 mois), réglages figés et vraie précision séparée de l'erreur sur les courses de réglage (3 novembre 2026, choix de Greg ; section 10 du brief)
   - [ ] 11. Vérification ordinateur et mobile, v0.3.0
+    - [x] Pages vérifiées en local sur ordinateur et à 390 px de large (aucun débordement, menu responsive), commit et tag `v0.3.0`, push, image construite par la CI (3 novembre 2026)
+    - [ ] Mise à jour du Synology et vérification sur le téléphone (Greg)
   - Points à trancher avec Greg au fil des étapes : terrain technique et chaleur (étape 6 ou plus tard), forme projetée à la date de la course (le coach de la phase 4 la fournira ; en attendant, forme actuelle maintenue)
   - Tranché : l'estimateur a son propre onglet dans le menu (3 novembre 2026)
 - [ ] Phase 4 — Coach (section 6 du brief ; terminé quand un plan est suivi sur 2 semaines réelles sans intervention manuelle ; v1.0.0). Logique de plan à base de règles explicites, en fonctions pures testées ; tout reste utilisable sans LLM

@@ -4,6 +4,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 
 ## [Non publié]
 
+## [0.3.0] - 2026-11-03
+
+Phase 3 (estimateur) : temps de course estimé sur route et sur un GPX de trail à partir de la forme actuelle, courses suivies semaine après semaine, précision mesurée sur les courses passées. Au premier démarrage, la base passe en version 15 (courses suivies) ; les sorties sont recalculées (métriques en version 5).
+
 ### Ajouté
 - Métriques en version 5 (toutes les sorties sont recalculées) : temps en mouvement et distance par tranche de pente de 2 %.
 - Page Estimateur (nouvel onglet) : forme actuelle sur les 12 dernières semaines (courbe allure-durée route et trail, VAM par palier, allure en descente par bande de pente, fitness et forme, Efficiency Factor comparé aux 12 mois précédents), calculée par une fonction pure versionnée rejouable à n'importe quelle date.
@@ -28,6 +32,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Estimateur route : exposant standard de Riegel (1,06) au lieu de l'exposant personnel, qui se trompait davantage sur les courses passées (8,4 % d'erreur moyenne contre 4,4 %) ; l'exposant personnel reste affiché pour comparaison.
 
 ### Corrigé
+- Menu des pages responsive : sur petit écran, un bouton ouvre la liste des pages (elle défilait hors de l'écran) ; blocs dépliés de la page Performance et formulaires des courses suivies tenus dans la largeur du téléphone.
 - En développement, scripts et styles rechargés à chaque démarrage (le navigateur gardait d'anciennes versions).
 
 ## [0.2.0] - 2026-11-03

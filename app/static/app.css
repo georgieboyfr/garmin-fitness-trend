@@ -123,10 +123,17 @@ h2 { font-size: 16px; display: flex; align-items: center; gap: 6px; }
 }
 .icon-btn:hover { color: var(--text); }
 
-@media (max-width: 640px) {
+.nav-toggle { display: none; }
+
+/* petit écran : les pages dans un menu déroulant, ouvert par le bouton ☰ */
+@media (max-width: 760px) {
   .topbar-inner { flex-wrap: wrap; row-gap: 8px; }
   .brand { flex: 1; }
-  .nav { order: 3; flex-basis: 100%; }
+  .nav-toggle { display: inline-grid; }
+  .nav { display: none; order: 3; flex-basis: 100%; flex-direction: column; gap: 2px; padding: 4px 0 6px; }
+  .topbar.nav-open .nav { display: flex; }
+  .nav a { padding: 10px 14px; border-radius: 10px; font-size: 15px; }
+  .nav-toggle[aria-expanded="true"] { color: var(--text); background: var(--surface-2); }
 }
 
 /* ---------- page ---------- */
@@ -330,8 +337,8 @@ table.activities .sub { display: block; font-size: 12px; color: var(--muted); ma
   font: inherit; font-size: 14px; color: var(--text); background: var(--surface-2);
   border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px;
 }
-.records { display: grid; gap: 0; }
-.record { border-top: 1px solid var(--border); }
+.records { display: grid; gap: 0; grid-template-columns: minmax(0, 1fr); }
+.record { border-top: 1px solid var(--border); min-width: 0; }
 .record:first-child { border-top: 0; }
 .record summary {
   list-style: none; cursor: pointer; display: grid; align-items: baseline; gap: 4px 14px; padding: 11px 4px;
@@ -487,3 +494,4 @@ details.tracked-add > summary { cursor: pointer; font-weight: 600; margin: 12px 
 .segmented { display: inline-flex; gap: 4px; margin: 12px 0 4px; }
 .segmented [aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
 
+.tracked-form .filter, .tracked-form select, #tracked-activity { min-width: 0; max-width: 100%; }

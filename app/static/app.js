@@ -174,3 +174,15 @@ const GFT = (() => {
   return { num, duration, chrono, pace, dateLong, dayLabel, isMonthStart, monthLabel, formatPage, chart, palette,
            dayOfYear, todayLine, todayButton };
 })();
+
+// ---------- menu sur petit écran ----------
+(() => {
+  const btn = document.getElementById("nav-toggle"), bar = document.querySelector(".topbar");
+  if (!btn || !bar) return;
+  const set = (open) => { bar.classList.toggle("nav-open", open); btn.setAttribute("aria-expanded", open); };
+  btn.addEventListener("click", () => set(!bar.classList.contains("nav-open")));
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") set(false); });
+  document.addEventListener("click", (e) => { if (!bar.contains(e.target)) set(false); });
+  document.querySelectorAll("#nav a").forEach((a) => a.addEventListener("click", () => set(false)));
+})();
+
