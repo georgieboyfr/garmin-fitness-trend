@@ -244,8 +244,23 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
                                           estimator.MODEL_PERIODS[months_value],
                                           _gpx_dem(request, gpx, lats, lons), elevation_params,
                                           gpx_meta["aid_stations"], confirmed)
+    profile = estimator.current_form(acts, efforts, today, lthr, window)
+    slope = estimator.fitness_slope(acts, efforts, today, window)
+    fitness = profile["load"]["fitness"] if profile["load"] else None
+
+    def context(result, distance_m, gain):
+        """Courses passées les plus proches et effet de la forme pour une estimation."""
+        if not result or result.get("error"):
+            return None
+        return {"nearest": estimator.nearest_races(acts, confirmed, distance_m, gain),
+                "scenarios": estimator.form_scenarios(result["realistic_s"], fitness, slope),
+                "slope": slope, "fitness": fitness}
+
     response = render(request, "estimateur.html", "/estimateur",
-                      profile=estimator.current_form(acts, efforts, today, lthr, window),
+                      profile=profile,
+                      road_context=context(estimate, (km or 0) * 1000, gain_m),
+                      trail_context=context(trail_result, trail_result.get("distance_m"),
+                                            trail_result.get("gain_m")) if trail_result else None,
                       table=estimator.road_table(efforts, today, window), estimate=estimate,
                       validation=estimator.validate_road(acts, efforts, confirmed, window),
                       trail_validation=trail.validate_trail(

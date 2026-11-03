@@ -412,3 +412,106 @@ def model_table(model: dict) -> list[dict]:
                     "minetti_pace_s_km": round(model["flat_pace_s_km"] * m, 1),
                     "vertical_mh": round(abs(g) / 100 * 1000 / pace * 3600) if g else None})
     return out
+
+
+# ---------- courses proches et effet de la forme ----------
+#
+# Effet de la forme : sur tout l'historique jusqu'au jour donné, chaque semaine, ton niveau (le 10 km
+# estimé par l'estimateur route sur la fenêtre de la forme) est mis en face de ta fitness du jour.
+# La pente de log(temps) selon la fitness donne le % de temps gagné par point de fitness (sur
+# l'historique de Greg : −0,8 % par point, stable d'une année à l'autre, de −0,45 à −1,1 %).
+
+LEVEL_DISTANCE_M = 10000
+FORM_MIN_WEEKS = 26            # au moins 26 semaines avec un niveau pour une pente personnelle
+FORM_SLOPE_DEFAULT = -0.008    # −0,8 % de temps par point de fitness
+FORM_SLOPE_BOUNDS = (-0.02, 0.0)
+FORM_STEPS = (-10, -5, 5, 10)  # écarts de fitness proposés le jour J
+NEAREST_RACES = 3
+NEAREST_GAIN_OFFSET_M = 100    # D+ comparé en rapport, décalé pour que 0 et 50 m restent proches
+
+
+def _level_points(efforts) -> list[tuple[str, float]]:
+    """(date, temps estimé sur 10 km) de chaque effort route utilisable comme référence : le niveau
+    d'une semaine est le minimum sur sa fenêtre, comme dans predict_road."""
+    out = []
+    for e in efforts:
+        if e.get("terrain") != "road":
+            continue
+        if e["kind"] == "distance" and e["key"] >= MIN_REF_DISTANCE_M:
+            d, t = float(e["key"]), float(e["value"])
+        elif e["kind"] == "duration" and e["key"] >= MIN_REF_DURATION_S and e["value"]:
+            d, t = float(e["value"]), float(e["key"])
+        else:
+            continue
+        out.append((e["date"][:10], riegel(t, d, LEVEL_DISTANCE_M, RIEGEL_DEFAULT)))
+    return sorted(out)
+
+
+def fitness_slope(acts, efforts, day: date, window_days: int = WINDOW_DAYS) -> dict:
+    """Pente de log(niveau) selon la fitness, semaine par semaine jusqu'au soir de `day` (bornée ;
+    FORM_SLOPE_DEFAULT faute de FORM_MIN_WEEKS semaines)."""
+    levels = _level_points(efforts)
+    daily = {d: v for d, v in _daily_load(acts).items() if d <= day}
+    pts = []
+    if levels and daily:
+        fitness = {p["date"]: p["fitness"] for p in stats.banister(daily, min(daily), day)}
+        first = date.fromisoformat(levels[0][0])
+        d, lo, hi = day, len(levels), len(levels)
+        while d >= first:
+            start, end = (d - timedelta(days=window_days - 1)).isoformat(), d.isoformat()
+            while hi > 0 and levels[hi - 1][0] > end:
+                hi -= 1
+            lo = min(lo, hi)
+            while lo > 0 and levels[lo - 1][0] >= start:
+                lo -= 1
+            in_window = [t for iso, t in levels[lo:hi] if iso >= start]
+            if in_window and d in fitness:
+                pts.append((fitness[d], math.log(min(in_window))))
+            d -= timedelta(days=7)
+    if len(pts) >= FORM_MIN_WEEKS:
+        mx = sum(x for x, _ in pts) / len(pts)
+        my = sum(y for _, y in pts) / len(pts)
+        sxx = sum((x - mx) ** 2 for x, _ in pts)
+        if sxx > 0:
+            b = sum((x - mx) * (y - my) for x, y in pts) / sxx
+            low, high = FORM_SLOPE_BOUNDS
+            return {"value": min(high, max(low, b)), "fitted": b, "personal": True, "weeks": len(pts)}
+    return {"value": FORM_SLOPE_DEFAULT, "fitted": None, "personal": False, "weeks": len(pts)}
+
+
+def form_scenarios(time_s: float, fitness: float | None, slope: dict) -> list[dict]:
+    """Temps estimé si tu arrivais le jour J avec plus ou moins de fitness qu'aujourd'hui."""
+    if fitness is None:
+        return []
+    out = []
+    for step in FORM_STEPS:
+        if fitness + step <= 0:
+            continue
+        t = time_s * math.exp(slope["value"] * step)
+        out.append({"delta": step, "fitness": round(fitness + step, 1), "time_s": round(t),
+                    "gain_s": round(t - time_s)})
+    return out
+
+
+def nearest_races(acts, race_ids, distance_m: float, gain_m: float, before: date | None = None,
+                  n: int = NEAREST_RACES) -> list[dict]:
+    """Tes courses confirmées les plus proches en distance et en D+ (écart en rapport sur chacun),
+    avec leur temps, leur allure et ta fitness ce jour-là."""
+    daily = _daily_load(acts)
+    fitness = ({p["date"]: p["fitness"] for p in stats.banister(daily, min(daily), max(daily))}
+               if daily else {})
+    rows = []
+    for a in acts:
+        if a["id"] not in race_ids or not a.get("distance_m") or (before and a["start"].date() >= before):
+            continue
+        g = NEAREST_GAIN_OFFSET_M
+        score = abs(math.log(a["distance_m"] / distance_m)) + abs(math.log((a["gain_m"] + g) / (gain_m + g)))
+        elapsed = a.get("elapsed_s") or a["duration_s"]
+        f = fitness.get(a["start"].date())
+        rows.append({"activity_id": a["id"], "date": a["start"].date().isoformat(), "name": a["name"],
+                     "terrain": a.get("terrain"), "distance_km": round(a["distance_km"], 1),
+                     "gain_m": round(a["gain_m"]), "elapsed_s": round(elapsed),
+                     "pace_s_km": round(elapsed / a["distance_km"], 1) if a["distance_km"] else None,
+                     "fitness": round(f, 1) if f is not None else None, "score": score})
+    rows.sort(key=lambda r: r["score"])
+    return rows[:n]

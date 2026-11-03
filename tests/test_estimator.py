@@ -1,10 +1,10 @@
 import json
 import math
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 
-from app import estimator
+from app import estimator, stats
 
 DAY = date(2026, 11, 3)
 
@@ -260,3 +260,49 @@ def test_error_summary_never_shows_a_negative_zero_bias():
     s = estimator.error_summary([{"e": 0.1}, {"e": -0.1}, {"e": -0.05}], "e")
     assert s["bias_pct"] == 0 and f"{s['bias_pct']:+.1f}" == "+0.0"
     assert estimator.error_summary([{"e": None}], "e") is None
+
+
+def _run(i, day, hrss=50.0, **kw):
+    return {"id": i, "name": f"s{i}", "start": datetime.fromisoformat(day + "T09:00:00"), "hrss": hrss,
+            "distance_m": 10000.0, "distance_km": 10.0, "gain_m": 0.0, "duration_s": 3000,
+            "elapsed_s": 3000, "terrain": "road", **kw}
+
+
+def test_fitness_slope_from_level_and_fitness_history():
+    # une sortie par jour, charge croissante ; niveau qui s'améliore avec la charge
+    start = date(2024, 1, 1)
+    acts, efforts = [], []
+    for k in range(400):
+        d = start + timedelta(days=k)
+        acts.append(_run(k, d.isoformat(), hrss=20 + k / 10))
+    days = [start + timedelta(days=k) for k in range(0, 400, 7)]
+    fit = {p["date"]: p["fitness"] for p in stats.banister({a["start"].date(): a["hrss"] for a in acts},
+                                                          start, days[-1])}
+    for k, d in enumerate(days):
+        t = 3000 * math.exp(-0.01 * fit[d])                         # −1 % par point de fitness
+        efforts.append({"kind": "distance", "key": 10000, "value": t, "id": k, "name": "x",
+                        "date": d.isoformat(), "terrain": "road"})
+    s = estimator.fitness_slope(acts, efforts, days[-1], window_days=1)
+    assert s["personal"] and s["weeks"] == len(days) and s["value"] == pytest.approx(-0.01, rel=1e-6)
+    short = estimator.fitness_slope(acts, efforts[:10], days[9], window_days=1)
+    assert not short["personal"] and short["value"] == estimator.FORM_SLOPE_DEFAULT
+    flat = estimator.fitness_slope(acts, [{**e, "value": 3000 * (1 + e["id"] / 100)} for e in efforts],
+                                   days[-1], window_days=1)
+    assert flat["value"] == 0.0 and flat["fitted"] > 0                     # bornée : jamais positive
+
+
+def test_form_scenarios_and_nearest_races():
+    slope = {"value": -0.01}
+    sc = estimator.form_scenarios(3600, 8.0, slope)
+    assert [s["delta"] for s in sc] == [-5, 5, 10]                          # fitness 8 − 10 < 0 : omis
+    assert sc[1]["time_s"] == round(3600 * math.exp(-0.05)) and sc[1]["gain_s"] < 0
+    assert estimator.form_scenarios(3600, None, slope) == []
+    acts = [_run(1, "2025-04-01", distance_m=21100.0, distance_km=21.1, elapsed_s=6000),
+            _run(2, "2025-06-01", distance_m=42195.0, distance_km=42.2, elapsed_s=14000),
+            _run(3, "2025-09-01", distance_m=20000.0, distance_km=20.0, gain_m=1200.0, elapsed_s=9000),
+            _run(4, "2025-10-01", distance_m=21000.0, distance_km=21.0)]        # pas une course
+    near = estimator.nearest_races(acts, {1, 2, 3}, 21097.5, 50)
+    assert [r["activity_id"] for r in near] == [1, 2, 3] and near[0]["elapsed_s"] == 6000
+    assert near[0]["fitness"] is not None
+    assert [r["activity_id"] for r in estimator.nearest_races(acts, {1, 2, 3}, 21097.5, 50,
+                                                              before=date(2025, 6, 1))] == [1]

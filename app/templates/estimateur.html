@@ -9,6 +9,56 @@
   <a class="act-name" href="/sorties/{{ e.activity_id }}" title="{{ e.name or 'Sans nom' }}"><span data-short-date="{{ e.date }}"></span></a>
 {%- endmacro %}
 
+{% macro race_context(c) -%}
+{% if c %}
+<div class="grid-2 estimate-context">
+  <div>
+    <h3>Tes courses les plus proches {{ tip("Tes courses confirmées les plus proches en distance et en D+ (écarts mesurés en rapport), avec ton temps réel, arrêts compris, et ta fitness ce jour-là.") }}</h3>
+    {% if c.nearest %}
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Course</th><th>Distance</th><th>D+</th><th>Temps</th><th>Fitness</th></tr></thead>
+        <tbody>
+          {% for r in c.nearest %}
+          <tr>
+            <td><a class="act-name" href="/sorties/{{ r.activity_id }}">{{ r.name or "Sans nom" }}</a> <span class="muted" data-short-date="{{ r.date }}"></span></td>
+            <td data-num="{{ r.distance_km }}" data-dec="1" data-unit="km"></td>
+            <td data-num="{{ r.gain_m }}" data-unit="m"></td>
+            <td class="strong" data-chrono="{{ r.elapsed_s }}"></td>
+            <td class="muted">{{ r.fitness | string | replace(".", ",") if r.fitness is not none else "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="muted small">Aucune course confirmée.</p>{% endif %}
+  </div>
+  <div>
+    <h3>Effet de la forme {{ tip("Temps estimé si tu arrivais le jour J avec plus ou moins de fitness qu'aujourd'hui. Sur ton historique, chaque semaine, ton niveau (10 km estimé sur la fenêtre de la forme) est mis en face de ta fitness : la pente donne le temps gagné par point de fitness. Ce n'est qu'une tendance moyenne : la forme du jour, la fraîcheur et le parcours comptent aussi.") }}</h3>
+    {% if c.scenarios %}
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Fitness le jour J</th><th>Temps</th><th>Écart</th></tr></thead>
+        <tbody>
+          {% for s in c.scenarios %}
+          <tr>
+            <td>{{ s.fitness | string | replace(".", ",") }} <span class="muted">({{ ('%+d' % s.delta) | replace('-', '−') }})</span></td>
+            <td class="strong" data-chrono="{{ s.time_s }}"></td>
+            <td class="muted">{{ "−" if s.gain_s < 0 else "+" }}<span data-chrono="{{ s.gain_s | abs }}"></span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">Fitness actuelle {{ c.fitness | string | replace(".", ",") }} ·
+      {{ ("%.2f" | format(-c.slope.value * 100)) | replace(".", ",") }} % de temps par point de fitness
+      {%- if c.slope.personal %} (ton historique, {{ c.slope.weeks }} semaines){% else %} (valeur par défaut, historique trop court){% endif %}.</p>
+    {% else %}<p class="muted small">Fitness inconnue : pas de charge mesurée.</p>{% endif %}
+  </div>
+</div>
+{% endif %}
+{%- endmacro %}
+
 {% block content %}
 {% set p = profile %}
 {% set month_labels = {6: "6 mois", 12: "12 mois", 24: "2 ans", 0: "tout l'historique"} %}
@@ -66,6 +116,7 @@
     · calé sur ton meilleur {{ e.reference.label }} récent ({% if e.reference.kind == "distance" %}<span data-chrono="{{ e.reference.time_s }}"></span>{% else %}<span data-num="{{ e.reference.distance_m / 1000 }}" data-dec="2" data-unit="km"></span>{% endif %}, {{ effort_link(e.reference) }})
     {% if e.fallback %}· aucun effort route en {{ weeks }} semaines : références des 6 derniers mois{% endif %}
   </p>
+  {{ race_context(road_context) }}
   {% elif query.distance %}
   <p class="muted">Pas d'estimation possible : aucun effort route de 3 km ou plus sur les 6 derniers mois, ou distance invalide.</p>
   {% endif %}
@@ -191,6 +242,7 @@
       <span class="small muted" id="aid-status" role="status">{% if not gpx.aid_saved and gpx.aid_stations %}Proposés d'après les points du GPX : vérifie-les et enregistre.{% endif %}</span>
     </div>
   </form>
+  {{ race_context(trail_context) }}
   {% else %}
   <p class="small muted">Choisis le GPX d'une course : il est gardé sur le serveur pour pouvoir y revenir.</p>
   {% endif %}
