@@ -9,6 +9,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Page Estimateur (nouvel onglet) : forme actuelle sur les 12 dernières semaines (courbe allure-durée route et trail, VAM par palier, allure en descente par bande de pente, fitness et forme, Efficiency Factor comparé aux 12 mois précédents), calculée par une fonction pure versionnée rejouable à n'importe quelle date.
 - Estimateur route : formule de Riegel à exposant personnel (calé sur la frontière des meilleurs efforts route des 2 dernières années), niveau tiré des meilleurs efforts route des 12 dernières semaines, fourchette optimiste / réaliste / prudent et allure cible ; saisie d'une distance et d'un D+ facultatif, tableau 5 km, 10 km, semi, marathon.
 - Précision de l'estimateur route : rejeu sur chaque course route confirmée avec la forme de la veille, erreur moyenne, biais, part des résultats dans la fourchette, comparaison avec l'exposant personnel.
+- Modèle allure-pente personnel (page Estimateur) : facteur de temps selon la pente, de −45 à +45 %, calé sur les sorties des 12 derniers mois (vitesse sur chaque pente rapportée à celle du plat de la même sortie), comparé à la formule de Minetti ; graphique et tableau avec l'allure et la vitesse verticale correspondantes.
 
 ### Modifié
 - Estimateur route : exposant standard de Riegel (1,06) au lieu de l'exposant personnel, qui se trompait davantage sur les courses passées (8,4 % d'erreur moyenne contre 4,4 %) ; l'exposant personnel reste affiché pour comparaison.

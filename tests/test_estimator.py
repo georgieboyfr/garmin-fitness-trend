@@ -178,3 +178,56 @@ def test_validate_road_summary_and_missing_estimate():
     assert v["used"]["mae_pct"] == round(sum(abs(e) for e in errors) / 2, 1)
     assert estimator.validate_road([], efforts, set()) == {"version": estimator.ESTIMATE_VERSION, "races": [],
                                                            "used": None, "personal": None}
+
+
+# ---------- modèle allure-pente ----------
+
+def hilly(day, flat_speed, factors, terrain="trail"):
+    """Sortie avec 10 min de plat à flat_speed et 5 min dans chaque tranche, au facteur donné."""
+    bins = [[0, 600, 600 * flat_speed]]
+    bins += [[low, 300, 300 * flat_speed / f] for low, f in factors.items()]
+    return act(day, terrain=terrain, bins=bins)
+
+
+def test_grade_pace_model_is_independent_of_run_intensity():
+    factors = {-20: 1.25, -10: 0.95, 10: 1.4, 20: 2.0}
+    acts = [hilly("2026-06-01", 2.5, factors), hilly("2026-07-01", 3.5, factors),
+            hilly("2026-08-01", 3.0, factors)]
+    m = estimator.grade_pace_model(acts, DAY)
+    assert m["version"] == estimator.MODEL_VERSION and m["activities"] == 3
+    by = {b["grade"]: b for b in m["bins"]}
+    assert set(by) == {-19, -9, 1, 11, 21}
+    assert by[11]["raw"] == pytest.approx(1.4, abs=0.001) and by[-19]["raw"] == pytest.approx(1.25, abs=0.001)
+    assert by[1]["raw"] == pytest.approx(1.0) and by[11]["activities"] == 3
+    assert by[21]["minetti"] == pytest.approx(float(estimator.grade.minetti_cost(0.21)) / 3.6, abs=0.001)
+
+
+def test_grade_pace_model_smooths_neighbours_and_needs_three_runs():
+    acts = [hilly(f"2026-0{m}-01", 3.0, {10: 1.3, 12: 1.5}) for m in (6, 7, 8)]
+    acts.append(hilly("2026-09-01", 3.0, {30: 3.0}))                    # une seule sortie : ignorée
+    by = {b["grade"]: b for b in estimator.grade_pace_model(acts, DAY)["bins"]}
+    assert 31 not in by
+    assert by[11]["factor"] == pytest.approx(math.exp((math.log(1.3) + math.log(1.5)) / 2), abs=0.001)
+
+
+def test_grade_pace_model_window_and_flat_reference():
+    old = [hilly("2025-01-01", 3.0, {10: 1.3}) for _ in range(3)]
+    no_flat = [act("2026-10-01", bins=[[10, 600, 1200]]) for _ in range(3)]
+    assert estimator.grade_pace_model(old + no_flat, DAY) is None
+    assert estimator.grade_pace_model([], DAY) is None
+
+
+def test_grade_factor_interpolates_and_holds_edges():
+    model = {"bins": [{"grade": -9, "factor": 0.9}, {"grade": 1, "factor": 1.0},
+                      {"grade": 11, "factor": 1.4}]}
+    assert estimator.grade_factor(model, 6) == pytest.approx(1.2)
+    assert estimator.grade_factor(model, -30) == 0.9 and estimator.grade_factor(model, 40) == 1.4
+
+
+def test_model_table_paces_from_flat_pace():
+    model = {"flat_pace_s_km": 300.0,
+             "bins": [{"grade": g, "factor": 1 + g / 50} for g in range(-29, 32, 2)]}
+    rows = {r["grade"]: r for r in estimator.model_table(model)}
+    assert rows[0]["vertical_mh"] is None
+    assert rows[10]["pace_s_km"] == pytest.approx(300 * estimator.grade_factor(model, 10), abs=0.1)
+    assert rows[10]["vertical_mh"] == round(100 / rows[10]["pace_s_km"] * 3600)

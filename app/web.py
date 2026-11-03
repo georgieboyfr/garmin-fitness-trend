@@ -208,10 +208,12 @@ def estimateur(request: Request, distance: str = "", gain: str = ""):
         conn.close()
     today = _today(request)
     km, gain_m = _number(distance), _number(gain) or 0.0
+    model = estimator.grade_pace_model(acts, today)
     estimate = estimator.predict_road(efforts, today, km * 1000, gain_m) if km else None
     return render(request, "estimateur.html", "/estimateur",
                   profile=estimator.current_form(acts, efforts, today, lthr),
                   table=estimator.road_table(efforts, today), estimate=estimate,
                   validation=estimator.validate_road(acts, efforts, confirmed),
                   personal_exponent=estimator.personal_exponent(efforts, today),
+                  model=model, model_table=estimator.model_table(model) if model else [],
                   query={"distance": distance, "gain": gain})

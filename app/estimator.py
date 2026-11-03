@@ -312,3 +312,98 @@ def validate_road(acts, efforts, confirmed_ids) -> dict:
         summary["within"] = sum(1 for r in rows if r["within"])
     return {"version": ESTIMATE_VERSION, "races": rows, "used": summary,
             "personal": _error_summary(rows, "personal_error_pct")}
+
+
+# ---------- modèle allure-pente personnel ----------
+#
+# Pour chaque sortie, la vitesse dans chaque tranche de pente de 2 % est rapportée à la vitesse sur
+# le plat (−2 à +2 %) de la même sortie : le rapport ne dépend pas de l'intensité de la sortie
+# (footing ou séance), seulement de la pente. Facteur = temps sur la pente / temps sur le plat à
+# distance égale (2 = deux fois plus lent). Ce n'est pas un effort strictement égal : c'est ta
+# façon habituelle de courir les pentes (marche en forte montée, retenue en descente technique).
+# Les facteurs de chaque sortie sont moyennés (moyenne géométrique pondérée par le temps passé
+# dans la tranche, plafonné à 10 min par sortie), puis lissés sur les tranches voisines.
+# Au-delà des tranches mesurées, le facteur de la dernière tranche est conservé.
+
+MODEL_VERSION = 1
+MODEL_DAYS = 365
+MODEL_FLAT_MIN_S = 300         # plat d'au moins 5 min dans la sortie pour servir de référence
+MODEL_BIN_MIN_S = 60           # tranche d'au moins 1 min dans la sortie
+MODEL_BIN_MAX_WEIGHT_S = 600
+MODEL_MIN_ACTIVITIES = 3       # tranche retenue si au moins 3 sorties y contribuent
+FLAT_BINS = (-2, 0)
+MODEL_TABLE_GRADES = (-30, -20, -10, -5, 0, 5, 10, 20, 30)
+
+
+def grade_pace_model(acts, day: date) -> dict | None:
+    """Modèle allure-pente personnel sur les 12 mois qui se terminent au soir de `day`, ou None."""
+    start = day - timedelta(days=MODEL_DAYS - 1)
+    sums = {}                       # tranche → [somme pondérée des log-facteurs, poids, sorties, secondes]
+    flat_s = flat_m = 0.0
+    used = 0
+    for a in acts:
+        if not a.get("grade_bins") or a.get("terrain") == "indoor" or not start <= a["start"].date() <= day:
+            continue
+        bins = {low: (seconds, meters) for low, seconds, meters in json.loads(a["grade_bins"])}
+        fs = sum(bins.get(g, (0, 0))[0] for g in FLAT_BINS)
+        fm = sum(bins.get(g, (0, 0))[1] for g in FLAT_BINS)
+        if fs < MODEL_FLAT_MIN_S or fm <= 0:
+            continue
+        used += 1
+        flat_s, flat_m = flat_s + fs, flat_m + fm
+        flat_speed = fm / fs
+        for low, (seconds, meters) in bins.items():
+            if seconds < MODEL_BIN_MIN_S or meters <= 0:
+                continue
+            w = min(seconds, MODEL_BIN_MAX_WEIGHT_S)
+            s = sums.setdefault(low, [0.0, 0.0, 0, 0.0])
+            s[0] += w * math.log(flat_speed / (meters / seconds))
+            s[1] += w
+            s[2] += 1
+            s[3] += seconds
+    kept = sorted(low for low, s in sums.items() if s[2] >= MODEL_MIN_ACTIVITIES)
+    if not kept or used == 0:
+        return None
+    raw = {low: sums[low][0] / sums[low][1] for low in kept}
+    half = grade.GRADE_BIN * 100 / 2
+    out = []
+    for low in kept:
+        # lissage : moyenne des tranches voisines (±2 %) pondérée par leur poids
+        near = [n for n in (low - 2 * half, low, low + 2 * half) if n in raw]
+        smooth = sum(raw[n] * sums[n][1] for n in near) / sum(sums[n][1] for n in near)
+        center = low + half
+        out.append({"grade": center, "factor": round(math.exp(smooth), 3),
+                    "raw": round(math.exp(raw[low]), 3),
+                    "minetti": round(float(grade.minetti_cost(center / 100)) / grade.FLAT_COST, 3),
+                    "activities": sums[low][2], "seconds": round(sums[low][3])})
+    return {"version": MODEL_VERSION, "day": day.isoformat(), "start": start.isoformat(),
+            "activities": used, "flat_pace_s_km": round(flat_s / flat_m * 1000, 1), "bins": out}
+
+
+def grade_factor(model: dict, grade_pct: float) -> float:
+    """Facteur de temps du modèle pour une pente en % (interpolé entre les tranches, borné aux
+    tranches mesurées)."""
+    pts = model["bins"]
+    if grade_pct <= pts[0]["grade"]:
+        return pts[0]["factor"]
+    if grade_pct >= pts[-1]["grade"]:
+        return pts[-1]["factor"]
+    for a, b in zip(pts, pts[1:], strict=False):
+        if a["grade"] <= grade_pct <= b["grade"]:
+            f = (grade_pct - a["grade"]) / (b["grade"] - a["grade"])
+            return a["factor"] + f * (b["factor"] - a["factor"])
+    return 1.0
+
+
+def model_table(model: dict) -> list[dict]:
+    """Facteurs du modèle et de Minetti sur quelques pentes, avec l'allure correspondante à ton
+    allure habituelle sur le plat."""
+    out = []
+    for g in MODEL_TABLE_GRADES:
+        f = grade_factor(model, g)
+        m = float(grade.minetti_cost(g / 100)) / grade.FLAT_COST
+        pace = model["flat_pace_s_km"] * f
+        out.append({"grade": g, "factor": round(f, 2), "minetti": round(m, 2), "pace_s_km": round(pace, 1),
+                    "minetti_pace_s_km": round(model["flat_pace_s_km"] * m, 1),
+                    "vertical_mh": round(abs(g) / 100 * 1000 / pace * 3600) if g else None})
+    return out

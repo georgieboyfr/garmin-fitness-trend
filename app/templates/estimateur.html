@@ -137,6 +137,36 @@
   {% endif %}
 </section>
 
+<section class="card" id="pente">
+  <div class="card-head">
+    <h2>Allure selon la pente {{ tip("Ton modèle allure-pente personnel, calé sur tes sorties des 12 derniers mois : dans chaque sortie, ta vitesse sur chaque pente (tranches de 2 %, pente lissée sur 50 m) est comparée à ta vitesse sur le plat de la même sortie, ce qui neutralise l'intensité (footing ou séance). Facteur 2 = deux fois plus de temps que sur le plat pour la même distance. Ce n'est pas un effort strictement égal : c'est ta façon habituelle de courir les pentes, marche en forte montée et retenue en descente comprises. La courbe pointillée est la formule de Minetti (coût énergétique, base de la VAP) : elle suppose que l'on dévale les descentes, d'où l'écart en descente raide.") }}</h2>
+  </div>
+  {% if model %}
+  <p class="small muted">{{ model.activities }} sorties du <span data-short-date="{{ model.start }}"></span> au <span data-short-date="{{ model.day }}"></span> ·
+    allures calculées à ton allure habituelle sur le plat (<span data-pace="{{ model.flat_pace_s_km }}"></span>).</p>
+  <div class="chart" id="chart-grade" role="img" aria-label="Facteur de temps selon la pente, ton modèle comparé à Minetti"></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Pente</th><th>Ton facteur</th><th>Ton allure</th><th>Vit. verticale</th><th>Minetti</th><th>Allure Minetti</th></tr></thead>
+      <tbody>
+        {% for r in model_table %}
+        <tr {% if r.grade == 0 %}class="is-best"{% endif %}>
+          <td>{{ ('%+d' % r.grade) | replace('-', '−') if r.grade else "0" }} %</td>
+          <td class="strong">×{{ "%.2f" | format(r.factor) | replace(".", ",") }}</td>
+          <td data-pace="{{ r.pace_s_km }}"></td>
+          <td>{% if r.vertical_mh %}<span data-num="{{ r.vertical_mh }}" data-unit="m/h"></span>{% else %}—{% endif %}</td>
+          <td class="muted">×{{ "%.2f" | format(r.minetti) | replace(".", ",") }}</td>
+          <td class="muted" data-pace="{{ r.minetti_pace_s_km }}"></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Pas assez de sorties avec un profil d'altitude sur les 12 derniers mois.</p>
+  {% endif %}
+</section>
+
 <section class="hero">
   <h2>Forme actuelle</h2>
   <p class="muted">Du <span data-short-date="{{ p.start }}"></span> au <span data-short-date="{{ p.day }}"></span> :
@@ -226,4 +256,35 @@
     </div>
   </section>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script type="application/json" id="model-data">{{ (model.bins if model else []) | tojson }}</script>
+<script>
+  (() => {
+    const bins = JSON.parse(document.getElementById("model-data").textContent);
+    if (!bins.length) return;
+    const fmt = (v) => "×" + GFT.num(v, 2);
+    GFT.chart("chart-grade", (t) => ({
+      grid: { left: 8, right: 16, top: 28, bottom: 28, containLabel: true },
+      legend: { top: 0, textStyle: { color: t.muted } },
+      tooltip: { ...t.tooltip, trigger: "axis", formatter: (ps) => {
+        const b = bins[ps[0].dataIndex];
+        return `<b>Pente ${b.grade > 0 ? "+" : ""}${b.grade} %</b><br>Toi : ${fmt(b.factor)} (mesuré ${fmt(b.raw)})`
+          + `<br>Minetti : ${fmt(b.minetti)}<br>${b.activities} sorties, ${GFT.num(b.seconds / 60)} min`; } },
+      xAxis: { type: "category", data: bins.map((b) => b.grade), name: "Pente (%)", nameLocation: "middle",
+               nameGap: 26, nameTextStyle: { color: t.muted }, ...t.axis },
+      yAxis: { type: "value", min: 0, ...t.axis, axisLabel: { ...t.axis.axisLabel, formatter: (v) => "×" + v } },
+      series: [
+        { name: "Toi", type: "line", smooth: true, symbol: "none", lineStyle: { width: 3, color: t.accent },
+          itemStyle: { color: t.accent }, data: bins.map((b) => b.factor) },
+        { name: "Mesuré", type: "scatter", symbolSize: (v, p) => 4 + Math.min(8, bins[p.dataIndex].activities / 8),
+          itemStyle: { color: t.accent, opacity: 0.35 }, data: bins.map((b) => b.raw) },
+        { name: "Minetti", type: "line", smooth: true, symbol: "none",
+          lineStyle: { width: 2, type: "dashed", color: t.series[2] }, itemStyle: { color: t.series[2] },
+          data: bins.map((b) => b.minetti) },
+      ],
+    }));
+  })();
+</script>
 {% endblock %}
