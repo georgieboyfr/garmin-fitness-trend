@@ -1,63 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Estimateur · Fitness Trend{% endblock %}
 
-{% macro tip(text) -%}
-  <button class="tip" type="button" aria-label="Explication" data-tip="{{ text }}">i</button>
-{%- endmacro %}
+{% from "_estimateur.html" import tip, race_context, tracked_form with context %}
 
 {% macro effort_link(e) -%}
   <a class="act-name" href="/sorties/{{ e.activity_id }}" title="{{ e.name or 'Sans nom' }}"><span data-short-date="{{ e.date }}"></span></a>
 {%- endmacro %}
 
-{% macro race_context(c) -%}
-{% if c %}
-<div class="grid-2 estimate-context">
-  <div>
-    <h3>Tes courses les plus proches {{ tip("Tes courses confirmées les plus proches en distance et en D+ (écarts mesurés en rapport), avec ton temps réel, arrêts compris, et ta fitness ce jour-là.") }}</h3>
-    {% if c.nearest %}
-    <div class="table-wrap">
-      <table class="data">
-        <thead><tr><th>Course</th><th>Distance</th><th>D+</th><th>Temps</th><th>Fitness</th></tr></thead>
-        <tbody>
-          {% for r in c.nearest %}
-          <tr>
-            <td><a class="act-name" href="/sorties/{{ r.activity_id }}">{{ r.name or "Sans nom" }}</a> <span class="muted" data-short-date="{{ r.date }}"></span></td>
-            <td data-num="{{ r.distance_km }}" data-dec="1" data-unit="km"></td>
-            <td data-num="{{ r.gain_m }}" data-unit="m"></td>
-            <td class="strong" data-chrono="{{ r.elapsed_s }}"></td>
-            <td class="muted">{{ r.fitness | string | replace(".", ",") if r.fitness is not none else "—" }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}<p class="muted small">Aucune course confirmée.</p>{% endif %}
-  </div>
-  <div>
-    <h3>Effet de la forme {{ tip("Temps estimé si tu arrivais le jour J avec plus ou moins de fitness qu'aujourd'hui. Sur ton historique, chaque semaine, ton niveau (10 km estimé sur la fenêtre de la forme) est mis en face de ta fitness : la pente donne le temps gagné par point de fitness. Ce n'est qu'une tendance moyenne : la forme du jour, la fraîcheur et le parcours comptent aussi.") }}</h3>
-    {% if c.scenarios %}
-    <div class="table-wrap">
-      <table class="data">
-        <thead><tr><th>Fitness le jour J</th><th>Temps</th><th>Écart</th></tr></thead>
-        <tbody>
-          {% for s in c.scenarios %}
-          <tr>
-            <td>{{ s.fitness | string | replace(".", ",") }} <span class="muted">({{ ('%+d' % s.delta) | replace('-', '−') }})</span></td>
-            <td class="strong" data-chrono="{{ s.time_s }}"></td>
-            <td class="muted">{{ "−" if s.gain_s < 0 else "+" }}<span data-chrono="{{ s.gain_s | abs }}"></span></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <p class="small muted">Fitness actuelle {{ c.fitness | string | replace(".", ",") }} ·
-      {{ ("%.2f" | format(-c.slope.value * 100)) | replace(".", ",") }} % de temps par point de fitness
-      {%- if c.slope.personal %} (ton historique, {{ c.slope.weeks }} semaines){% else %} (valeur par défaut, historique trop court){% endif %}.</p>
-    {% else %}<p class="muted small">Fitness inconnue : pas de charge mesurée.</p>{% endif %}
-  </div>
-</div>
-{% endif %}
-{%- endmacro %}
+
 
 {% block content %}
 {% set p = profile %}
@@ -80,6 +30,42 @@
       </select></label>
     <noscript><button class="btn-ghost" type="submit">Appliquer</button></noscript>
   </form>
+</section>
+
+<section class="card" id="suivies">
+  <div class="card-head">
+    <h2>Courses suivies {{ tip("Les courses que tu veux voir venir, indépendamment du coach. Chaque lundi, après la synchro, la prédiction de chacune est enregistrée avec ta forme du dimanche soir (forme sur 12 semaines et pentes sur 12 mois, quels que soient les réglages en haut de page). À l'ajout, les 12 semaines précédentes sont rejouées pour que la courbe soit utile tout de suite. Parcours GPX : estimateur trail, en temps total avec les ravitos du parcours ; distance : estimateur route.") }}</h2>
+  </div>
+  {% if tracked %}
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Course</th><th>Date</th><th>Parcours</th><th>Prédiction</th><th>Fourchette</th><th>Sur 4 semaines</th><th>Objectif</th></tr></thead>
+      <tbody>
+        {% for r in tracked %}
+        <tr {% if r.past %}class="muted"{% endif %}>
+          <td><a class="act-name" href="/estimateur/courses/{{ r.id }}">{{ r.name }}</a></td>
+          <td>{% if r.race_date %}<span data-short-date="{{ r.race_date }}"></span> <span class="muted small">{% if r.days_left > 0 %}J−{{ r.days_left }}{% elif r.days_left == 0 %}aujourd'hui{% else %}passée{% endif %}</span>{% else %}<span class="muted">sans date</span>{% endif %}</td>
+          <td class="muted">{{ r.route }}</td>
+          {% if r.last %}
+          <td class="strong" data-chrono="{{ r.last.realistic_s }}"></td>
+          <td class="muted"><span data-chrono="{{ r.last.optimistic_s }}"></span> – <span data-chrono="{{ r.last.prudent_s }}"></span></td>
+          <td>{% if r.evolution_s is not none %}{% if r.evolution_s %}<span class="delta {{ 'down' if r.evolution_s > 0 else 'up' }}">{{ "+" if r.evolution_s > 0 else "−" }}<span data-chrono="{{ r.evolution_s | abs }}"></span></span>{% else %}={% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+          {% else %}
+          <td colspan="3" class="muted">pas encore de prédiction</td>
+          {% endif %}
+          <td>{% if r.target_s %}<span data-chrono="{{ r.target_s }}"></span>{% if r.target_gap_s is not none %} <span class="small delta {{ 'down' if r.target_gap_s > 0 else 'up' }}">{{ "+" if r.target_gap_s > 0 else "−" }}<span data-chrono="{{ r.target_gap_s | abs }}"></span></span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="small muted">Aucune course suivie : ajoute celles que tu prépares ou qui te tentent, avec un GPX ou une distance.</p>
+  {% endif %}
+  <details class="tracked-add" {% if not tracked %}open{% endif %}>
+    <summary>Suivre une course</summary>
+    {{ tracked_form("/estimateur/courses", gpx_recent, {"gpx_id": gpx.id if gpx else None, "distance_m": (query.distance | replace(",", ".") | float * 1000) if query.distance and not gpx else None, "gain_m": (query.gain | replace(",", ".") | float) if query.gain and not gpx else None}) }}
+  </details>
 </section>
 
 <section class="card">
@@ -484,6 +470,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/courses_suivies.js?v={{ version }}"></script>
 <script type="application/json" id="aid-data">{{ (gpx.aid_stations if gpx and gpx.aid_stations else []) | tojson }}</script>
 <script type="application/json" id="trail-data">{{ (trail.chart if trail and not trail.error else none) | tojson }}</script>
 <script>

@@ -475,3 +475,10 @@ table.intervals tr.iv-other td { color: var(--muted); }
 .aid-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .estimate-context { margin-top: 16px; }
 .estimate-context h3 { margin-top: 0; }
+
+/* courses suivies */
+.tracked-form .filters + .filters { margin-top: 8px; }
+.tracked-form .aid-actions { margin-top: 12px; }
+.tracked-road { flex: 2 1 280px; }
+.tracked-road[hidden] { display: none; }
+details.tracked-add > summary { cursor: pointer; font-weight: 600; margin: 12px 0 8px; }

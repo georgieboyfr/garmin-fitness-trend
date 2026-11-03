@@ -1,0 +1,86 @@
+{# Macros partagées par la page Estimateur et la page d'une course suivie. #}
+{% macro tip(text) -%}
+  <button class="tip" type="button" aria-label="Explication" data-tip="{{ text }}">i</button>
+{%- endmacro %}
+
+{% macro race_context(c) -%}
+{% if c %}
+<div class="grid-2 estimate-context">
+  <div>
+    <h3>Tes courses les plus proches {{ tip("Tes courses confirmées les plus proches en distance et en D+ (écarts mesurés en rapport), avec ton temps réel, arrêts compris, et ta fitness ce jour-là.") }}</h3>
+    {% if c.nearest %}
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Course</th><th>Distance</th><th>D+</th><th>Temps</th><th>Fitness</th></tr></thead>
+        <tbody>
+          {% for r in c.nearest %}
+          <tr>
+            <td><a class="act-name" href="/sorties/{{ r.activity_id }}">{{ r.name or "Sans nom" }}</a> <span class="muted" data-short-date="{{ r.date }}"></span></td>
+            <td data-num="{{ r.distance_km }}" data-dec="1" data-unit="km"></td>
+            <td data-num="{{ r.gain_m }}" data-unit="m"></td>
+            <td class="strong" data-chrono="{{ r.elapsed_s }}"></td>
+            <td class="muted">{{ r.fitness | string | replace(".", ",") if r.fitness is not none else "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="muted small">Aucune course confirmée.</p>{% endif %}
+  </div>
+  <div>
+    <h3>Effet de la forme {{ tip("Temps estimé si tu arrivais le jour J avec plus ou moins de fitness qu'aujourd'hui. Sur ton historique, chaque semaine, ton niveau (10 km estimé sur la fenêtre de la forme) est mis en face de ta fitness : la pente donne le temps gagné par point de fitness. Ce n'est qu'une tendance moyenne : la forme du jour, la fraîcheur et le parcours comptent aussi.") }}</h3>
+    {% if c.scenarios %}
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Fitness le jour J</th><th>Temps</th><th>Écart</th></tr></thead>
+        <tbody>
+          {% for s in c.scenarios %}
+          <tr>
+            <td>{{ s.fitness | string | replace(".", ",") }} <span class="muted">({{ ('%+d' % s.delta) | replace('-', '−') }})</span></td>
+            <td class="strong" data-chrono="{{ s.time_s }}"></td>
+            <td class="muted">{{ "−" if s.gain_s < 0 else "+" }}<span data-chrono="{{ s.gain_s | abs }}"></span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">Fitness actuelle {{ c.fitness | string | replace(".", ",") }} ·
+      {{ ("%.2f" | format(-c.slope.value * 100)) | replace(".", ",") }} % de temps par point de fitness
+      {%- if c.slope.personal %} (ton historique, {{ c.slope.weeks }} semaines){% else %} (valeur par défaut, historique trop court){% endif %}.</p>
+    {% else %}<p class="muted small">Fitness inconnue : pas de charge mesurée.</p>{% endif %}
+  </div>
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro chrono_text(s) -%}
+{%- if s -%}{%- set s = s | round | int -%}{{ s // 3600 }}:{{ "%02d" | format(s % 3600 // 60) }}:{{ "%02d" | format(s % 60) }}{%- endif -%}
+{%- endmacro %}
+
+{# Formulaire d'une course suivie : ajout (v vide) ou modification. #}
+{% macro tracked_form(url, gpx_recent, v={}, submit="Suivre cette course") -%}
+<form class="tracked-form" data-tracked data-url="{{ url }}">
+  <div class="filters">
+    <label class="filter">Nom <input name="name" maxlength="120" required value="{{ v.name or '' }}" placeholder="ex. Trail du Vercors"></label>
+    <label class="filter">Date (facultative) <input name="race_date" type="date" value="{{ v.race_date or '' }}"></label>
+    <label class="filter">Objectif (facultatif) <input name="target" inputmode="numeric" value="{{ chrono_text(v.target_s) }}" placeholder="ex. 3:30:00"></label>
+  </div>
+  <div class="filters">
+    <label class="filter">Parcours
+      <select name="source" class="select">
+        {% set known = gpx_recent | map(attribute="id") | list %}
+        {% if v.gpx_id and v.gpx_id not in known %}<option value="{{ v.gpx_id }}" selected>{{ v.route or "GPX" }}</option>{% endif %}
+        {% for g in gpx_recent %}<option value="{{ g.id }}" {% if v.gpx_id == g.id %}selected{% endif %}>GPX : {{ g.name }}</option>{% endfor %}
+        <option value="distance" {% if not v.gpx_id %}selected{% endif %}>Distance et D+</option>
+      </select></label>
+    <span class="tracked-road filters">
+      <label class="filter">Distance (km) <input name="distance_km" inputmode="decimal" value="{{ ('%g' % (v.distance_m / 1000)) | replace('.', ',') if v.distance_m else '' }}"></label>
+      <label class="filter">D+ (m) <input name="gain_m" inputmode="numeric" value="{{ v.gain_m | round | int if v.gain_m else '' }}" placeholder="0"></label>
+    </span>
+  </div>
+  <div class="aid-actions">
+    <button class="btn-primary" type="submit">{{ submit }}</button>
+    <span class="small muted" role="status"></span>
+  </div>
+</form>
+{%- endmacro %}

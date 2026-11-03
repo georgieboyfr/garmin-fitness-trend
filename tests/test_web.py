@@ -229,3 +229,24 @@ def test_estimateur_aid_stations(client, config):
     assert "Ravito du col" not in client.get(f"/estimateur?gpx={gpx_id}").text
     client.cookies.clear()
     assert client.post(url, json=[]).status_code == 401
+
+
+def test_tracked_races_pages(client):
+    body = {"name": "Semi de Grenoble", "distance_km": "21,1", "gain_m": "", "race_date": "2027-03-14",
+            "target_s": 5400}
+    assert client.post("/estimateur/courses", json=body).status_code == 401
+    login(client)
+    assert client.post("/estimateur/courses", json={"name": ""}).status_code == 400
+    r = client.post("/estimateur/courses", json=body)
+    assert r.status_code == 200
+    race_id = r.json()["id"]
+    page = client.get(f"/estimateur/courses/{race_id}")
+    assert page.status_code == 200 and "Semi de Grenoble" in page.text
+    assert "Pas encore de prédiction" in page.text                     # base vide : aucun effort route
+    assert "Semi de Grenoble" in client.get("/estimateur").text
+    r = client.post(f"/estimateur/courses/{race_id}", json={**body, "name": "Semi"})
+    assert r.status_code == 200 and "Semi" in client.get(f"/estimateur/courses/{race_id}").text
+    assert client.post("/estimateur/courses/999", json=body).status_code == 404
+    assert client.get("/estimateur/courses/999").status_code == 404
+    assert client.post(f"/estimateur/courses/{race_id}/supprimer").status_code == 200
+    assert client.get(f"/estimateur/courses/{race_id}").status_code == 404

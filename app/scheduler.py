@@ -4,13 +4,16 @@ Synchro Garmin quotidienne et dossier Strava surveillé, dans le conteneur.
 Toutes les minutes, le planificateur regarde si la synchro du jour est due : synchro
 activée, heure réglée atteinte, pas encore lancée aujourd'hui, compte Garmin
 connecté. Un conteneur redémarré après l'heure prévue rattrape donc la synchro du jour.
+
+Chaque semaine, une fois la synchro du jour faite (ou s'il n'y en a pas), la prédiction de chaque
+course suivie est enregistrée avec la forme du dimanche soir (tracked.py).
 """
 import logging
 import threading
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from . import db, settings, strava
+from . import db, settings, strava, tracked
 
 log = logging.getLogger("scheduler")
 
@@ -40,7 +43,7 @@ class DailyScheduler:
 
     def _loop(self):
         while not self._stop.wait(self.interval_s):
-            for job in (self.scan_strava, self.tick):
+            for job in (self.scan_strava, self.tick, self.weekly):
                 try:
                     job()
                 except Exception:
@@ -82,3 +85,25 @@ class DailyScheduler:
         except Exception:
             pass  # déjà journalisée et enregistrée dans sync_runs
         return True
+
+    def weekly(self, now=None) -> int:
+        """Prédictions de la semaine des courses suivies, une fois par semaine, après la synchro du
+        jour (sinon les sorties du dimanche manqueraient). Retourne le nombre enregistré."""
+        now = now or datetime.now(ZoneInfo(self.config.timezone))
+        week = tracked.week_of(now.date()).isoformat()
+        conn = db.connect(self.config.db_path)
+        try:
+            if settings.get_state(conn, "tracked_last_week") == week or self.sync.running:
+                return 0
+            cfg = settings.get(conn, "garmin_sync")
+            synced = (not cfg["enabled"] or not self.account.is_configured()
+                      or settings.get_state(conn, "garmin_last_auto_day") == now.date().isoformat())
+            if now.hour < cfg["hour"] or not synced:
+                return 0
+            done = tracked.record(self.config, conn, now.date())
+            settings.set_state(conn, "tracked_last_week", week)
+        finally:
+            conn.close()
+        if done:
+            log.info("Courses suivies : %d prédiction(s) de la semaine enregistrée(s)", done)
+        return done

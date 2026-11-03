@@ -16,6 +16,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Estimation trail en temps total : arrêts saisis aux ravitos, sinon part d'arrêt calée sur tes courses trail passées (croît avec le carré de la durée), répartie dans les temps de passage.
 - Précision de l'estimateur trail : rejeu sur chaque course trail confirmée, sa propre trace servant de GPX, avec la forme de la veille ; erreur moyenne et biais face au temps total, part des résultats dans la fourchette, arrêts réels et estimés, écart en mouvement pour diagnostic.
 - Sous chaque estimation (route et GPX) : tes 3 courses confirmées les plus proches en distance et en D+ (temps réel, fitness du jour), et l'effet de la forme (temps estimé avec 5 ou 10 points de fitness de plus ou de moins le jour J, d'après la relation entre ton niveau et ta fitness sur ton historique).
+- Courses suivies, indépendantes du coach (page Estimateur et une page par course) : parcours GPX ou distance avec D+, date et objectif facultatifs ; prédiction enregistrée chaque lundi par le planificateur (forme du dimanche soir), 12 semaines rejouées à l'ajout ; vue d'ensemble avec l'évolution sur 4 semaines ; graphique par course avec la fourchette et l'objectif. Migration `0014_tracked_races`.
 
 ### Modifié
 - Page Estimateur : biais affiché « sans biais » au lieu de « −0,0 % ».

@@ -7,23 +7,32 @@ pas d'appel d'API supplémentaire, et rien à mettre en cache côté navigateur.
 import hashlib
 import json
 import math
-import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from urllib.parse import quote, unquote
 from zoneinfo import ZoneInfo
 
-import numpy as np
-import pyarrow as pa
-import pyarrow.parquet as pq
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from . import __version__, courses, db, detail, estimator, metrics_job, queries, settings, stats, trail
+from . import (
+    __version__,
+    courses,
+    db,
+    detail,
+    estimator,
+    gpx_store,
+    metrics_job,
+    queries,
+    settings,
+    stats,
+    tracked,
+    trail,
+)
 from .auth import SESSION_COOKIE
 from .series import read_series
-from .track_parser import parse_route, parse_waypoints
+from .track_parser import parse_route
 
 TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
@@ -237,12 +246,12 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
     model = estimator.grade_pace_model(acts, today, estimator.MODEL_PERIODS[months_value])
     estimate = estimator.predict_road(efforts, today, km * 1000, gain_m, window_days=window) if km else None
     trail_result, gpx_meta = None, None
-    if GPX_ID.fullmatch(gpx) and (cfg.gpx_dir / f"{gpx}.gpx").exists():
-        gpx_meta = _gpx_meta(cfg, gpx, stations=True)
-        lats, lons, eles = parse_route((cfg.gpx_dir / f"{gpx}.gpx").read_bytes())
+    if gpx_store.exists(cfg, gpx):
+        gpx_meta = gpx_store.meta(cfg, gpx, stations=True)
+        lats, lons, eles, dem_profile = gpx_store.route(cfg, gpx, getattr(request.app.state, "dem", None))
         trail_result = trail.estimate_gpx(lats, lons, eles, acts, efforts, today, window,
                                           estimator.MODEL_PERIODS[months_value],
-                                          _gpx_dem(request, gpx, lats, lons), elevation_params,
+                                          dem_profile, elevation_params,
                                           gpx_meta["aid_stations"], confirmed)
     profile = estimator.current_form(acts, efforts, today, lthr, window)
     slope = estimator.fitness_slope(acts, efforts, today, window)
@@ -269,12 +278,126 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
                       weeks=weeks_value, months=months_value, form_weeks=estimator.FORM_WEEKS,
                       personal_exponent=estimator.personal_exponent(efforts, today),
                       model=model, model_table=estimator.model_table(model) if model else [],
-                      trail=trail_result, gpx=gpx_meta, gpx_recent=_gpx_recent(cfg),
+                      trail=trail_result, gpx=gpx_meta, gpx_recent=gpx_store.recent(cfg),
+                      tracked=_tracked_overview(cfg, today),
                       query={"distance": distance, "gain": gain, "gpx": gpx_meta["id"] if gpx_meta else ""})
     if weeks_chosen or months_chosen:
         response.set_cookie(ESTIMATOR_COOKIE, f"{weeks_value}-{months_value}", max_age=365 * 86400,
                             httponly=True, samesite="lax")
     return response
+
+
+
+def _tracked_overview(cfg, today):
+    conn = db.connect(cfg.db_path)
+    try:
+        return tracked.overview(cfg, conn, today)
+    finally:
+        conn.close()
+
+
+# ---------- courses suivies ----------
+
+def _session_error(request: Request):
+    if not request.app.state.auth.check_session(request.cookies.get(SESSION_COOKIE)):
+        return JSONResponse({"detail": "Session expirée : reconnecte-toi."}, status_code=401)
+    return None
+
+
+async def _tracked_values(request: Request):
+    try:
+        return tracked.clean(request.app.state.config, await request.json()), None
+    except ValueError as e:
+        return None, JSONResponse({"detail": str(e) or "Saisie invalide."}, status_code=400)
+
+
+@router.post("/estimateur/courses")
+async def tracked_create(request: Request):
+    """Ajoute une course suivie et rejoue ses prédictions des 12 dernières semaines."""
+    if (error := _session_error(request)):
+        return error
+    values, error = await _tracked_values(request)
+    if error:
+        return error
+    cfg = request.app.state.config
+    conn = db.connect(cfg.db_path)
+    try:
+        race_id = tracked.create(conn, values)
+        tracked.record(cfg, conn, _today(request), race_ids={race_id}, replay_weeks=tracked.REPLAY_WEEKS,
+                       dem=getattr(request.app.state, "dem", None))
+    finally:
+        conn.close()
+    return {"id": race_id}
+
+
+@router.post("/estimateur/courses/{race_id}")
+async def tracked_update(request: Request, race_id: int):
+    if (error := _session_error(request)):
+        return error
+    values, error = await _tracked_values(request)
+    if error:
+        return error
+    cfg = request.app.state.config
+    conn = db.connect(cfg.db_path)
+    try:
+        if tracked.get(conn, race_id) is None:
+            return JSONResponse({"detail": "Course inconnue."}, status_code=404)
+        if tracked.update(conn, race_id, values):
+            tracked.record(cfg, conn, _today(request), race_ids={race_id}, replay_weeks=tracked.REPLAY_WEEKS,
+                           dem=getattr(request.app.state, "dem", None))
+    finally:
+        conn.close()
+    return {"id": race_id}
+
+
+@router.post("/estimateur/courses/{race_id}/supprimer")
+def tracked_delete(request: Request, race_id: int):
+    if (error := _session_error(request)):
+        return error
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        tracked.delete(conn, race_id)
+    finally:
+        conn.close()
+    return {"deleted": race_id}
+
+
+@router.get("/estimateur/courses/{race_id}")
+def tracked_page(request: Request, race_id: int):
+    if (redirect := _login_redirect(request)):
+        return redirect
+    cfg = request.app.state.config
+    today = _today(request)
+    conn = db.connect(cfg.db_path)
+    try:
+        race = tracked.get(conn, race_id)
+        if race is None:
+            return HTMLResponse(TEMPLATES.get_template("not_found.html").render(
+                version=__version__, nav=[(path, label) for path, label, ready in PAGES if ready], active=""),
+                status_code=404)
+        data = tracked.load_data(cfg, conn)
+        info = tracked.summary(cfg, conn, race, today)
+        preds = tracked.predictions(conn, race_id)
+    finally:
+        conn.close()
+    context = None
+    if info["last"]:
+        acts = data["acts"]
+        distance_m, gain = race["distance_m"], race["gain_m"]
+        if race["gpx_id"] and gpx_store.exists(cfg, race["gpx_id"]):
+            lats, lons, eles, dem_profile = gpx_store.route(cfg, race["gpx_id"])
+            profile = trail.route_profile(lats, lons, eles, dem_profile, data["params"])
+            if profile:
+                distance_m, gain = float(profile["distance"][-1]), profile["gain_m"]
+        before = date.fromisoformat(race["race_date"]) if race["race_date"] else None
+        slope = estimator.fitness_slope(acts, data["efforts"], today)
+        last = info["last"]
+        context = {"nearest": estimator.nearest_races(acts, data["confirmed"], distance_m or 0, gain or 0,
+                                                      before=before),
+                   "scenarios": estimator.form_scenarios(last["realistic_s"], last["fitness"], slope),
+                   "slope": slope, "fitness": last["fitness"]}
+    return render(request, "course_suivie.html", "/estimateur", race=info, predictions=preds,
+                  estimate_context=context, gpx_recent=gpx_store.recent(cfg))
 
 
 def _race_profiles(cfg, acts, confirmed, params) -> list[tuple[dict, dict | None]]:
@@ -297,51 +420,7 @@ def _race_profiles(cfg, acts, confirmed, params) -> list[tuple[dict, dict | None
 
 # ---------- GPX des courses à estimer ----------
 
-GPX_ID = re.compile(r"[0-9a-f]{16}")
 GPX_MAX_BYTES = 20 * 1024 * 1024
-GPX_RECENT = 8
-
-
-def _gpx_meta(cfg, gpx_id: str, stations: bool = False) -> dict:
-    """Nom et date d'import d'un parcours ; avec stations, ses ravitos (enregistrés, sinon proposés
-    d'après les waypoints du GPX)."""
-    path = cfg.gpx_dir / f"{gpx_id}.json"
-    meta = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    out = {"id": gpx_id, "name": meta.get("name") or "Parcours", "uploaded_at": meta.get("uploaded_at")}
-    if stations:
-        if "aid_stations" in meta:
-            out["aid_stations"], out["aid_saved"] = meta["aid_stations"], True
-        else:
-            data = (cfg.gpx_dir / f"{gpx_id}.gpx").read_bytes()
-            lats, lons, _ = parse_route(data)
-            out["aid_stations"] = trail.waypoint_stations(lats, lons, parse_waypoints(data))
-            out["aid_saved"] = False
-    return out
-
-
-def _gpx_dem(request: Request, gpx_id: str, lats, lons) -> dict | None:
-    """Altitudes du MNT le long du parcours, mises en cache à côté du GPX (data/gpx/<id>.dem.parquet) :
-    le MNT n'est interrogé qu'une fois par parcours."""
-    path = request.app.state.config.gpx_dir / f"{gpx_id}.dem.parquet"
-    if path.exists():
-        t = pq.read_table(path)
-        return {"distance": t["distance_m"].to_numpy(), "altitude": t["altitude_m"].to_numpy().astype(float),
-                "source": (t.schema.metadata or {}).get(b"provider", b"").decode()}
-    dem = getattr(request.app.state, "dem", None)
-    profile = trail.dem_altitudes(dem, lats, lons) if dem is not None else None
-    if profile is not None:
-        table = pa.table({"distance_m": profile["distance"],
-                          "altitude_m": profile["altitude"].astype(np.float32)})
-        pq.write_table(table.replace_schema_metadata({"provider": profile["source"]}), path)
-    return profile
-
-
-def _gpx_recent(cfg) -> list[dict]:
-    """Derniers GPX importés, du plus récent au plus ancien."""
-    if not cfg.gpx_dir.exists():
-        return []
-    files = sorted(cfg.gpx_dir.glob("*.gpx"), key=lambda p: p.stat().st_mtime, reverse=True)
-    return [_gpx_meta(cfg, p.stem) for p in files[:GPX_RECENT] if GPX_ID.fullmatch(p.stem)]
 
 
 @router.post("/estimateur/gpx")
@@ -368,7 +447,8 @@ async def upload_gpx(request: Request):
     (cfg.gpx_dir / f"{gpx_id}.json").write_text(json.dumps(
         {"name": name, "uploaded_at": datetime.now(UTC).replace(microsecond=0).isoformat()},
         ensure_ascii=False), encoding="utf-8")
-    _gpx_dem(request, gpx_id, lats, lons)          # altitude du MNT, interrogé une fois
+    # altitude du MNT, interrogé une fois
+    gpx_store.dem_profile(cfg, gpx_id, lats, lons, getattr(request.app.state, "dem", None))
     return {"id": gpx_id}
 
 
@@ -378,7 +458,7 @@ async def save_aid_stations(request: Request, gpx_id: str):
     if not request.app.state.auth.check_session(request.cookies.get(SESSION_COOKIE)):
         return JSONResponse({"detail": "Session expirée : reconnecte-toi."}, status_code=401)
     cfg = request.app.state.config
-    if not GPX_ID.fullmatch(gpx_id) or not (cfg.gpx_dir / f"{gpx_id}.gpx").exists():
+    if not gpx_store.exists(cfg, gpx_id):
         return JSONResponse({"detail": "Parcours inconnu."}, status_code=404)
     try:
         stations = trail.clean_stations(await request.json())
