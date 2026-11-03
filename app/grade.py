@@ -66,3 +66,29 @@ def gap_pace(t_at, profile_distance, altitude) -> float | None:
         moving = (dt > 0) & (dd / dt >= MOVING_MIN_MPS)
     meters = eq[moving].sum()
     return float(dt[moving].sum() / meters * 1000) if meters > 100 else None
+
+
+GRADE_BIN = 0.02           # tranches de pente de 2 % (allure en descente, modèle allure-pente)
+
+
+def grade_bins(t_at, profile_distance, altitude) -> list[list[float]]:
+    """Temps en mouvement (s) et distance (m) par tranche de pente de 2 %, tranches vides omises :
+    [[borne basse de la tranche en %, secondes, mètres], ...]. t_at : temps écoulé (s) à chaque
+    point du profil. Pente lissée sur 50 m et bornée à ±45 %, comme pour la VAP."""
+    d = np.asarray(profile_distance, dtype=float)
+    t_at = np.asarray(t_at, dtype=float)
+    if d.size < 2:
+        return []
+    g = smoothed_grade(d, altitude)
+    step_grade = np.clip((g[1:] + g[:-1]) / 2, -MAX_GRADE, MAX_GRADE - 1e-9)
+    dt = np.diff(t_at)
+    dd = np.diff(d)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        moving = (dt > 0) & (dd / dt >= MOVING_MIN_MPS)
+    idx = np.floor(step_grade / GRADE_BIN + 1e-9).astype(int)
+    out = []
+    for k in np.unique(idx[moving]):
+        sel = moving & (idx == k)
+        out.append([int(round(k * GRADE_BIN * 100)), round(float(dt[sel].sum()), 1),
+                    round(float(dd[sel].sum()), 1)])
+    return out
