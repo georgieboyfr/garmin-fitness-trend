@@ -217,11 +217,26 @@
         + `${Math.abs(e.error_pct).toFixed(1).replace(".", ",")} %)`;
       return tr;
     }));
-    GFT.chart("chart-estimate", (t) => {
+    // deux vues : écart cumulé au temps estimé, ou temps de passage réel et estimés
+    let mode = "gap";
+    const chart = GFT.chart("chart-estimate", (t) => {
       const colors = [t.accent, t.series[2]];
+      const gap = mode === "gap";
+      // graduations rondes en temps de passage : 10 min, 30 min ou 1 h selon la durée
+      const step = data.elapsed_s > 4 * 3600 ? 3600 : data.elapsed_s > 3600 ? 1800 : 600;
+      const xy = (values) => data.km.map((k, i) => [k, values[i]]);
+      const lines = data.estimates.map((e, j) => ({
+        name: e.label, type: "line", symbol: "none", itemStyle: { color: colors[j] },
+        lineStyle: { width: 2, color: colors[j], type: gap ? "solid" : "dashed" }, data: xy(gap ? e.gap : e.times),
+        markLine: !gap || j ? undefined : { symbol: "none", silent: true, data: [{ yAxis: 0 }],
+                                            lineStyle: { color: t.muted, type: "dashed" }, label: { show: false } } }));
+      const real = { name: "Temps réel", type: "line", symbol: "none", itemStyle: { color: t.text },
+                     lineStyle: { width: 3, color: t.text }, data: xy(data.actual),
+                     endLabel: { show: true, color: t.text, formatter: () => GFT.chrono(data.elapsed_s) } };
       return {
-        grid: { left: 8, right: 8, top: 28, bottom: 28, containLabel: true },
-        legend: { top: 0, textStyle: { color: t.muted }, data: data.estimates.map((e) => e.label) },
+        grid: { left: 8, right: gap ? 8 : 64, top: 28, bottom: 28, containLabel: true },
+        legend: { top: 0, textStyle: { color: t.muted },
+                  data: (gap ? [] : ["Temps réel"]).concat(data.estimates.map((e) => e.label)) },
         tooltip: { ...t.tooltip, trigger: "axis", formatter: (ps) => {
           const i = ps[0].dataIndex;
           return `<b>Km ${GFT.num(data.km[i], 1)}</b> · ${GFT.num(data.altitude[i])} m<br>Réel ${GFT.chrono(data.actual[i])}`
@@ -229,21 +244,24 @@
         xAxis: { type: "value", min: 0, max: data.km[data.km.length - 1], ...t.axis,
                  axisLabel: { ...t.axis.axisLabel, formatter: "{value} km", showMaxLabel: false } },
         yAxis: [
-          { type: "value", ...t.axis, axisLabel: { ...t.axis.axisLabel, formatter: (v) => signed(v) } },
+          { type: "value", ...t.axis, interval: gap ? undefined : step,
+            max: gap ? undefined : (v) => Math.ceil(v.max / step) * step,
+            axisLabel: { ...t.axis.axisLabel, formatter: (v) => (gap ? signed(v) : GFT.chrono(v)) } },
           { type: "value", scale: true, show: false },
         ],
         series: [
-          { name: "Altitude", type: "line", yAxisIndex: 1, symbol: "none", silent: true,
-            data: data.km.map((k, i) => [k, data.altitude[i]]), lineStyle: { opacity: 0 },
-            areaStyle: { color: t.grid, opacity: 0.6 } },
-          ...data.estimates.map((e, j) => ({
-            name: e.label, type: "line", symbol: "none", lineStyle: { width: 2, color: colors[j] },
-            itemStyle: { color: colors[j] }, data: data.km.map((k, i) => [k, e.gap[i]]),
-            markLine: j ? undefined : { symbol: "none", silent: true, data: [{ yAxis: 0 }],
-                                        lineStyle: { color: t.muted, type: "dashed" }, label: { show: false } } })),
+          { name: "Altitude", type: "line", yAxisIndex: 1, symbol: "none", silent: true, data: xy(data.altitude),
+            lineStyle: { opacity: 0 }, areaStyle: { color: t.grid, opacity: 0.6 } },
+          ...(gap ? [] : [real]), ...lines,
         ],
       };
     });
+    document.querySelectorAll("[data-estimate-mode]").forEach((b) => b.addEventListener("click", () => {
+      mode = b.dataset.estimateMode;
+      document.querySelectorAll("[data-estimate-mode]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+      document.getElementById("estimate-caption").hidden = mode !== "gap";
+      chart.render();
+    }));
   };
   btn.addEventListener("click", run);
   if (location.hash === "#estime-reel") run();

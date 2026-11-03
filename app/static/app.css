@@ -482,3 +482,8 @@ table.intervals tr.iv-other td { color: var(--muted); }
 .tracked-road { flex: 2 1 280px; }
 .tracked-road[hidden] { display: none; }
 details.tracked-add > summary { cursor: pointer; font-weight: 600; margin: 12px 0 8px; }
+
+/* estimé et réel (fiche de sortie) */
+.segmented { display: inline-flex; gap: 4px; margin: 12px 0 4px; }
+.segmented [aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+

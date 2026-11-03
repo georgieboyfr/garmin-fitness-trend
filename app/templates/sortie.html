@@ -121,8 +121,12 @@
         <tbody id="estimate-rows"></tbody>
       </table>
     </div>
-    <div class="chart chart-tall" id="chart-estimate" role="img" aria-label="Écart cumulé entre le temps réel et le temps estimé le long du parcours"></div>
-    <p class="small muted">Écart cumulé entre ton temps réel et chaque estimation : au-dessus de zéro, en retard sur l'estimé ; en dessous, en avance. Profil d'altitude en fond.</p>
+    <div class="segmented" role="group" aria-label="Vue du graphique">
+      <button type="button" class="btn-ghost" data-estimate-mode="gap" aria-pressed="true">Écart cumulé</button>
+      <button type="button" class="btn-ghost" data-estimate-mode="times" aria-pressed="false">Temps de passage</button>
+    </div>
+    <div class="chart chart-tall" id="chart-estimate" role="img" aria-label="Temps réel et temps estimés le long du parcours"></div>
+    <p class="small muted" id="estimate-caption">Écart cumulé entre ton temps réel et chaque estimation : au-dessus de zéro, en retard sur l'estimé ; en dessous, en avance. Profil d'altitude en fond.</p>
   </div>
 </section>
 {% endif %}
