@@ -98,7 +98,7 @@
 {% set v = validation %}
 <section class="card" id="trail">
   <div class="card-head">
-    <h2>Trail sur GPX {{ tip("Le parcours est découpé tous les 10 m. Chaque portion compte pour sa longueur multipliée par ton facteur allure-pente à cette pente (carte « Allure selon la pente ») : c'est la distance équivalente plat. Le temps vient de ton meilleur effort route récent, extrapolé avec Riegel (exposant 1,06) tant que la course dure moins de 2 h ; au-delà, ton exposant de fatigue prend le relais. Il est calé sur ta courbe allure-durée longue : ta meilleure vitesse équivalente par tranche de durée à partir de 2 h. Les temps de passage supposent une allure régulière, à pente égale, pendant 2 h, puis un ralentissement progressif. Temps en mouvement : les arrêts aux ravitaillements ne sont pas comptés.") }}</h2>
+    <h2>Trail sur GPX {{ tip("Le parcours est découpé tous les 10 m. Chaque portion compte pour sa longueur multipliée par ton facteur allure-pente à cette pente (carte « Allure selon la pente ») : c'est la distance équivalente plat. Le temps vient de ton meilleur effort route récent, extrapolé avec Riegel (exposant 1,06) tant que la course dure moins de 2 h ; au-delà, ton exposant de fatigue prend le relais. Il est calé sur ta courbe allure-durée longue : ta meilleure vitesse équivalente par tranche de durée à partir de 2 h. Tronçons : le profil est approché par une suite de pentes régulières, chacune classée plate (moins de 3 %), douce (moins de 8 %), moyenne ou forte (15 % et plus) ; « vallonné » = pente moyenne faible mais au moins 20 m de montée et 20 m de descente. Les temps de passage supposent une allure régulière, à pente égale, pendant 2 h, puis un ralentissement progressif. Temps en mouvement : les arrêts aux ravitaillements ne sont pas comptés.") }}</h2>
   </div>
   <div class="filters">
     <label class="filter">Parcours (fichier GPX)
@@ -144,7 +144,7 @@
       <tbody>
         {% for sg in t.segments %}
         <tr>
-          <td>{{ loop.index }}. {{ {"up": "Montée", "down": "Descente", "flat": "Plat"}[sg.kind] }}</td>
+          <td>{{ loop.index }}. {{ sg.label }}</td>
           <td class="muted">{{ "%.1f" | format(sg.start_km) | replace(".", ",") }} → {{ "%.1f" | format(sg.end_km) | replace(".", ",") }}</td>
           <td data-num="{{ sg.length_m / 1000 }}" data-dec="1" data-unit="km"></td>
           <td>{% set g = sg.grade_pct | round | int %}{{ ('%+d' % g) | replace('-', '−') if g else "0" }} %</td>

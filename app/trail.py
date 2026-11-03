@@ -15,8 +15,12 @@ Estimateur trail sur un GPX (phase 3, fonctions pures, versionnées).
 4. Temps de passage : allure régulière (à pente égale) pendant les 2 premières heures, puis
    ralentissement progressif proportionnel à t^((k−1)/k), qui prolonge l'exposant de fatigue k
    sans saut d'allure ; la somme retombe exactement sur le temps total.
-5. Tronçons homogènes : la trace est coupée à chaque sommet et à chaque creux (variation d'au moins
-   25 m), soit une alternance de montées et de descentes.
+5. Tronçons homogènes : le profil (un point tous les 50 m) est approché par une suite de pentes
+   régulières, découpage optimal où chaque coupure doit réduire l'écart au profil d'au moins
+   SEGMENT_PENALTY (m²) ; chaque tronçon est classé par sa pente (plat, douce, moyenne, forte), les
+   tronçons voisins de même classe sont fusionnés ; une suite de petites bosses (tronçons de moins
+   de 500 m, pas en forte pente, montées et descentes mêlées) ou un tronçon plat ou doux qui
+   cumule au moins 20 m de montée et 20 m de descente est dit « vallonné ».
 
 Temps en mouvement : les arrêts aux ravitaillements ne sont pas comptés (étape suivante).
 """
@@ -27,7 +31,6 @@ from datetime import date
 import numpy as np
 
 from . import estimator, grade, settings
-from .bests import turning_points
 from .elevation import cumulative_distance, hysteresis_gain_loss, median_filter, resample, resample_positions
 
 TRAIL_VERSION = 1
@@ -35,8 +38,18 @@ STEP_M = 10.0
 MIN_DISTANCE_M = 1000.0
 MIN_ELEVATION_SHARE = 0.5      # au moins la moitié des points avec une altitude
 MIN_DEM_SHARE = 0.9            # le MNT doit couvrir 90 % du parcours pour être retenu
-SEGMENT_DIP_M = 25.0
-FLAT_GRADE_PCT = 3.0           # tronçon « plat » sous 3 % de pente moyenne
+SEGMENT_STEP_M = 50.0          # pas du profil pour le découpage
+SEGMENT_PENALTY = 2000.0       # m² : gain minimal d'une coupure sur l'écart quadratique au profil
+SEGMENT_MIN_POINTS = 3         # tronçon d'au moins 100 m
+SEGMENT_MAX_POINTS = 120       # 6 km au plus avant fusion
+FLAT_GRADE_PCT = 3.0           # « plat » sous 3 % de pente
+GENTLE_GRADE_PCT = 8.0         # « douce » sous 8 %
+STEEP_GRADE_PCT = 15.0         # « forte » à partir de 15 %
+ROLLING_MIN_M = 20.0           # « vallonné » : au moins 20 m de montée et 20 m de descente
+ROLLING_PIECE_M = 500.0        # bosses : tronçons de moins de 500 m
+SEGMENT_LABELS = {"flat": "Plat", "rolling": "Vallonné", "up1": "Montée douce", "up2": "Montée",
+                  "up3": "Forte montée", "down1": "Descente douce", "down2": "Descente",
+                  "down3": "Forte descente"}
 FATIGUE_START_S = 7200.0       # au-delà de 2 h, l'exposant de fatigue prend le relais de Riegel
 FATIGUE_DEFAULT = 1.15
 FATIGUE_BOUNDS = (1.06, 1.35)
@@ -172,24 +185,106 @@ def passage_times(eq_cum, total_s: float, k_fatigue: float) -> np.ndarray:
     return np.where(x <= x1, phase1, phase2)
 
 
+def fit_segments(d, a, penalty=SEGMENT_PENALTY, min_points=SEGMENT_MIN_POINTS,
+                 max_points=SEGMENT_MAX_POINTS) -> list[int]:
+    """Indices des coupures (premier et dernier point compris) du découpage optimal de a(d) en
+    droites : minimise la somme des écarts quadratiques + penalty par tronçon (programmation
+    dynamique, tronçons de min_points à max_points points, qui partagent leurs extrémités)."""
+    d = np.asarray(d, dtype=float)
+    a = np.asarray(a, dtype=float)
+    n = d.size
+    if n <= min_points:
+        return [0, n - 1]
+    pre = [np.concatenate([[0.0], np.cumsum(v)]) for v in (d, a, d * d, d * a, a * a)]
+
+    def sse(b, j):          # écart quadratique de la droite des moindres carrés sur les points b..j
+        sx, sy, sxx, sxy, syy = (p[j + 1] - p[b] for p in pre)
+        m = j - b + 1
+        vx, cxy, vy = sxx - sx * sx / m, sxy - sx * sy / m, syy - sy * sy / m
+        return vy - np.where(vx > 0, cxy * cxy / np.where(vx > 0, vx, 1.0), 0.0)
+
+    cost = np.zeros(n)
+    prev = np.zeros(n, dtype=int)
+    for j in range(1, n):
+        b = np.arange(max(0, j - max_points + 1), max(1, j - min_points + 2))
+        c = cost[b] + sse(b, j) + penalty
+        k = int(np.argmin(c))
+        cost[j], prev[j] = c[k], b[k]
+    cuts, j = [n - 1], n - 1
+    while j > 0:
+        j = int(prev[j])
+        cuts.append(j)
+    return sorted(set(cuts))
+
+
+def _slope_class(grade_pct: float) -> str:
+    g = abs(grade_pct)
+    if g < FLAT_GRADE_PCT:
+        return "flat"
+    side = "up" if grade_pct > 0 else "down"
+    return side + ("1" if g < GENTLE_GRADE_PCT else "3" if g >= STEEP_GRADE_PCT else "2")
+
+
+def _fitted_grade(d, alt, i, j) -> float:
+    """Pente (%) de la droite des moindres carrés entre les points i et j du profil."""
+    x, y = d[i:j + 1], alt[i:j + 1]
+    if x.size < 3 or x[-1] == x[0]:
+        return (y[-1] - y[0]) / (x[-1] - x[0]) * 100 if x[-1] != x[0] else 0.0
+    return float(np.polyfit(x, y, 1)[0] * 100)
+
+
 def segments(profile, times) -> list[dict]:
-    """Tronçons homogènes : montées et descentes entre sommets et creux successifs (D+ et D− de
-    chaque tronçon avec le même seuil d'hystérésis que le total)."""
+    """Tronçons homogènes par pente (plat, douce, moyenne, forte, vallonné), avec D+ et D− (même
+    seuil d'hystérésis que le total), temps, allure et passage."""
     d, alt = profile["distance"], profile["altitude"]
     threshold = profile.get("threshold_m", 0.0)
-    cuts = sorted({0, len(d) - 1, *turning_points(alt, SEGMENT_DIP_M)})
-    out = []
+    every = max(1, int(SEGMENT_STEP_M / STEP_M))
+    coarse = np.unique(np.concatenate([np.arange(0, d.size, every), [d.size - 1]]))
+    cuts = [int(coarse[k]) for k in fit_segments(d[coarse], alt[coarse])]
+    # classe de chaque tronçon, puis fusion des voisins de même classe
+    parts = []
     for i, j in zip(cuts, cuts[1:], strict=False):
-        if j <= i:
-            continue
+        cls = _slope_class(_fitted_grade(d, alt, i, j))
+        if parts and parts[-1][2] == cls:
+            parts[-1][1] = j
+        else:
+            parts.append([i, j, cls])
+    # suites de petites bosses (courtes, pas en forte pente, montées et descentes mêlées) regroupées
+    grouped, k = [], 0
+    while k < len(parts):
+        run = k
+        while (run < len(parts) and d[parts[run][1]] - d[parts[run][0]] < ROLLING_PIECE_M
+               and parts[run][2] not in ("up3", "down3")):
+            run += 1
+        sides = {parts[r][2][:2] for r in range(k, run)}
+        if run - k >= 2 and {"up", "do"} <= sides:
+            grouped.append([parts[k][0], parts[run - 1][1], "bumps"])
+            k = run
+        else:
+            grouped.append(parts[k])
+            k += 1
+    # vallonné : plat, doux ou bosses, avec de vraies montées et descentes ; voisins fusionnés
+    merged = []
+    for i, j, cls in grouped:
+        gain, loss = hysteresis_gain_loss(alt[i:j + 1], threshold)
+        if cls in ("flat", "up1", "down1", "bumps") and min(gain, loss) >= ROLLING_MIN_M:
+            cls = "rolling"
+        elif cls == "bumps":
+            cls = _slope_class(_fitted_grade(d, alt, i, j))
+        if merged and merged[-1][2] == cls == "rolling":
+            merged[-1][1] = j
+        else:
+            merged.append([i, j, cls])
+    out = []
+    for i, j, cls in merged:
         gain, loss = hysteresis_gain_loss(alt[i:j + 1], threshold)
         length = d[j] - d[i]
-        slope = (alt[j] - alt[i]) / length * 100 if length else 0.0
         seconds = times[j] - times[i]
         out.append({"start_km": round(d[i] / 1000, 2), "end_km": round(d[j] / 1000, 2),
                     "length_m": round(length), "gain_m": round(gain), "loss_m": round(loss),
-                    "grade_pct": round(slope, 1),
-                    "kind": "flat" if abs(slope) < FLAT_GRADE_PCT else ("up" if slope > 0 else "down"),
+                    "grade_pct": round(_fitted_grade(d, alt, i, j), 1),
+                    "kind": "rolling" if cls == "rolling" else "flat" if cls == "flat" else cls[:-1],
+                    "label": SEGMENT_LABELS[cls],
                     "time_s": round(seconds), "passage_s": round(times[j]),
                     "pace_s_km": round(seconds / length * 1000, 1) if length else None,
                     "altitude_m": round(float(alt[j]))})

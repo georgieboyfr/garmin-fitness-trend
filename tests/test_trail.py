@@ -85,8 +85,34 @@ def test_segments_split_climbs_and_descents():
     times = d / 3.0
     segs = trail.segments({"distance": d, "altitude": alt}, times)
     assert [s["kind"] for s in segs] == ["up", "down", "flat"]
+    assert [s["label"] for s in segs] == ["Montée", "Descente", "Plat"]
     assert segs[0]["gain_m"] == 200 and segs[1]["loss_m"] == 200 and segs[0]["end_km"] == 2.0
     assert segs[-1]["passage_s"] == 2000 and segs[0]["time_s"] == round(2000 / 3)
+
+
+def test_segments_separate_a_gentle_and_a_steep_climb():
+    d = np.arange(0, 4001, 10.0)
+    alt = np.where(d <= 2000, d * 0.02, 40 + (d - 2000) * 0.2)          # +2 % puis +20 %
+    segs = trail.segments({"distance": d, "altitude": alt}, d / 3.0)
+    assert [(s["label"], s["end_km"]) for s in segs] == [("Plat", 2.0), ("Forte montée", 4.0)]
+    assert segs[1]["grade_pct"] == pytest.approx(20, abs=0.5)
+
+
+def test_segments_rolling_terrain():
+    d = np.arange(0, 4001, 10.0)
+    bumps = 15 * np.sin(d / 1000 * 2 * np.pi * 3)                        # 3 bosses de 30 m sur 4 km
+    segs = trail.segments({"distance": d, "altitude": bumps, "threshold_m": 3.5}, d / 3.0)
+    assert [s["label"] for s in segs] == ["Vallonné"] and segs[0]["gain_m"] >= 60
+    small = 3 * np.sin(d / 100)                                         # ondulations de 6 m : plat
+    assert [s["label"] for s in trail.segments({"distance": d, "altitude": small, "threshold_m": 3.5},
+                                               d / 3.0)] == ["Plat"]
+
+
+def test_fit_segments_finds_slope_changes():
+    d = np.arange(0, 3001, 50.0)
+    a = np.where(d <= 1000, 0.0, np.where(d <= 2000, (d - 1000) * 0.15, 150.0))
+    assert trail.fit_segments(d, a) == [0, 20, 40, 60]
+    assert trail.fit_segments(d[:3], a[:3]) == [0, 2]
 
 
 def test_fatigue_exponent_from_long_runs_or_default():
