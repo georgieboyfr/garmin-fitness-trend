@@ -541,4 +541,12 @@ Audit de l'existant et plan module par module, validés avant la phase 1.
   - résultat sur l'export du 29 octobre 2026 : 670 activités appariées, 179 noms repris (les autres sont les noms génériques de Strava), 14 sorties importées ;
   - le D+ de Strava de chaque sortie est conservé, pour comparaison seulement.
 - **Accès aux pages de statistiques** (décision de Greg, 3 novembre 2026) : protégées par la même connexion que l'admin (session de 30 jours), car elles montrent FC, lieux, noms et descriptions. Une page non connectée renvoie vers la connexion puis revient à la page demandée.
+- **Choix de la phase 2, étapes 2 à 5** (faits en autonomie le 3 novembre 2026, à valider par Greg) :
+  - temps en mouvement : segments à au moins 0,5 m/s (la marche en forte pente compte) ; il colle au temps en mouvement Garmin à 0,5 % près ;
+  - zones de FC de Friel sur la LTHR (Z1 < 85 %, Z2 85–89 %, Z3 90–94 %, Z4 95–99 %, Z5 ≥ 100 %) ;
+  - LTHR estimée = meilleure FC moyenne tenue une heure sur 12 mois : **178** (Trail de côte rouge, 11 juillet 2026, FC moyenne 171 sur 3 h 35), contre 170 dans `.env`. Non appliquée automatiquement ; FC max observée 192 sur 12 mois (199 sur tout l'historique, probablement un artefact) ;
+  - terrain d'une sortie : trail au-delà de 20 m de D+ par km sur l'ensemble de la sortie (pas par segment), sinon route ; tapis à part ;
+  - records : temps écoulé dans la fenêtre (arrêts compris), segments à plus de 7 m/s ignorés (pics GPS), tapis exclus ;
+  - VAM : meilleure montée de plus de 200 m de D+ (descentes de moins de 20 m ignorées), route et trail confondus, à partir de l'altitude retenue pour le D+ ;
+  - limite connue : Copernicus est un modèle de surface (bâtiments compris) : le D+ des 4 sorties en ville à l'étranger est surestimé (Marathon de Madrid : 797 m).
 

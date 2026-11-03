@@ -89,3 +89,10 @@ def test_sorties_page(client, config):
     assert r.status_code == 200 and "Page 2 / 2" in r.text
     r = client.get("/sorties?q=introuvable&year=1999&sort=pirate&order=x")
     assert "Aucune sortie" in r.text
+
+
+def test_performance_page(client):
+    login(client)
+    for q in ("", "?terrain=trail", "?terrain=road&year=2026", "?terrain=x&year=abc"):
+        r = client.get("/performance" + q)
+        assert r.status_code == 200 and "Courbe allure-durée" in r.text

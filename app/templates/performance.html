@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Performance · Fitness Trend{% endblock %}
+
+{% macro tip(text) -%}
+  <button class="tip" type="button" aria-label="Explication" data-tip="{{ text }}">i</button>
+{%- endmacro %}
+
+{% block content %}
+<section class="hero hero-row">
+  <div>
+    <h1>Performance</h1>
+    <p class="muted">Records en fenêtre glissante : ton meilleur 5 km est peut-être au milieu d'un 15 km.</p>
+  </div>
+  <form class="hero-filters" method="get">
+    <nav class="segmented" aria-label="Terrain">
+      <a href="?terrain=road{% if data.year %}&amp;year={{ data.year }}{% endif %}" {% if data.terrain == 'road' %}aria-current="true"{% endif %}>Route</a>
+      <a href="?terrain=trail{% if data.year %}&amp;year={{ data.year }}{% endif %}" {% if data.terrain == 'trail' %}aria-current="true"{% endif %}>Trail</a>
+    </nav>
+    <input type="hidden" name="terrain" value="{{ data.terrain }}">
+    <select name="year" class="select" onchange="this.form.submit()" aria-label="Année">
+      <option value="">Toutes les années</option>
+      {% for y in years %}<option value="{{ y }}" {% if y == data.year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+    </select>
+  </form>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Records {{ 'route' if data.terrain == 'road' else 'trail' }}{% if data.year %} {{ data.year }}{% endif %}
+      {{ tip("Meilleur temps sur chaque distance, n'importe où dans une sortie (temps écoulé, arrêts compris). Les pics GPS sont filtrés. Route et trail sont séparés : une sortie est « trail » au-delà de 20 m de D+ par km. Le tapis n'est pas pris en compte. Clique sur une distance pour voir le top 10.") }}</h2>
+  </div>
+  <div class="records">
+    {% for r in data.records %}
+      <details class="record">
+        <summary>
+          <span class="record-label">{{ r.label }}</span>
+          {% if r.top %}
+            {% set b = r.top[0] %}
+            <span class="record-time" data-chrono="{{ b.time_s }}"></span>
+            <span class="record-pace muted" data-pace="{{ b.pace_s_km }}"></span>
+            <span class="record-where muted"><span data-short-date="{{ b.date }}"></span> · {{ b.name }}</span>
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </summary>
+        {% if r.top | length > 1 %}
+        <ol class="top">
+          {% for e in r.top %}
+            <li><b data-chrono="{{ e.time_s }}"></b> <span class="muted" data-pace="{{ e.pace_s_km }}"></span>
+              <span class="muted"><span data-short-date="{{ e.date }}"></span> · {{ e.name }}</span></li>
+          {% endfor %}
+        </ol>
+        {% endif %}
+      </details>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Meilleur temps par année {{ tip("Le meilleur temps de chaque année sur chaque distance : la progression d'une année sur l'autre.") }}</h2>
+  </div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Année</th>{% for k, label in data.distance_labels.items() %}<th>{{ label }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for row in data.by_year %}
+        <tr><td><span class="year-dot" data-year="{{ row.year }}"></span>{{ row.year }}</td>
+          {% for k in data.distance_labels %}
+            <td {% if row.times[k] %}data-chrono="{{ row.times[k] }}"{% endif %}>{% if not row.times[k] %}—{% endif %}</td>
+          {% endfor %}</tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Courbe allure-durée {{ tip("Meilleure allure tenue sur 1 min, 5 min, 20 min, 1 h et 2 h, par année (plus haut = plus rapide). Elle généralise les records : la gauche montre la vitesse, la droite l'endurance.") }}</h2>
+  </div>
+  <div class="chart" id="chart-curve" role="img" aria-label="Meilleure allure tenue selon la durée, par année"></div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>VAM {{ tip("Vitesse ascensionnelle (mètres de dénivelé par heure) sur la meilleure montée de plus de 200 m de D+, route et trail confondus. L'équivalent trail d'un record de vitesse.") }}</h2>
+  </div>
+  <div class="chart chart-small" id="chart-vam" role="img" aria-label="Meilleure VAM de chaque année"></div>
+  {% if data.top_climbs %}
+  <details class="record record-single">
+    <summary><span class="record-label">Top 10 des montées{% if data.year %} {{ data.year }}{% endif %}</span></summary>
+    <ol class="top">
+      {% for c in data.top_climbs %}
+        <li><b data-num="{{ c.vam }}" data-unit="m/h"></b> <span class="muted">sur <span data-num="{{ c.gain }}" data-unit="m"></span>
+          · <span data-short-date="{{ c.date }}"></span> · {{ c.name }}</span></li>
+      {% endfor %}
+    </ol>
+  </details>
+  {% endif %}
+</section>
+
+<script type="application/json" id="page-data">{{ {"curve": data.curve, "duration_labels": data.duration_labels, "vam": data.vam_by_year} | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/performance.js?v={{ version }}"></script>
+{% endblock %}

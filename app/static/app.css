@@ -265,3 +265,31 @@ table.activities td.col-date { color: var(--muted); }
   .act-desc { max-width: none; }
   .list-card .table-wrap { overflow: visible; }
 }
+
+/* ---------- performance ---------- */
+.hero-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.select {
+  font: inherit; font-size: 14px; color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px;
+}
+.records { display: grid; gap: 0; }
+.record { border-top: 1px solid var(--border); }
+.record:first-child { border-top: 0; }
+.record summary {
+  list-style: none; cursor: pointer; display: grid; align-items: baseline; gap: 4px 14px; padding: 10px 2px;
+  grid-template-columns: 90px 100px 80px 1fr;
+}
+.record summary::-webkit-details-marker { display: none; }
+.record summary:hover { background: var(--surface-2); }
+.record-label { font-weight: 650; }
+.record-time { font-weight: 700; font-size: 17px; }
+.record-where { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top { margin: 0 0 12px; padding-left: 30px; font-size: 14px; display: grid; gap: 4px; }
+.chart-small { height: 240px; }
+@media (max-width: 640px) {
+  .record summary { grid-template-columns: 70px 1fr auto; }
+  .record-where { grid-column: 1 / -1; white-space: normal; }
+}
+.record-single summary { display: block; }
+.record-single summary::before { content: "▸ "; color: var(--muted); }
+.record-single[open] summary::before { content: "▾ "; }

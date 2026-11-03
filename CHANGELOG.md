@@ -10,6 +10,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Admin : carte « Physiologie » avec la LTHR estimée (meilleure FC moyenne tenue une heure sur 12 mois) à côté de la valeur réglée, et la FC max observée.
 - Page Volume et régularité : filtre route / trail, semaines actives, série en cours et plus longue série de semaines consécutives, D+ par km ; cumul jour par jour de toutes les années (distance, D+ ou km-effort) ; totaux, km-effort et D+ par km par année ; distance ou D+ par mois ; calendrier en heatmap par année.
 - Page Sorties : liste paginée (25 par page) avec nom, description Strava, terrain, distance, D+, temps en mouvement, allure, FC moyenne et charge ; recherche dans le nom et la description, filtres par année et terrain, tri par colonne ; une carte par sortie sur mobile.
+- Page Performance : records en fenêtre glissante sur 1, 3, 5, 10 km, semi et marathon (route et trail séparés, top 10, filtre par année, pics GPS filtrés), meilleur temps par année, courbe allure-durée par année (1 min à 2 h), VAM sur les montées de plus de 200 m (meilleure par année, top 10).
 
 ### Modifié
 - Le cookie de session couvre tout le site (et plus seulement `/admin`) ; après connexion, retour à la page demandée.

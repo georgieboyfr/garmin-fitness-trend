@@ -29,3 +29,19 @@ def running_activities(conn) -> list[dict]:
         d["gain_m"] = d["gain_m"] or 0.0
         out.append(d)
     return out
+
+
+def best_efforts(conn) -> list[dict]:
+    """Meilleurs efforts de chaque sortie de course (activity_bests), avec la sortie et son terrain."""
+    types = tuple(RUNNING_TYPES)
+    rows = conn.execute(
+        "SELECT b.kind, b.key, b.value, b.extra, a.id, a.start_time_local, n.name, m.terrain"
+        " FROM activity_bests b"
+        " JOIN activities a ON a.id = b.activity_id"
+        " JOIN activity_names n ON n.activity_id = a.id"
+        " JOIN activity_metrics m ON m.activity_id = a.id"
+        f" WHERE a.deleted_in_garmin = 0 AND a.activity_type IN ({','.join('?' * len(types))})",
+        types,
+    ).fetchall()
+    return [dict(r) | {"year": int(r["start_time_local"][:4]), "date": r["start_time_local"][:10]}
+            for r in rows]

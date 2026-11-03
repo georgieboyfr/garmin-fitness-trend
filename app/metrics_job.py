@@ -4,19 +4,29 @@ Calcul et stockage des métriques des sorties de course à pied (voir metrics.py
 Une sortie est (re)calculée si elle n'a pas encore de métriques, si METRICS_VERSION a
 changé, ou si les paramètres physiologiques du .env (FC repos, FC max, LTHR, sexe) ne
 sont plus ceux utilisés. Le D+ doit être calculé avant (classement route ou trail).
+
+Les meilleurs efforts (bests.py) sont calculés dans la même passe, sauf sur tapis (distance
+de l'accéléromètre, peu fiable) ; la VAM utilise l'altitude retenue pour le D+ (baromètre
+ou profil MNT).
 """
 import json
 import logging
 from collections import Counter
 from datetime import UTC, date, datetime, timedelta
 
-from .metrics import activity_metrics
+import numpy as np
+import pyarrow.parquet as pq
+
+from .bests import activity_bests
+from .elevation import median_filter, resample, series_distance
+from .elevation_job import dem_profile_path
+from .metrics import _seconds, activity_metrics
 from .series import read_series
 from .sports import RUNNING_TYPES
 
 log = logging.getLogger("metrics")
 
-METRICS_VERSION = 1
+METRICS_VERSION = 2   # 2 : meilleurs efforts (bests.py)
 
 
 def _now_iso() -> str:
@@ -53,15 +63,18 @@ def compute_pending(config, conn, progress=None) -> Counter:
     p = params_of(config)
     key = _key(p)
     gains = dict(conn.execute("SELECT activity_id, gain_m FROM activity_elevation").fetchall())
+    sources = dict(conn.execute("SELECT activity_id, source FROM activity_elevation").fetchall())
     log.info("Métriques de %d sortie(s)", len(ids))
     for index, activity_id in enumerate(ids, 1):
         if progress:
             progress("métriques des sorties", index, len(ids), str(activity_id))
         try:
             table = read_series(config.series_dir, activity_id,
-                                ["timestamp", "distance_m", "lat", "lon", "heart_rate"])
+                                ["timestamp", "distance_m", "lat", "lon", "heart_rate", "altitude_m"])
             m = activity_metrics(table, gains.get(activity_id),
                                  p["hr_rest"], p["hr_max"], p["lthr"], p["sex"])
+            bests = [] if m["terrain"] == "indoor" else _bests(config, activity_id, table,
+                                                               sources.get(activity_id))
         except Exception as e:
             log.warning("Métriques de %s en erreur : %s", activity_id, e)
             counts["metrics_errors"] += 1
@@ -84,9 +97,34 @@ def compute_pending(config, conn, progress=None) -> Counter:
                  *m["zones_s"], m["hr_best_20min"], m["hr_best_30min"], m["hr_best_60min"], m["terrain"],
                  METRICS_VERSION, key, _now_iso()),
             )
+            conn.execute("DELETE FROM activity_bests WHERE activity_id=?", (activity_id,))
+            conn.executemany(
+                "INSERT INTO activity_bests (activity_id, kind, key, value, start_s, extra)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                [(activity_id, b["kind"], b["key"], b["value"], b["start_s"], b["extra"]) for b in bests],
+            )
         counts["metrics"] += 1
     log.info("Métriques calculées pour %d sortie(s)", counts["metrics"])
     return counts
+
+
+def _altitude_profile(config, activity_id, table, source):
+    """(distance, altitude) filtrée à pas de 10 m : baromètre, ou profil MNT en cache."""
+    if source == "barometer":
+        alt = table.column("altitude_m").to_numpy(zero_copy_only=False).astype(float)
+        dist, alt = resample(series_distance(table), alt, 10.0)
+    elif source == "dem" and dem_profile_path(config, activity_id).exists():
+        prof = pq.read_table(dem_profile_path(config, activity_id))
+        dist, alt = resample(prof["distance_m"].to_numpy(), prof["altitude_m"].to_numpy().astype(float), 10.0)
+    else:
+        return None, None
+    return (dist, median_filter(alt, 3)) if alt.size > 1 else (None, None)
+
+
+def _bests(config, activity_id, table, source):
+    t = _seconds(table.column("timestamp").to_numpy(zero_copy_only=False))
+    dist, alt = _altitude_profile(config, activity_id, table, source)
+    return activity_bests(t, np.asarray(series_distance(table)), dist, alt)
 
 
 def lthr_estimate(conn, today: date, days=365) -> dict:

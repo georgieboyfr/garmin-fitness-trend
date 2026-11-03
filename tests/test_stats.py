@@ -133,3 +133,27 @@ def test_activity_list_sort_and_missing_values_last():
     pace = stats.activity_list(acts, sort="pace", order="asc")["rows"]
     assert pace[0]["pace_s_km"] <= pace[1]["pace_s_km"]                   # les plus rapides d'abord
     assert stats.activity_list(acts, sort="nimporte")["rows"][0]["date"].startswith("2025-12")
+
+
+# ---------- performance ----------
+
+def eff(kind, key, value, year, terrain="road", extra=None, name="x"):
+    return {"kind": kind, "key": key, "value": value, "extra": extra, "id": 1, "year": year,
+            "date": f"{year}-05-01", "name": name, "terrain": terrain}
+
+
+def test_performance():
+    efforts = [eff("distance", 5000, 1300, 2025), eff("distance", 5000, 1250, 2026, name="record"),
+               eff("distance", 5000, 1200, 2026, terrain="trail"),
+               eff("duration", 1200, 4500, 2025), eff("duration", 1200, 4800, 2026),
+               eff("climb", 0, 900, 2025, terrain="trail", extra=250), eff("climb", 0, 800, 2026, extra=300)]
+    p = stats.performance(efforts, "road")
+    five = [r for r in p["records"] if r["key"] == 5000][0]
+    assert [e["time_s"] for e in five["top"]] == [1250, 1300]      # le trail est à part
+    assert five["top"][0]["pace_s_km"] == 250 and five["top"][0]["name"] == "record"
+    assert p["by_year"][0]["year"] == 2026 and p["by_year"][0]["times"]["5000"] == 1250
+    assert p["by_year"][0]["times"]["10000"] is None
+    assert p["curve"]["2026"][2] == pytest.approx(250)              # 1200 s pour 4,8 km
+    assert [v["vam"] for v in p["vam_by_year"]] == [900, 800]       # VAM : route et trail confondus
+    assert stats.performance(efforts, "road", year=2025)["records"][2]["top"][0]["time_s"] == 1300
+    assert stats.performance(efforts, "trail")["records"][2]["top"][0]["time_s"] == 1200

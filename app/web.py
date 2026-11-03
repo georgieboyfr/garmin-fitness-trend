@@ -23,7 +23,7 @@ PAGES = [
     ("/", "Accueil", True),
     ("/volume", "Volume", True),
     ("/sorties", "Sorties", True),
-    ("/performance", "Performance", False),
+    ("/performance", "Performance", True),
     ("/forme", "Forme", False),
     ("/courses", "Courses", False),
 ]
@@ -97,4 +97,20 @@ def sorties(request: Request, page: int = 1, year: str = "", terrain: str = "all
     filters = {"year": year_value or "", "terrain": terrain, "sort": sort, "order": order, "q": q}
     return render(request, "sorties.html", "/sorties", data=data, years=years, filters=filters,
                   terrains=stats.TERRAINS)
+
+
+@router.get("/performance")
+def performance(request: Request, terrain: str = "road", year: str = ""):
+    if (redirect := _login_redirect(request)):
+        return redirect
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        efforts = queries.best_efforts(conn)
+    finally:
+        conn.close()
+    terrain = terrain if terrain in ("road", "trail") else "road"
+    years = sorted({e["year"] for e in efforts}, reverse=True)
+    year_value = int(year) if year.isdigit() and int(year) in years else None
+    return render(request, "performance.html", "/performance",
+                  data=stats.performance(efforts, terrain, year_value), years=years)
 

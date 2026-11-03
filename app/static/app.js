@@ -13,6 +13,12 @@ const GFT = (() => {
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
     return h ? `${h} h ${String(m).padStart(2, "0")}` : `${m} min ${String(s % 60).padStart(2, "0")}`;
   };
+  // temps de course au format chronomètre : 44:57, 1:37:08
+  const chrono = (sec) => {
+    const s = Math.round(sec), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+    const ss = String(s % 60).padStart(2, "0");
+    return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+  };
   const pace = (sPerKm) => {
     const s = Math.round(sPerKm);
     return `${Math.floor(s / 60)}'${String(s % 60).padStart(2, "0")}" /km`;
@@ -33,6 +39,7 @@ const GFT = (() => {
     root.querySelectorAll("[data-duration]").forEach((el) => { el.textContent = duration(el.dataset.duration); });
     root.querySelectorAll("[data-date]").forEach((el) => { el.textContent = dateLong(el.dataset.date); });
     root.querySelectorAll("[data-pace]").forEach((el) => { el.textContent = pace(el.dataset.pace); });
+    root.querySelectorAll("[data-chrono]").forEach((el) => { el.textContent = chrono(el.dataset.chrono); });
     root.querySelectorAll("[data-datetime]").forEach((el) => {
       const d = new Date(el.dataset.datetime);
       el.textContent = d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
@@ -143,5 +150,5 @@ const GFT = (() => {
     btn?.addEventListener("click", () => setTheme(THEMES[(THEMES.indexOf(currentTheme()) + 1) % THEMES.length]));
   });
 
-  return { num, duration, pace, dateLong, dayLabel, isMonthStart, monthLabel, formatPage, chart, palette };
+  return { num, duration, chrono, pace, dateLong, dayLabel, isMonthStart, monthLabel, formatPage, chart, palette };
 })();

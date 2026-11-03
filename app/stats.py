@@ -239,3 +239,66 @@ def activity_list(acts, year=None, terrain="all", sort="date", order="desc", pag
             "source": a["source"],
         } for a in chunk],
     }
+
+
+# ---------- performance ----------
+
+DISTANCE_LABELS = {1000: "1 km", 3000: "3 km", 5000: "5 km", 10000: "10 km", 21097.5: "Semi",
+                   42195: "Marathon"}
+DURATION_LABELS = {60: "1 min", 300: "5 min", 1200: "20 min", 3600: "1 h", 7200: "2 h"}
+TOP = 10
+
+
+def performance(efforts, terrain: str = "road", year: int | None = None) -> dict:
+    """Records en fenêtre glissante (route ou trail), courbe allure-durée par année, VAM."""
+    efforts = [e for e in efforts if e["terrain"] == terrain or (e["kind"] == "climb")]
+    in_year = [e for e in efforts if year is None or e["year"] == year]
+    years = sorted({e["year"] for e in efforts})
+
+    records = []
+    for key, label in DISTANCE_LABELS.items():
+        rows = sorted((e for e in in_year
+                       if e["kind"] == "distance" and e["key"] == key and e["terrain"] == terrain),
+                      key=lambda e: e["value"])[:TOP]
+        records.append({"key": key, "label": label, "top": [{
+            "time_s": e["value"], "pace_s_km": e["value"] / (key / 1000), "date": e["date"],
+            "name": e["name"], "activity_id": e["id"]} for e in rows]})
+
+    # meilleur temps de chaque année pour chaque distance
+    by_year = {}
+    for e in efforts:
+        if e["kind"] == "distance" and e["terrain"] == terrain:
+            cell = by_year.setdefault(e["year"], {})
+            if e["key"] not in cell or e["value"] < cell[e["key"]]:
+                cell[e["key"]] = e["value"]
+
+    # courbe allure-durée : meilleure allure tenue (s/km) sur chaque durée, par année
+    curve = {}
+    for e in efforts:
+        if e["kind"] == "duration" and e["terrain"] == terrain and e["value"] > 0:
+            pace = e["key"] / (e["value"] / 1000)
+            cell = curve.setdefault(str(e["year"]), {})
+            if e["key"] not in cell or pace < cell[e["key"]]:
+                cell[e["key"]] = round(pace, 1)
+
+    climbs = [e for e in efforts if e["kind"] == "climb"]
+    vam_years = {}
+    for e in climbs:
+        if e["year"] not in vam_years or e["value"] > vam_years[e["year"]]["vam"]:
+            vam_years[e["year"]] = {"vam": round(e["value"]), "gain": round(e["extra"] or 0),
+                                    "date": e["date"], "name": e["name"]}
+    top_climbs = sorted((e for e in climbs if year is None or e["year"] == year),
+                        key=lambda e: -e["value"])[:TOP]
+
+    return {
+        "terrain": terrain, "year": year, "years": years,
+        "records": records,
+        "by_year": [{"year": y, "times": {str(k): by_year.get(y, {}).get(k) for k in DISTANCE_LABELS}}
+                    for y in sorted(by_year, reverse=True)],
+        "distance_labels": {str(k): v for k, v in DISTANCE_LABELS.items()},
+        "curve": {y: [curve[y].get(k) for k in DURATION_LABELS] for y in sorted(curve)},
+        "duration_labels": list(DURATION_LABELS.values()),
+        "vam_by_year": [{"year": y, **vam_years[y]} for y in sorted(vam_years)],
+        "top_climbs": [{"vam": round(e["value"]), "gain": round(e["extra"] or 0), "date": e["date"],
+                        "name": e["name"]} for e in top_climbs],
+    }
