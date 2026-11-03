@@ -143,7 +143,8 @@ def test_dem_altitudes_replace_noisy_gpx_elevation():
     pts = [(la, lo, 0.0 + rng.normal(0, 4)) for la, lo, _ in line(5)]       # GPX plat mais bruité
     lats, lons, eles = parse_route(gpx(pts))
     noisy = trail.route_profile(lats, lons, eles)
-    assert noisy["source"] == "gpx" and noisy["gain_m"] < 100               # bruit filtré par le seuil
+    raw = np.diff(eles)
+    assert noisy["source"] == "gpx" and noisy["gain_m"] < raw[raw > 0].sum() / 3  # bruit filtré
     dem = trail.dem_altitudes(FakeDem(), lats, lons)
     p = trail.route_profile(lats, lons, eles, dem)
     assert p["source"] == "ign" and p["gain_m"] == pytest.approx(500, abs=10)
