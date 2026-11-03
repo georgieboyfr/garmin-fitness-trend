@@ -10,6 +10,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Estimateur route : formule de Riegel à exposant personnel (calé sur la frontière des meilleurs efforts route des 2 dernières années), niveau tiré des meilleurs efforts route des 12 dernières semaines, fourchette optimiste / réaliste / prudent et allure cible ; saisie d'une distance et d'un D+ facultatif, tableau 5 km, 10 km, semi, marathon.
 - Précision de l'estimateur route : rejeu sur chaque course route confirmée avec la forme de la veille, erreur moyenne, biais, part des résultats dans la fourchette, comparaison avec l'exposant personnel.
 - Modèle allure-pente personnel (page Estimateur) : facteur de temps selon la pente, de −45 à +45 %, calé sur les sorties des 12 derniers mois (vitesse sur chaque pente rapportée à celle du plat de la même sortie), comparé à la formule de Minetti ; graphique et tableau avec l'allure et la vitesse verticale correspondantes.
+- Page Estimateur : période de la forme actuelle (6, 8, 10 ou 12 semaines, aussi utilisée par l'estimateur route et sa validation) et période du modèle allure-pente (6 mois, 12 mois, 2 ans ou tout l'historique) réglables, choix mémorisés dans un cookie.
 
 ### Modifié
 - Estimateur route : exposant standard de Riegel (1,06) au lieu de l'exposant personnel, qui se trompait davantage sur les courses passées (8,4 % d'erreur moyenne contre 4,4 %) ; l'exposant personnel reste affiché pour comparaison.

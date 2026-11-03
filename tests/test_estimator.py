@@ -231,3 +231,26 @@ def test_model_table_paces_from_flat_pace():
     assert rows[0]["vertical_mh"] is None
     assert rows[10]["pace_s_km"] == pytest.approx(300 * estimator.grade_factor(model, 10), abs=0.1)
     assert rows[10]["vertical_mh"] == round(100 / rows[10]["pace_s_km"] * 3600)
+
+
+# ---------- périodes réglables ----------
+
+def test_form_window_is_configurable():
+    acts = [act("2026-08-12", km=8), act("2026-10-01", km=12)]
+    efforts = [eff("distance", 5000, 1500, "2026-08-20"), eff("distance", 5000, 1600, "2026-10-01")]
+    p = estimator.current_form(acts, efforts, DAY, lthr=170, window_days=42)
+    assert p["window_days"] == 42 and p["start"] == "2026-09-23" and p["runs"] == 1
+    assert p["road"]["distances"][0]["time_s"] == 1600
+    assert estimator.predict_road(efforts, DAY, 5000, window_days=42)["reference"]["time_s"] == 1600
+    assert estimator.predict_road(efforts, DAY, 5000)["reference"]["time_s"] == 1500
+    assert estimator.road_table(efforts, DAY, 42)[0]["window_days"] == 42
+
+
+def test_grade_pace_model_period_and_whole_history():
+    factors = {10: 1.4}
+    acts = [hilly(day, 3.0, factors) for day in ("2023-05-01", "2024-05-01", "2025-05-01", "2026-09-01")]
+    assert estimator.grade_pace_model(acts, DAY, 182) is None                  # une seule sortie
+    m = estimator.grade_pace_model(acts, DAY, None)
+    assert m["activities"] == 4 and m["start"] == "2023-05-01"
+    assert estimator.grade_pace_model(acts, DAY, 730) is None                  # deux sorties seulement
+    assert estimator.grade_pace_model(acts, DAY, 1100)["activities"] == 3

@@ -1,7 +1,8 @@
 """
 Estimateur de course (phase 3, fonctions pures, versionnées).
 
-Forme actuelle : profil calculé sur les 12 dernières semaines au soir du jour donné (les sorties
+Forme actuelle : profil calculé sur les 6 à 12 dernières semaines (12 par défaut, réglable sur la
+page) au soir du jour donné (les sorties
 de ce jour comprises), pour pouvoir être rejoué à n'importe quelle date (validation sur les
 courses passées avec la forme de la veille) :
 
@@ -16,7 +17,7 @@ courses passées avec la forme de la veille) :
 Route : formule de Riegel, T2 = T1 × (D2 / D1)^k, avec l'exposant standard k = 1,06 (choix de
 Greg après la validation : l'exposant personnel, calé sur la frontière des meilleurs efforts route
 des 2 dernières années, donnait 8,4 % d'erreur contre 4,4 % ; il reste calculé pour comparaison).
-Le niveau vient des meilleurs efforts route des 12 dernières semaines : chacun est extrapolé à la
+Le niveau vient des meilleurs efforts route de la même période que la forme : chacun est extrapolé à la
 distance visée et l'estimation la plus rapide est retenue (un effort d'entraînement n'est pas
 toujours à fond).
 Le D+ éventuel est converti en distance équivalente sur le plat (coût de Minetti d'une montée à
@@ -35,7 +36,8 @@ from . import grade, stats
 
 PROFILE_VERSION = 1
 ESTIMATE_VERSION = 2           # 2 : exposant standard au lieu de l'exposant personnel
-WINDOW_DAYS = 84               # 12 semaines
+WINDOW_DAYS = 84               # 12 semaines, par défaut
+FORM_WEEKS = (6, 8, 10, 12)    # fenêtres de la forme actuelle proposées sur la page
 EF_REFERENCE_DAYS = 365
 
 DURATION_LABELS = stats.DURATION_LABELS
@@ -56,7 +58,7 @@ EXPONENT_DAYS = 730
 EXPONENT_MIN_RATIO = 3.0       # la frontière doit couvrir au moins un rapport 3 entre distances
 MIN_REF_DISTANCE_M = 3000      # en dessous, effort trop court (part anaérobie)
 MIN_REF_DURATION_S = 1200
-FALLBACK_WINDOW_DAYS = 182     # aucune référence route en 12 semaines : on remonte à 6 mois
+FALLBACK_WINDOW_DAYS = 182     # aucune référence route sur la période : on remonte à 6 mois
 BASE_SPREAD = 0.02             # fourchette : ±2 %, plus 3 % par facteur e entre les distances
 EXPONENT_SPREAD = 0.03
 CLIMB_GRADE = 0.05
@@ -141,9 +143,9 @@ def _daily_load(acts) -> dict:
     return daily
 
 
-def current_form(acts, efforts, day: date, lthr: float) -> dict:
-    """Profil de forme au soir de `day`, sur les 12 semaines qui se terminent ce jour-là."""
-    start = day - timedelta(days=WINDOW_DAYS - 1)
+def current_form(acts, efforts, day: date, lthr: float, window_days: int = WINDOW_DAYS) -> dict:
+    """Profil de forme au soir de `day`, sur les `window_days` jours qui se terminent ce jour-là."""
+    start = day - timedelta(days=window_days - 1)
     recent = [a for a in acts if start <= a["start"].date() <= day]
     recent_efforts = [e for e in efforts if _in_window(e["date"], start, day)]
 
@@ -167,7 +169,7 @@ def current_form(acts, efforts, day: date, lthr: float) -> dict:
 
     return {
         "version": PROFILE_VERSION,
-        "day": day.isoformat(), "start": start.isoformat(), "window_days": WINDOW_DAYS,
+        "day": day.isoformat(), "start": start.isoformat(), "window_days": window_days,
         "runs": len(recent),
         "distance_km": round(sum(a["distance_km"] for a in recent), 1),
         "hours": round(sum(a["moving_duration_s"] or 0 for a in recent) / 3600, 1),
@@ -230,11 +232,12 @@ def equivalent_distance(distance_m: float, gain_m: float = 0.0) -> float:
     return distance_m + max(0.0, gain_m) * CLIMB_EQUIVALENT
 
 
-def predict_road(efforts, day: date, distance_m: float, gain_m: float = 0.0, exponent: dict | None = None):
+def predict_road(efforts, day: date, distance_m: float, gain_m: float = 0.0, exponent: dict | None = None,
+                 window_days: int = WINDOW_DAYS):
     """Temps estimé sur route « si je courais au soir de `day` », avec sa fourchette, ou None
     faute d'effort route récent."""
     exponent = exponent or STANDARD_EXPONENT
-    window = WINDOW_DAYS
+    window = window_days
     refs = road_points(efforts, day - timedelta(days=window - 1), day)
     if not refs:
         window = FALLBACK_WINDOW_DAYS
@@ -257,15 +260,15 @@ def predict_road(efforts, day: date, distance_m: float, gain_m: float = 0.0, exp
         **{f"{k_}_pace_s_km": round(v / distance_m * 1000, 1) for k_, v in times.items()},
         "spread_pct": round(spread * 100, 1),
         "reference": best, "references": refs,
-        "exponent": exponent, "window_days": window, "fallback": window != WINDOW_DAYS,
+        "exponent": exponent, "window_days": window, "fallback": window != window_days,
     }
 
 
-def road_table(efforts, day: date) -> list[dict]:
+def road_table(efforts, day: date, window_days: int = WINDOW_DAYS) -> list[dict]:
     """Estimations sur les distances usuelles (5 km, 10 km, semi, marathon)."""
     out = []
     for d in STANDARD_DISTANCES_M:
-        p = predict_road(efforts, day, d)
+        p = predict_road(efforts, day, d, window_days=window_days)
         if p:
             out.append({"label": DISTANCE_LABELS[d], **p})
     return out
@@ -281,7 +284,7 @@ def _error_summary(rows, key) -> dict | None:
             "bias_pct": round(sum(errors) / len(errors), 1)}
 
 
-def validate_road(acts, efforts, confirmed_ids) -> dict:
+def validate_road(acts, efforts, confirmed_ids, window_days: int = WINDOW_DAYS) -> dict:
     """Estimateur route rejoué sur chaque course route confirmée, avec la forme de la veille :
     écart entre le temps estimé (réaliste) et le temps réel (écoulé), en %, positif quand
     l'estimation est trop lente. Comparé à l'exposant personnel."""
@@ -291,9 +294,9 @@ def validate_road(acts, efforts, confirmed_ids) -> dict:
             continue
         actual = a.get("elapsed_s") or a["duration_s"]
         day = a["start"].date() - timedelta(days=1)
-        used = predict_road(efforts, day, a["distance_m"], a["gain_m"])
+        used = predict_road(efforts, day, a["distance_m"], a["gain_m"], window_days=window_days)
         personal = predict_road(efforts, day, a["distance_m"], a["gain_m"],
-                                exponent=personal_exponent(efforts, day))
+                                exponent=personal_exponent(efforts, day), window_days=window_days)
         row = {"activity_id": a["id"], "date": a["start"].date().isoformat(), "name": a["name"],
                "distance_km": round(a["distance_km"], 1), "gain_m": round(a["gain_m"]),
                "actual_s": round(actual), "estimate": None, "error_pct": None, "within": None,
@@ -326,7 +329,8 @@ def validate_road(acts, efforts, confirmed_ids) -> dict:
 # Au-delà des tranches mesurées, le facteur de la dernière tranche est conservé.
 
 MODEL_VERSION = 1
-MODEL_DAYS = 365
+MODEL_DAYS = 365               # par défaut ; None = tout l'historique
+MODEL_PERIODS = {6: 182, 12: 365, 24: 730, 0: None}      # mois proposés sur la page → jours
 MODEL_FLAT_MIN_S = 300         # plat d'au moins 5 min dans la sortie pour servir de référence
 MODEL_BIN_MIN_S = 60           # tranche d'au moins 1 min dans la sortie
 MODEL_BIN_MAX_WEIGHT_S = 600
@@ -335,9 +339,10 @@ FLAT_BINS = (-2, 0)
 MODEL_TABLE_GRADES = (-30, -20, -10, -5, 0, 5, 10, 20, 30)
 
 
-def grade_pace_model(acts, day: date) -> dict | None:
-    """Modèle allure-pente personnel sur les 12 mois qui se terminent au soir de `day`, ou None."""
-    start = day - timedelta(days=MODEL_DAYS - 1)
+def grade_pace_model(acts, day: date, days: int | None = MODEL_DAYS) -> dict | None:
+    """Modèle allure-pente personnel sur les `days` jours qui se terminent au soir de `day` (tout
+    l'historique si None), ou None."""
+    start = day - timedelta(days=days - 1) if days else min((a["start"].date() for a in acts), default=day)
     sums = {}                       # tranche → [somme pondérée des log-facteurs, poids, sorties, secondes]
     flat_s = flat_m = 0.0
     used = 0

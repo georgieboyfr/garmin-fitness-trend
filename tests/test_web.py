@@ -164,3 +164,14 @@ def test_estimateur_page(client):
         r = client.get("/estimateur" + q)
         assert r.status_code == 200 and "Forme actuelle" in r.text
     assert 'href="/estimateur"' in client.get("/").text
+
+
+def test_estimateur_periods_are_remembered(client):
+    login(client)
+    r = client.get("/estimateur?weeks=6&months=24")
+    assert r.status_code == 200 and r.cookies.get("estimateur") == "6-24"
+    assert '<option value="6" selected>6 semaines' in r.text
+    r = client.get("/estimateur")
+    assert '<option value="24" selected>2 ans' in r.text
+    r = client.get("/estimateur?weeks=5&months=7")                     # valeurs refusées : dernier choix
+    assert '<option value="6" selected>6 semaines' in r.text

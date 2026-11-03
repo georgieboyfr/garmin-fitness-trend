@@ -11,16 +11,33 @@
 
 {% block content %}
 {% set p = profile %}
-<section class="hero">
-  <h1>Estimateur</h1>
-  <p class="muted">Ton temps de course « si tu courais maintenant », à partir de ta forme des 12 dernières semaines.</p>
+{% set month_labels = {6: "6 mois", 12: "12 mois", 24: "2 ans", 0: "tout l'historique"} %}
+<section class="hero hero-row">
+  <div>
+    <h1>Estimateur</h1>
+    <p class="muted">Ton temps de course « si tu courais maintenant », à partir de ta forme des {{ weeks }} dernières semaines.</p>
+  </div>
+  <form class="hero-filters" method="get">
+    {% if query.distance %}<input type="hidden" name="distance" value="{{ query.distance }}">{% endif %}
+    {% if query.gain %}<input type="hidden" name="gain" value="{{ query.gain }}">{% endif %}
+    <label class="small muted">Forme sur
+      <select name="weeks" class="select" onchange="this.form.submit()" aria-label="Période de la forme actuelle">
+        {% for w in form_weeks %}<option value="{{ w }}" {% if w == weeks %}selected{% endif %}>{{ w }} semaines</option>{% endfor %}
+      </select></label>
+    <label class="small muted">Pentes sur
+      <select name="months" class="select" onchange="this.form.submit()" aria-label="Période du modèle allure-pente">
+        {% for m, label in month_labels.items() %}<option value="{{ m }}" {% if m == months %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select></label>
+    <noscript><button class="btn-ghost" type="submit">Appliquer</button></noscript>
+  </form>
 </section>
 
 <section class="card">
   <div class="card-head">
-    <h2>Route {{ tip("Formule de Riegel : temps visé = temps de référence × (distance visée / distance de référence) puissance k. L'exposant k vaut 1,06, la valeur standard : plus il est élevé, plus on ralentit quand la distance s'allonge. Ton exposant personnel, calé sur tes meilleurs efforts route, est plus élevé mais se trompait davantage sur tes courses passées. Chacun de tes meilleurs efforts route des 12 dernières semaines (3 km et plus, 20 min et plus) est extrapolé à la distance visée : l'estimation la plus rapide est retenue, car un effort d'entraînement n'est pas toujours à fond. La fourchette s'élargit quand la distance visée s'éloigne de la distance de référence.") }}</h2>
+    <h2>Route {{ tip("Formule de Riegel : temps visé = temps de référence × (distance visée / distance de référence) puissance k. L'exposant k vaut 1,06, la valeur standard : plus il est élevé, plus on ralentit quand la distance s'allonge. Ton exposant personnel, calé sur tes meilleurs efforts route, est plus élevé mais se trompait davantage sur tes courses passées. Chacun de tes meilleurs efforts route des {{ weeks }} dernières semaines (3 km et plus, 20 min et plus) est extrapolé à la distance visée : l'estimation la plus rapide est retenue, car un effort d'entraînement n'est pas toujours à fond. La fourchette s'élargit quand la distance visée s'éloigne de la distance de référence.") }}</h2>
   </div>
   <form class="filters" method="get">
+    <input type="hidden" name="weeks" value="{{ weeks }}"><input type="hidden" name="months" value="{{ months }}">
     <label class="filter">Distance (km)
       <input name="distance" inputmode="decimal" value="{{ query.distance }}" placeholder="ex. 15" required>
     </label>
@@ -47,7 +64,7 @@
     {{ ('%g' % (e.distance_m / 1000)) | replace('.', ',') }} km
     {% if e.gain_m %} avec <span data-num="{{ e.gain_m }}" data-unit="m"></span> de D+, soit <span data-num="{{ e.equivalent_m / 1000 }}" data-dec="1" data-unit="km"></span> sur le plat {{ tip("Chaque mètre de D+ compte comme environ 6 m de plat en plus (coût énergétique de Minetti pour une montée à 5 %) ; la descente est comptée comme du plat. Approximation grossière en attendant ton modèle allure-pente personnel.") }}{% endif %}
     · calé sur ton meilleur {{ e.reference.label }} récent ({% if e.reference.kind == "distance" %}<span data-chrono="{{ e.reference.time_s }}"></span>{% else %}<span data-num="{{ e.reference.distance_m / 1000 }}" data-dec="2" data-unit="km"></span>{% endif %}, {{ effort_link(e.reference) }})
-    {% if e.fallback %}· aucun effort route en 12 semaines : références des 6 derniers mois{% endif %}
+    {% if e.fallback %}· aucun effort route en {{ weeks }} semaines : références des 6 derniers mois{% endif %}
   </p>
   {% elif query.distance %}
   <p class="muted">Pas d'estimation possible : aucun effort route de 3 km ou plus sur les 6 derniers mois, ou distance invalide.</p>
@@ -139,7 +156,7 @@
 
 <section class="card" id="pente">
   <div class="card-head">
-    <h2>Allure selon la pente {{ tip("Ton modèle allure-pente personnel, calé sur tes sorties des 12 derniers mois : dans chaque sortie, ta vitesse sur chaque pente (tranches de 2 %, pente lissée sur 50 m) est comparée à ta vitesse sur le plat de la même sortie, ce qui neutralise l'intensité (footing ou séance). Facteur 2 = deux fois plus de temps que sur le plat pour la même distance. Ce n'est pas un effort strictement égal : c'est ta façon habituelle de courir les pentes, marche en forte montée et retenue en descente comprises. La courbe pointillée est la formule de Minetti (coût énergétique, base de la VAP) : elle suppose que l'on dévale les descentes, d'où l'écart en descente raide.") }}</h2>
+    <h2>Allure selon la pente {{ tip("Ton modèle allure-pente personnel, calé sur tes sorties de la période choisie en haut de page ({{ month_labels[months] }}) : dans chaque sortie, ta vitesse sur chaque pente (tranches de 2 %, pente lissée sur 50 m) est comparée à ta vitesse sur le plat de la même sortie, ce qui neutralise l'intensité (footing ou séance). Facteur 2 = deux fois plus de temps que sur le plat pour la même distance. Ce n'est pas un effort strictement égal : c'est ta façon habituelle de courir les pentes, marche en forte montée et retenue en descente comprises. La courbe pointillée est la formule de Minetti (coût énergétique, base de la VAP) : elle suppose que l'on dévale les descentes, d'où l'écart en descente raide.") }}</h2>
   </div>
   {% if model %}
   <p class="small muted">{{ model.activities }} sorties du <span data-short-date="{{ model.start }}"></span> au <span data-short-date="{{ model.day }}"></span> ·
@@ -163,7 +180,7 @@
     </table>
   </div>
   {% else %}
-  <p class="muted">Pas assez de sorties avec un profil d'altitude sur les 12 derniers mois.</p>
+  <p class="muted">Pas assez de sorties avec un profil d'altitude sur la période ({{ month_labels[months] }}).</p>
   {% endif %}
 </section>
 

@@ -193,8 +193,19 @@ def courses_page(request: Request):
     return render(request, "courses.html", "/courses", data=data, pending=pending)
 
 
+ESTIMATOR_COOKIE = "estimateur"
+
+
+def _choice(value: str, cookie: str, allowed, default: int) -> tuple[int, bool]:
+    """Réglage choisi dans la page, sinon le dernier choix (cookie), sinon la valeur par défaut ;
+    et s'il vient d'être choisi."""
+    if value.isdigit() and int(value) in allowed:
+        return int(value), True
+    return (int(cookie) if cookie.isdigit() and int(cookie) in allowed else default), False
+
+
 @router.get("/estimateur")
-def estimateur(request: Request, distance: str = "", gain: str = ""):
+def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str = "", months: str = ""):
     if (redirect := _login_redirect(request)):
         return redirect
     cfg = request.app.state.config
@@ -207,13 +218,23 @@ def estimateur(request: Request, distance: str = "", gain: str = ""):
     finally:
         conn.close()
     today = _today(request)
+    # périodes de la forme (semaines) et du modèle allure-pente (mois), mémorisées dans un cookie
+    saved = request.cookies.get(ESTIMATOR_COOKIE, "").split("-") + ["", ""]
+    weeks_value, weeks_chosen = _choice(weeks, saved[0], estimator.FORM_WEEKS, estimator.WINDOW_DAYS // 7)
+    months_value, months_chosen = _choice(months, saved[1], estimator.MODEL_PERIODS, 12)
+    window = weeks_value * 7
     km, gain_m = _number(distance), _number(gain) or 0.0
-    model = estimator.grade_pace_model(acts, today)
-    estimate = estimator.predict_road(efforts, today, km * 1000, gain_m) if km else None
-    return render(request, "estimateur.html", "/estimateur",
-                  profile=estimator.current_form(acts, efforts, today, lthr),
-                  table=estimator.road_table(efforts, today), estimate=estimate,
-                  validation=estimator.validate_road(acts, efforts, confirmed),
-                  personal_exponent=estimator.personal_exponent(efforts, today),
-                  model=model, model_table=estimator.model_table(model) if model else [],
-                  query={"distance": distance, "gain": gain})
+    model = estimator.grade_pace_model(acts, today, estimator.MODEL_PERIODS[months_value])
+    estimate = estimator.predict_road(efforts, today, km * 1000, gain_m, window_days=window) if km else None
+    response = render(request, "estimateur.html", "/estimateur",
+                      profile=estimator.current_form(acts, efforts, today, lthr, window),
+                      table=estimator.road_table(efforts, today, window), estimate=estimate,
+                      validation=estimator.validate_road(acts, efforts, confirmed, window),
+                      weeks=weeks_value, months=months_value, form_weeks=estimator.FORM_WEEKS,
+                      personal_exponent=estimator.personal_exponent(efforts, today),
+                      model=model, model_table=estimator.model_table(model) if model else [],
+                      query={"distance": distance, "gain": gain})
+    if weeks_chosen or months_chosen:
+        response.set_cookie(ESTIMATOR_COOKIE, f"{weeks_value}-{months_value}", max_age=365 * 86400,
+                            httponly=True, samesite="lax")
+    return response
