@@ -48,8 +48,9 @@ def test_home():
     h = stats.home(ACTS, date(2026, 11, 3))
     assert h["last"]["name"] == "Bastille" and h["last"]["gain_m"] == 700
     assert h["first_year"] == 2025
-    assert len(h["cumulative"]["current"]) == 307            # 1er janv. -> 3 nov.
-    assert len(h["cumulative"]["previous"]) == 365
-    assert h["cumulative"]["previous"][-1] == 30
+    assert list(h["cumulative"]) == ["2025", "2026"]
+    assert len(h["cumulative"]["2026"]) == 307               # 1er janv. -> 3 nov.
+    assert len(h["cumulative"]["2025"]) == 365
+    assert h["cumulative"]["2025"][-1] == 30
     assert h["week"]["count"] == 1                           # lundi 2 nov. -> mardi 3 nov.
     assert stats.home([], date(2026, 11, 3))["last"] is None

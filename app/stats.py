@@ -64,6 +64,13 @@ def cumulative_by_day(acts, year: int, metric: str, until: date | None = None) -
     return out
 
 
+def cumulative_all_years(acts, today: date, metric: str) -> dict[str, list[float]]:
+    """Cumul jour par jour de chaque année (l'année en cours jusqu'à aujourd'hui)."""
+    years = sorted({a["start"].year for a in acts} | {today.year})
+    return {str(y): cumulative_by_day(acts, y, metric, until=today if y == today.year else None)
+            for y in years}
+
+
 def home(acts, today: date) -> dict:
     last = acts[-1] if acts else None
     monday = today - timedelta(days=today.weekday())
@@ -76,11 +83,6 @@ def home(acts, today: date) -> dict:
             "distance_km": round(last["distance_km"], 2), "gain_m": round(last["gain_m"]),
             "moving_s": last["moving_duration_s"] or last["duration_s"],
         },
-        "cumulative": {
-            "current": cumulative_by_day(acts, today.year, "distance_km", until=today),
-            "previous": cumulative_by_day(acts, today.year - 1, "distance_km"),
-            "previous_to_date": len(cumulative_by_day(acts, today.year - 1, "distance_km",
-                                                      until=same_day_last_year(today))),
-        },
+        "cumulative": cumulative_all_years(acts, today, "distance_km"),
         "week": totals([a for a in acts if monday <= a["start"].date() <= today]),
     }

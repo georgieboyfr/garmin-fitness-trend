@@ -83,8 +83,11 @@ const GFT = (() => {
     const t = {
       text: css("--text"), muted: css("--muted"), grid: css("--grid"), surface: css("--surface"),
       border: css("--border"), accent: css("--accent"), accentSoft: css("--accent-soft"),
-      series: [css("--accent"), css("--series-2"), css("--series-3"), css("--series-4"), css("--series-5")],
+      series: [css("--accent"), css("--series-2"), css("--series-3"), css("--series-4"), css("--series-5"),
+               css("--series-6"), css("--series-7"), css("--series-8")],
     };
+    // une couleur fixe par année, la même sur toutes les pages (2026 = couleur d'accent)
+    t.year = (y) => t.series[(((Number(y) - 2026) % 8) + 8) % 8];
     t.axis = {
       axisLine: { lineStyle: { color: t.border } },
       axisTick: { show: false },

@@ -43,9 +43,9 @@
 
 <section class="card">
   <div class="card-head">
-    <h2>Distance cumulée {{ tip("Cumul jour par jour depuis le 1er janvier. Un total annuel ne se compare qu'en fin d'année ; la courbe dit dès maintenant si tu es en avance ou en retard sur l'an dernier.") }}</h2>
+    <h2>Distance cumulée {{ tip("Cumul jour par jour depuis le 1er janvier, une courbe par année. Un total annuel ne se compare qu'en fin d'année ; la courbe dit dès maintenant si tu es en avance ou en retard. Clique sur une année de la légende pour la masquer ou l'afficher.") }}</h2>
   </div>
-  <div class="chart" id="chart-cumul" role="img" aria-label="Distance cumulée de l'année comparée à l'année précédente"></div>
+  <div class="chart" id="chart-cumul" role="img" aria-label="Distance cumulée de chaque année, jour par jour"></div>
 </section>
 
 <section class="grid-2">
@@ -80,16 +80,20 @@
 {% block scripts %}
 <script>
   (() => {
-    const c = JSON.parse(document.getElementById("page-data").textContent);
+    const cumul = JSON.parse(document.getElementById("page-data").textContent);
     const year = {{ data.ytd.year }};
-    const days = Array.from({ length: c.previous.length || 365 }, (_, i) => i);
+    const years = Object.keys(cumul).sort();
+    const days = Array.from({ length: 366 }, (_, i) => i);
     GFT.chart("chart-cumul", (t) => ({
-      grid: { left: 8, right: 16, top: 36, bottom: 8, containLabel: true },
-      legend: { top: 0, left: 0, textStyle: { color: t.muted } },
+      grid: { left: 8, right: 16, top: 40, bottom: 8, containLabel: true },
+      legend: { top: 0, left: 0, type: "scroll", textStyle: { color: t.muted },
+                pageTextStyle: { color: t.muted }, itemWidth: 18 },
       tooltip: {
         trigger: "axis", ...t.tooltip,
-        formatter: (ps) => `${GFT.dayLabel(year, ps[0].dataIndex)}<br>` + ps.map((p) =>
-          `${p.marker} ${p.seriesName} : <b>${GFT.num(p.value, 0)} km</b>`).join("<br>"),
+        formatter: (ps) => `${GFT.dayLabel(year, ps[0].dataIndex)}<br>` + ps
+          .filter((p) => p.value != null)
+          .sort((a, b) => b.value - a.value)
+          .map((p) => `${p.marker} ${p.seriesName} : <b>${GFT.num(p.value, 0)} km</b>`).join("<br>"),
       },
       xAxis: {
         type: "category", data: days, boundaryGap: false, ...t.axis,
@@ -97,13 +101,16 @@
                      formatter: (i) => GFT.monthLabel(year, Number(i)) },
       },
       yAxis: { type: "value", ...t.axis, axisLabel: { ...t.axis.axisLabel, formatter: (v) => `${GFT.num(v)} km` } },
-      series: [
-        { name: String(year - 1), type: "line", data: c.previous, showSymbol: false,
-          lineStyle: { width: 2, color: t.series[1] }, itemStyle: { color: t.series[1] } },
-        { name: String(year), type: "line", data: c.current, showSymbol: false,
-          lineStyle: { width: 3, color: t.accent }, itemStyle: { color: t.accent },
-          areaStyle: { color: t.accentSoft } },
-      ],
+      series: years.map((y) => {
+        const current = Number(y) === year;
+        return {
+          name: y, type: "line", data: cumul[y], showSymbol: false, z: current ? 10 : 2,
+          lineStyle: { width: current ? 3 : 1.6, color: t.year(y), opacity: current ? 1 : 0.85 },
+          itemStyle: { color: t.year(y) },
+          emphasis: { focus: "series" },
+          ...(current ? { areaStyle: { color: t.accentSoft } } : {}),
+        };
+      }),
     }));
   })();
 </script>
