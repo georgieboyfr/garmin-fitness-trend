@@ -98,6 +98,7 @@ def race_page(config, conn, today: date) -> dict:
             "form_zone": stats.form_zone(p["form"])[1] if p else None,
             "form_week_before": round(before["form"], 1) if before else None,
             "faster_than_usual_pct": round((1 - pace / usual) * 100, 1) if usual and pace else None,
+            "usual_pace_s_km": round(usual) if usual else None,
         })
     out.sort(key=lambda r: r["date"], reverse=True)
     return {"races": out}

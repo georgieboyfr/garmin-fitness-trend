@@ -46,7 +46,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
     - [x] a. Liste des sorties : sans « vs parcours », curseurs min–max de distance et de D+ (bornes de l'historique), nombre de sorties par page au choix (50 par défaut, mémorisé), pagination en haut et en bas avec la position, lisibilité
     - [x] b. Fiche de sortie : bloc « vs parcours » en bas, dernier km affiché « (682 m) », EF et découplage expliqués, zoom de la carte à la molette
     - [x] c. Performance : records dépliés réorganisés avec la FC moyenne, meilleurs temps par année cliquables (sortie) et année cliquable (top 10 de l'année), top 10 des montées sur 100, 200, 500 m, 1 km de D+
-    - [ ] d. Forme, Courses, Volume : couleur des jauges selon l'état, périmètre du découplage indiqué (sorties plates d'au moins 1 h), info-bulle « vs habituel », bouton « aujourd'hui » sur les cumuls
+    - [x] d. Forme, Courses, Volume : couleur des jauges selon l'état, périmètre du découplage indiqué (sorties plates d'au moins 1 h), info-bulle « vs habituel », bouton « aujourd'hui » sur les cumuls
     - [ ] e. VAP (allure ajustée à la pente, min/km) sur les sorties trail (méthode à valider avec Greg)
     - [ ] f. Indicateur de forme du jour sur la fiche de sortie : vitesse et FC face à l'attendu, en tenant compte des intervalles et du dénivelé (méthode à valider avec Greg)
   - [ ] 9. Vérification ordinateur et mobile, v0.2.0 (tag, CHANGELOG, image construite par la CI, mise à jour du Synology)

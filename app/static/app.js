@@ -154,5 +154,23 @@ const GFT = (() => {
     btn?.addEventListener("click", () => setTheme(THEMES[(THEMES.indexOf(currentTheme()) + 1) % THEMES.length]));
   });
 
-  return { num, duration, chrono, pace, dateLong, dayLabel, isMonthStart, monthLabel, formatPage, chart, palette };
+  // ---------- cumuls jour par jour : repère et bouton « aujourd'hui » ----------
+  const dayOfYear = (d) => Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())
+                                       - Date.UTC(d.getFullYear(), 0, 1)) / 86400000);
+  // ligne verticale au jour courant, à ajouter à la série de l'année en cours
+  const todayLine = (t, index) => ({
+    symbol: "none", silent: true, animation: false,
+    lineStyle: { color: t.muted, type: "dashed", width: 1 },
+    label: { formatter: "aujourd'hui", color: t.muted, fontSize: 11, position: "insideEndTop" },
+    data: [{ xAxis: index }],
+  });
+  // le bouton affiche l'info-bulle de toutes les années au jour courant
+  function todayButton(id, c, index, seriesIndex) {
+    document.getElementById(id)?.addEventListener("click", () => {
+      c?.instance.dispatchAction({ type: "showTip", seriesIndex: seriesIndex(), dataIndex: index });
+    });
+  }
+
+  return { num, duration, chrono, pace, dateLong, dayLabel, isMonthStart, monthLabel, formatPage, chart, palette,
+           dayOfYear, todayLine, todayButton };
 })();

@@ -21,6 +21,8 @@
 
   // ---------- cumul jour par jour ----------
   let cumulMetric = "distance_km";
+  const todayIndex = GFT.dayOfYear(today);
+  const cumulYears = () => Object.keys(D.cumulative[cumulMetric]).sort();
   const cumulChart = GFT.chart("chart-cumul", (t) => {
     const data = D.cumulative[cumulMetric];
     const unit = UNITS[cumulMetric];
@@ -46,11 +48,12 @@
           name: y, type: "line", data: data[y], showSymbol: false, z: current ? 10 : 2,
           lineStyle: { width: current ? 3 : 1.6, color: t.year(y) }, itemStyle: { color: t.year(y) },
           emphasis: { focus: "series" },
-          ...(current ? { areaStyle: { color: t.accentSoft } } : {}),
+          ...(current ? { areaStyle: { color: t.accentSoft }, markLine: GFT.todayLine(t, todayIndex) } : {}),
         };
       }),
     };
   });
+  GFT.todayButton("cumul-today", cumulChart, todayIndex, () => Math.max(0, cumulYears().indexOf(String(year))));
   segmented("cumul-metric", (d) => { cumulMetric = d.metric; cumulChart.render(); });
 
   // ---------- par année ----------

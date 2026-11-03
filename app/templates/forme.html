@@ -12,14 +12,29 @@
   <p class="muted">Charge d'entraînement (HRSS) et progression aérobie, sans avoir besoin de courses.</p>
 </section>
 
-{% macro gauge(c, value) -%}
+{# état d'un indicateur : good (vert), warn (jaune), bad (rouge) #}
+{% macro gauge(c, value, state, bands=none) -%}
   {%- set span = (c.max - c.min) or 1 -%}
   {%- set pos = ((value - c.min) / span * 100) | round(1) -%}
   <div class="gauge" aria-hidden="true">
-    {% if c.p25_12m is not none %}<span class="gauge-band" style="left: {{ ((c.p25_12m - c.min) / span * 100) | round(1) }}%; width: {{ ((c.p75_12m - c.p25_12m) / span * 100) | round(1) }}%"></span>{% endif %}
+    {% if bands %}
+      {% for low, high, band in bands %}
+        {%- set l = [0, [(([low, c.min] | max) - c.min) / span * 100, 100] | min] | max -%}
+        {%- set r = [0, [(([high, c.max] | min) - c.min) / span * 100, 100] | min] | max -%}
+        {% if r > l %}<span class="gauge-zone zone-{{ band }}" style="left: {{ l | round(1) }}%; width: {{ (r - l) | round(1) }}%"></span>{% endif %}
+      {% endfor %}
+    {% elif c.p25_12m is not none %}<span class="gauge-band" style="left: {{ ((c.p25_12m - c.min) / span * 100) | round(1) }}%; width: {{ ((c.p75_12m - c.p25_12m) / span * 100) | round(1) }}%"></span>{% endif %}
     <span class="gauge-mark" style="left: {{ [0, [pos, 100] | min] | max }}%"></span>
   </div>
   <div class="gauge-ends muted"><span data-num="{{ c.min }}"></span><span data-num="{{ c.max }}"></span></div>
+{%- endmacro %}
+
+{# position par rapport à la plage habituelle des 12 derniers mois #}
+{% macro usual(c, value) -%}
+  {%- if c.p25_12m is none -%}none
+  {%- elif value < c.p25_12m -%}below
+  {%- elif value > c.p75_12m -%}above
+  {%- else -%}within{%- endif -%}
 {%- endmacro %}
 
 {% macro context(c, value, label_max="record") -%}
@@ -32,27 +47,36 @@
 {%- endmacro %}
 
 {% set c = data.context %}
+{% set fit_pos = usual(c.fitness, t.fitness) %}
+{% set fit_state = "warn" if fit_pos == "below" else "good" %}
+{% set fat_pos = usual(c.fatigue, t.fatigue) %}
+{% set fat_state = "warn" if fat_pos == "above" else "good" %}
+{% set form_state = {"overload": "bad", "optimal": "good", "neutral": "warn", "fresh": "good", "transition": "warn"}[t.zone] %}
+{% set ramp_state = "bad" if t.ramp > 8 else ("warn" if t.ramp > 5 or t.ramp < -3 else "good") %}
+{% set position_label = {"below": "Sous ta plage habituelle", "within": "Dans ta plage habituelle", "above": "Au-dessus de ta plage habituelle", "none": ""} %}
 <section class="kpis kpis-context">
-  <article class="kpi">
-    <header>Fitness {{ tip("Charge chronique : moyenne de ta charge quotidienne (HRSS) sur environ 6 semaines (constante de 42 jours). Elle monte lentement quand tu t'entraînes régulièrement. La jauge va de ton plus bas à ton plus haut niveau historique ; la zone grisée est ta plage habituelle des 12 derniers mois.") }}</header>
+  <article class="kpi state-{{ fit_state }}">
+    <header>Fitness {{ tip("Charge chronique : moyenne de ta charge quotidienne (HRSS) sur environ 6 semaines (constante de 42 jours). Elle monte lentement quand tu t'entraînes régulièrement. La jauge va de ton plus bas à ton plus haut niveau historique ; la zone grisée est ta plage habituelle des 12 derniers mois. Couleur : vert dans ou au-dessus de cette plage, jaune en dessous.") }}</header>
     <div class="kpi-value" data-num="{{ t.fitness }}"></div>
-    {{ gauge(c.fitness, t.fitness) }}
+    <p class="kpi-zone">{{ position_label[fit_pos] }}</p>
+    {{ gauge(c.fitness, t.fitness, fit_state) }}
     {{ context(c.fitness, t.fitness) }}
   </article>
-  <article class="kpi">
-    <header>Fatigue {{ tip("Charge aiguë : moyenne de ta charge sur environ une semaine (constante de 7 jours). Elle monte vite après une grosse semaine et redescend vite au repos.") }}</header>
+  <article class="kpi state-{{ fat_state }}">
+    <header>Fatigue {{ tip("Charge aiguë : moyenne de ta charge sur environ une semaine (constante de 7 jours). Elle monte vite après une grosse semaine et redescend vite au repos. Couleur : jaune au-dessus de ta plage habituelle des 12 derniers mois, vert sinon.") }}</header>
     <div class="kpi-value" data-num="{{ t.fatigue }}"></div>
-    {{ gauge(c.fatigue, t.fatigue) }}
+    <p class="kpi-zone">{{ position_label[fat_pos] }}{% if fat_pos == "above" %} : pense à récupérer{% endif %}</p>
+    {{ gauge(c.fatigue, t.fatigue, fat_state) }}
     {{ context(c.fatigue, t.fatigue, "maximum") }}
   </article>
-  <article class="kpi form-{{ t.zone }}">
-    <header>Forme {{ tip("Fitness − fatigue de la veille. Négative : tu accumules de la charge (normal à l'entraînement). Positive : tu es frais, c'est le moment de courir vite. Repères : au-dessus de +5 frais, de −10 à −30 entraînement productif, sous −30 surcharge.") }}</header>
+  <article class="kpi state-{{ form_state }}">
+    <header>Forme {{ tip("Fitness − fatigue de la veille. Négative : tu accumules de la charge (normal à l'entraînement). Positive : tu es frais, c'est le moment de courir vite. Repères : au-dessus de +5 frais, de −10 à −30 entraînement productif, sous −30 surcharge. Sur la jauge : vert pour les zones favorables (entraînement productif, frais), jaune pour neutre ou très frais (la forme se perd), rouge pour la surcharge.") }}</header>
     <div class="kpi-value">{{ '+' if t.form > 0 }}<span data-num="{{ t.form }}"></span></div>
     <p class="kpi-zone">{{ t.zone_label }}</p>
-    {{ gauge(c.form, t.form) }}
+    {{ gauge(c.form, t.form, form_state, [(-1000, -30, "bad"), (-30, -10, "good"), (-10, 5, "warn"), (5, 25, "good"), (25, 1000, "warn")]) }}
     {{ context(c.form, t.form, "plus frais") }}
   </article>
-  <article class="kpi {{ 'ramp-high' if t.ramp > 8 else ('ramp-warn' if t.ramp > 5 else '') }}">
+  <article class="kpi state-{{ ramp_state }}">
     <header>Montée sur 7 jours {{ tip("Variation de la fitness sur la dernière semaine. Au-delà de +5 à +8 points par semaine, le risque de blessure augmente.") }}</header>
     <div class="kpi-value">{{ '+' if t.ramp > 0 }}<span data-num="{{ t.ramp }}" data-dec="1"></span></div>
     <p class="kpi-zone">{% if t.ramp > 8 %}Trop rapide : risque de blessure{% elif t.ramp > 5 %}Soutenue : à surveiller{% elif t.ramp < -3 %}En baisse : récupération ou coupure{% else %}Raisonnable{% endif %}</p>
@@ -98,8 +122,8 @@
 
 <section class="card">
   <div class="card-head">
-    <h2>Découplage cardiaque {{ tip("Sur les sorties de plus d'une heure sur le plat : perte d'efficacité entre la première et la seconde moitié (la FC dérive pour la même vitesse). Sous 5 %, ta base d'endurance tient sur cette durée.") }}</h2>
-    <span class="muted small">{{ data.decoupling | length }} sorties de plus d'une heure</span>
+    <h2>Découplage cardiaque {{ tip("Perte d'efficacité entre la première et la seconde moitié de la sortie (la FC dérive pour la même vitesse). Sous 5 %, ta base d'endurance tient sur cette durée. Calculé seulement sur les sorties d'au moins une heure en mouvement sur route plate (moins de 10 m de D+ par km) : en trail ou sur un parcours vallonné, la pente fausse le rapport entre allure et FC.") }}</h2>
+    <span class="muted small">{{ data.decoupling | length }} sorties sur route plate d'au moins une heure</span>
   </div>
   <div class="chart" id="chart-decoupling" role="img" aria-label="Découplage cardiaque des sorties de plus d'une heure"></div>
 </section>

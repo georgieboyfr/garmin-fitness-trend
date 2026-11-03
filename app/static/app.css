@@ -17,6 +17,7 @@
   --series-8: #868e96;
   --up: #2b8a3e;
   --down: #c92a2a;
+  --warn: #d99a00;
   --grid: #e9ecef;
   --radius: 14px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
@@ -43,6 +44,7 @@
     --series-8: #adb5bd;
     --up: #51cf66;
     --down: #ff8787;
+    --warn: #ffd43b;
     --grid: #232933;
     --shadow: none;
     color-scheme: dark;
@@ -68,6 +70,7 @@
   --series-8: #adb5bd;
   --up: #51cf66;
   --down: #ff8787;
+  --warn: #ffd43b;
   --grid: #232933;
   --shadow: none;
   color-scheme: dark;
@@ -191,6 +194,11 @@ h2 { font-size: 16px; display: flex; align-items: center; gap: 6px; }
 .kpi-unit { font-size: 15px; font-weight: 500; color: var(--muted); margin-left: 2px; }
 
 /* ---------- boutons segmentés ---------- */
+.btn-ghost {
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--accent); background: none; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 9px; padding: 4px 10px;
+}
+.btn-ghost:hover { background: var(--accent-soft); }
 .segmented {
   display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px;
   background: var(--surface-2); border: 1px solid var(--border); max-width: 100%; overflow-x: auto;
@@ -360,11 +368,12 @@ table.data tr.is-selected td { background: var(--accent-soft); }
 /* ---------- forme ---------- */
 .chart-tall { height: 440px; }
 @media (max-width: 640px) { .chart-tall { height: 380px; } }
-.form-fresh .kpi-value, .form-transition .kpi-value { color: var(--up); }
-.form-overload .kpi-value { color: var(--down); }
-.form-optimal .kpi-value { color: var(--series-2); }
-.ramp-warn .kpi-value { color: var(--series-5); }
-.ramp-high .kpi-value { color: var(--down); }
+/* état d'un indicateur : vert favorable, jaune à surveiller, rouge défavorable */
+.state-good { --state: var(--up); }
+.state-warn { --state: var(--warn); }
+.state-bad { --state: var(--down); }
+.kpis-context .kpi[class*="state-"] { border-top: 3px solid var(--state); }
+.kpis-context .kpi[class*="state-"] .kpi-value, .kpis-context .kpi[class*="state-"] .kpi-zone { color: var(--state); }
 a.act-name { color: inherit; text-decoration: none; }
 a.act-name:hover { color: var(--accent); text-decoration: underline; }
 
@@ -401,8 +410,14 @@ a.act-name:hover { color: var(--accent); text-decoration: underline; }
 .kpi-zone { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
 .gauge { position: relative; height: 8px; border-radius: 99px; background: var(--surface-2); margin: 8px 0 2px; }
 .gauge-band { position: absolute; top: 0; bottom: 0; background: var(--border); border-radius: 99px; }
+.gauge-zone { position: absolute; top: 0; bottom: 0; opacity: 0.4; }
+.gauge-zone:first-child { border-radius: 99px 0 0 99px; }
+.gauge-zone:nth-last-child(2) { border-radius: 0 99px 99px 0; }
+.zone-good { background: var(--up); }
+.zone-warn { background: var(--warn); }
+.zone-bad { background: var(--down); }
 .gauge-mark { position: absolute; top: -4px; width: 4px; height: 16px; margin-left: -2px; border-radius: 2px;
-              background: var(--accent); box-shadow: 0 0 0 2px var(--surface); }
+              background: var(--state, var(--accent)); box-shadow: 0 0 0 2px var(--surface); }
 .gauge-ends { display: flex; justify-content: space-between; font-size: 11px; }
 .kpi-context { list-style: none; padding: 0; margin: 8px 0 0; font-size: 12.5px; display: grid; gap: 3px; }
 .kpi-context b { color: var(--text); }

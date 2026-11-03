@@ -27,7 +27,7 @@
   <div class="table-wrap">
     <table class="data activities">
       <thead><tr><th>Date</th><th class="col-name">Course</th><th>Distance</th><th>D+</th><th>Temps</th><th>Allure</th>
-        <th>FC moy.</th><th>Fitness</th><th>Forme J</th><th>Forme J−7</th><th>Vs habituel</th></tr></thead>
+        <th>FC moy.</th><th>Fitness</th><th>Forme J</th><th>Forme J−7</th><th>Vs habituel {{ tip("Allure de la course comparée à ton allure habituelle : la médiane de tes autres sorties de même terrain (route ou trail) et de distance proche (à ±30 %). +8 % = 8 % plus rapide que d'habitude sur ce type de sortie. Survole la valeur pour voir l'allure habituelle.") }}</th></tr></thead>
       <tbody>
         {% for r in data.races %}
         <tr>
@@ -43,7 +43,7 @@
           <td data-label="Fitness">{{ r.fitness if r.fitness is not none else "—" }}</td>
           <td data-label="Forme J">{{ ('%+.0f' % r.form) | replace('-', '−') if r.form is not none else "—" }}</td>
           <td data-label="Forme J−7">{{ ('%+.0f' % r.form_week_before) | replace('-', '−') if r.form_week_before is not none else "—" }}</td>
-          <td data-label="Vs habituel">{% if r.faster_than_usual_pct is not none %}<span class="delta {{ 'up' if r.faster_than_usual_pct > 0 else 'down' }}">{{ ('%+.0f' % r.faster_than_usual_pct) | replace('-', '−') }} %</span>{% else %}—{% endif %}</td>
+          <td data-label="Vs habituel">{% if r.faster_than_usual_pct is not none %}<span class="delta {{ 'up' if r.faster_than_usual_pct > 0 else 'down' }}" title="{{ 'Plus rapide' if r.faster_than_usual_pct > 0 else 'Plus lent' }} que ton allure habituelle sur ce type de sortie ({{ (r.usual_pace_s_km // 60) | int }}'{{ '%02d' % (r.usual_pace_s_km % 60) }}&quot; /km)">{{ ('%+.0f' % r.faster_than_usual_pct) | replace('-', '−') }} %</span>{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
