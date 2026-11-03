@@ -28,7 +28,8 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 4. Parsing FIT vers Parquet, modèle de montre
   - [x] 5. D+ altimètre ou MNT (calibration croisée MNT/baromètre, voir section 10 du brief)
   - [x] 6. Noms et descriptions Strava, sorties sans montre importées
-  - [ ] 7. CI GitHub, image amd64/arm64 sur ghcr
+  - [x] 7. CI GitHub, image amd64/arm64 sur ghcr (v0.1.0 publiée le 3 novembre 2026)
+  - [ ] Bascule du Synology sur l'image 0.1.0 et vérification sur ordinateur et mobile
 - [ ] Phase 2 — Statistiques
 - [ ] Phase 3 — Estimateur
 - [ ] Phase 4 — Coach
