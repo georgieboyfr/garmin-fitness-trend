@@ -39,6 +39,7 @@
             <span class="record-time" data-chrono="{{ b.time_s }}"></span>
             <span class="record-pace muted" data-pace="{{ b.pace_s_km }}"></span>
             <span class="record-where muted"><span data-short-date="{{ b.date }}"></span> · <a class="act-name" href="/sorties/{{ b.activity_id }}">{{ b.name }}</a></span>
+            {% if b.description %}<span class="record-desc muted">{{ b.description }}</span>{% endif %}
           {% else %}
             <span class="muted">—</span>
           {% endif %}
@@ -47,7 +48,8 @@
         <ol class="top">
           {% for e in r.top %}
             <li><b data-chrono="{{ e.time_s }}"></b> <span class="muted" data-pace="{{ e.pace_s_km }}"></span>
-              <span class="muted"><span data-short-date="{{ e.date }}"></span> · <a class="act-name" href="/sorties/{{ e.activity_id }}">{{ e.name }}</a></span></li>
+              <span class="muted"><span data-short-date="{{ e.date }}"></span> · <a class="act-name" href="/sorties/{{ e.activity_id }}">{{ e.name }}</a></span>
+              {% if e.description %}<span class="top-desc muted">{{ e.description }}</span>{% endif %}</li>
           {% endfor %}
         </ol>
         {% endif %}
@@ -93,7 +95,8 @@
     <ol class="top">
       {% for c in data.top_climbs %}
         <li><b data-num="{{ c.vam }}" data-unit="m/h"></b> <span class="muted">sur <span data-num="{{ c.gain }}" data-unit="m"></span>
-          · <span data-short-date="{{ c.date }}"></span> · <a class="act-name" href="/sorties/{{ c.id }}">{{ c.name }}</a></span></li>
+          · <span data-short-date="{{ c.date }}"></span> · <a class="act-name" href="/sorties/{{ c.id }}">{{ c.name }}</a></span>
+          {% if c.description %}<span class="top-desc muted">{{ c.description }}</span>{% endif %}</li>
       {% endfor %}
     </ol>
   </details>

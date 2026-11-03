@@ -19,6 +19,10 @@ DEFAULTS = {
         "threshold_barometer": 1.0,       # seuil d'hystérésis, altitude du baromètre (m)
         "threshold_dem": 3.5,             # seuil d'hystérésis, MNT le long de la trace GPS (m)
     },
+    "races": {
+        "keywords": None,                 # None = liste par défaut (races.DEFAULT_KEYWORDS)
+        "threshold": 5,                   # score à partir duquel une sortie est proposée
+    },
     # paramètres physiologiques réglés dans l'admin ; None = valeur du .env
     "physiology": {"hr_rest": None, "hr_max": None, "lthr": None, "sex": None},
 }
@@ -86,7 +90,25 @@ def _validate_garmin_sync(values: dict) -> dict:
     return out
 
 
+def _validate_races(values: dict) -> dict:
+    out = {}
+    for key, value in values.items():
+        if key == "keywords":
+            valid = isinstance(value, list) and all(isinstance(k, str) for k in value)
+            if value is not None and not valid:
+                raise ValueError("keywords doit être une liste de mots-clés")
+            out[key] = None if value is None else [k.strip().lower() for k in value if k.strip()]
+        elif key == "threshold":
+            if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 15:
+                raise ValueError("threshold doit être un entier entre 1 et 15")
+            out[key] = value
+        else:
+            raise ValueError(f"réglage inconnu : {key}")
+    return out
+
+
 VALIDATORS = {"garmin_sync": _validate_garmin_sync, "elevation": _validate_elevation,
+              "races": _validate_races,
               "physiology": _validate_physiology}
 
 

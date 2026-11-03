@@ -14,7 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
-from . import db, elevation_job, metrics_job, settings, strava
+from . import courses, db, elevation_job, metrics_job, settings, strava
 from .auth import SESSION_COOKIE
 from .garmin_sync import SyncAlreadyRunning
 from .metrics import ZONE_BOUNDS
@@ -299,6 +299,45 @@ def physiology_update(values: dict, request: Request):
     if not request.app.state.garmin_sync.running:
         _start_background(request, kind="recalcul", local_only=True)
     return physiology(request)
+
+
+# ---------- courses ----------
+
+class RaceDecision(BaseModel):
+    status: str | None = None
+
+
+@protected.get("/races")
+def races_overview(request: Request):
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        return courses.overview(request.app.state.config, conn)
+    finally:
+        conn.close()
+
+
+@protected.post("/races/settings")
+def races_settings(values: dict, request: Request):
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        settings.update(conn, "races", values)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    finally:
+        conn.close()
+    return races_overview(request)
+
+
+@protected.post("/races/{activity_id}")
+def races_decide(activity_id: int, body: RaceDecision, request: Request):
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        courses.decide(conn, activity_id, body.status)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    finally:
+        conn.close()
+    return {"activity_id": activity_id, "status": body.status}
 
 
 # ---------- Strava ----------

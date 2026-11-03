@@ -6,6 +6,19 @@
   const P = D.profiles;
   const paceLabel = (s) => `${Math.floor(s / 60)}'${String(Math.round(s % 60)).padStart(2, "0")}"`;
 
+  // ---------- marquer comme course (enregistré comme une décision de l'admin) ----------
+  const toggle = document.getElementById("race-toggle");
+  toggle?.addEventListener("click", async () => {
+    const confirmed = toggle.dataset.status === "confirmed";
+    toggle.disabled = true;
+    const r = await fetch(`/admin/api/races/${toggle.dataset.id}`, {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Requested-With": "admin-ui" },
+      body: JSON.stringify({ status: confirmed ? "rejected" : "confirmed" }),
+    });
+    if (r.ok) location.reload();
+    else toggle.disabled = false;
+  });
+
   // ---------- carte : Plan IGN (France), photos aériennes, OpenStreetMap ----------
   let hoverMarker = null;
   if (P.track.length && window.L) {

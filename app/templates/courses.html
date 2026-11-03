@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Courses · Fitness Trend{% endblock %}
+
+{% macro tip(text) -%}
+  <button class="tip" type="button" aria-label="Explication" data-tip="{{ text }}">i</button>
+{%- endmacro %}
+
+{% block content %}
+<section class="hero">
+  <h1>Courses</h1>
+  <p class="muted">Tes courses avec ta forme le jour J : à quel niveau de forme tu performes le mieux, et si ton affûtage fonctionne.</p>
+</section>
+
+{% if pending %}
+<p class="notice-line">{{ pending }} course(s) probable(s) détectée(s) à valider : <a href="/admin">les confirmer dans l'admin</a>.</p>
+{% endif %}
+
+{% if data.races %}
+<section class="card">
+  <div class="card-head">
+    <h2>Forme et performance {{ tip("Chaque point est une course : en abscisse ta forme le jour J (fitness − fatigue), en ordonnée ton allure comparée à tes sorties habituelles de même terrain et de distance comparable. Les courses les plus réussies sont en haut ; regarde dans quelle plage de forme elles se trouvent.") }}</h2>
+  </div>
+  <div class="chart" id="chart-races" role="img" aria-label="Forme le jour de la course et allure comparée aux sorties habituelles"></div>
+</section>
+
+<section class="card list-card">
+  <div class="table-wrap">
+    <table class="data activities">
+      <thead><tr><th>Date</th><th class="col-name">Course</th><th>Distance</th><th>D+</th><th>Temps</th><th>Allure</th>
+        <th>FC moy.</th><th>Fitness</th><th>Forme J</th><th>Forme J−7</th><th>Vs habituel</th></tr></thead>
+      <tbody>
+        {% for r in data.races %}
+        <tr>
+          <td class="col-date" data-short-date="{{ r.date }}"></td>
+          <td class="col-name"><a class="act-name" href="/sorties/{{ r.id }}">{{ r.name or "Sans nom" }}</a>
+            {% if r.terrain %}<span class="badge badge-{{ r.terrain }}">{{ {"road": "route", "trail": "trail", "indoor": "tapis"}[r.terrain] }}</span>{% endif %}
+            {% if r.form_zone %}<span class="act-desc">{{ r.form_zone }}</span>{% endif %}</td>
+          <td data-label="Distance" data-num="{{ r.distance_km }}" data-unit="km" data-dec="1"></td>
+          <td data-label="D+" data-num="{{ r.gain_m }}" data-unit="m"></td>
+          <td data-label="Temps" {% if r.moving_s %}data-chrono="{{ r.moving_s }}"{% endif %}></td>
+          <td data-label="Allure" {% if r.pace_s_km %}data-pace="{{ r.pace_s_km }}"{% endif %}></td>
+          <td data-label="FC moy.">{{ r.avg_hr or "—" }}</td>
+          <td data-label="Fitness">{{ r.fitness if r.fitness is not none else "—" }}</td>
+          <td data-label="Forme J">{{ ('%+.0f' % r.form) | replace('-', '−') if r.form is not none else "—" }}</td>
+          <td data-label="Forme J−7">{{ ('%+.0f' % r.form_week_before) | replace('-', '−') if r.form_week_before is not none else "—" }}</td>
+          <td data-label="Vs habituel">{% if r.faster_than_usual_pct is not none %}<span class="delta {{ 'up' if r.faster_than_usual_pct > 0 else 'down' }}">{{ ('%+.0f' % r.faster_than_usual_pct) | replace('-', '−') }} %</span>{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% else %}
+<section class="card">
+  <p class="muted">Aucune course confirmée pour l'instant. Valide les courses probables détectées dans <a href="/admin">l'admin</a>,
+    ou marque une sortie comme course depuis sa fiche.</p>
+</section>
+{% endif %}
+
+<script type="application/json" id="page-data">{{ data.races | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    const races = JSON.parse(document.getElementById("page-data").textContent)
+      .filter((r) => r.form != null && r.faster_than_usual_pct != null);
+    if (!races.length) return;
+    const chart = GFT.chart("chart-races", (t) => ({
+      grid: { left: 8, right: 24, top: 24, bottom: 28, containLabel: true },
+      tooltip: { ...t.tooltip, formatter: (p) => { const r = races[p.dataIndex];
+        return `<b>${r.name}</b><br>${new Date(r.date + "T12:00:00").toLocaleDateString("fr-FR", { dateStyle: "medium" })}`
+          + `<br>Forme : ${r.form > 0 ? "+" : ""}${GFT.num(r.form)} · fitness ${GFT.num(r.fitness)}`
+          + `<br>Allure : ${r.faster_than_usual_pct > 0 ? "+" : ""}${GFT.num(r.faster_than_usual_pct)} % vs habituel`; } },
+      xAxis: { type: "value", name: "Forme le jour J", nameLocation: "middle", nameGap: 26,
+               nameTextStyle: { color: t.muted }, ...t.axis },
+      yAxis: { type: "value", ...t.axis, axisLabel: { ...t.axis.axisLabel, formatter: "{value} %" } },
+      series: [{ type: "scatter", symbolSize: (v, p) => 8 + Math.min(16, races[p.dataIndex].distance_km / 3),
+        data: races.map((r) => [r.form, r.faster_than_usual_pct]),
+        itemStyle: { color: (p) => races[p.dataIndex].terrain === "trail" ? t.series[2] : t.series[1], opacity: 0.85 },
+        label: { show: true, position: "right", color: t.muted, fontSize: 11,
+                 formatter: (p) => (races[p.dataIndex].name || "").slice(0, 22) },
+        markLine: { silent: true, symbol: "none", lineStyle: { color: t.border, type: "dashed" },
+                    data: [{ xAxis: 0 }, { yAxis: 0 }], label: { show: false } } }],
+    }));
+    chart?.instance.on("click", (p) => { location.href = `/sorties/${races[p.dataIndex].id}`; });
+  })();
+</script>
+{% endblock %}

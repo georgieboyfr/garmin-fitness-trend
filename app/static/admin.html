@@ -158,6 +158,35 @@
     </section>
 
     <section class="card">
+      <div class="card-head">
+        <h2>Courses probables</h2>
+        <span class="pill" id="races-pill"></span>
+      </div>
+      <p class="muted small">Sorties qui ressemblent à une course : nom, effort cardiaque, distance ronde, allure,
+        lieu, horaire… Confirme ou rejette chacune une fois ; seules les courses confirmées apparaissent sur la
+        page Courses.</p>
+      <div id="races-pending"></div>
+      <details>
+        <summary>Réglages de la détection</summary>
+        <form id="races-form" class="settings">
+          <label class="field"><span>Mots-clés dans le nom ou la description (un par ligne)</span>
+            <textarea id="races-keywords" rows="6"></textarea></label>
+          <label class="field inline"><span>Score minimal</span>
+            <input type="number" id="races-threshold" min="1" max="15" step="1" required></label>
+          <p class="error-text" id="races-error" hidden></p>
+          <div class="row">
+            <button class="btn" type="submit">Enregistrer</button>
+            <button class="btn ghost" type="button" id="races-reset">Mots-clés par défaut</button>
+          </div>
+        </form>
+      </details>
+      <details>
+        <summary id="races-confirmed-title">Courses confirmées</summary>
+        <div id="races-confirmed"></div>
+      </details>
+    </section>
+
+    <section class="card">
       <h2>Physiologie</h2>
       <p class="muted small">FC repos, FC max et LTHR servent à la charge (HRSS) et aux zones de FC. Valeurs réglées
         ici, ou à défaut celles du fichier <code>.env</code>. Toute modification relance le calcul des sorties.</p>

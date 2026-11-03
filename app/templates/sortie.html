@@ -14,7 +14,10 @@
   <p class="muted"><span data-datetime-long="{{ d.start }}"></span>
     {% if d.terrain %}<span class="badge badge-{{ d.terrain }}">{{ {"road": "route", "trail": "trail", "indoor": "tapis"}[d.terrain] }}</span>{% endif %}
     {% if d.source == "strava" %}<span class="badge">importée de Strava</span>{% endif %}
-    {% if d.device %}<span class="muted small"> · {{ d.device }}</span>{% endif %}</p>
+    {% if d.device %}<span class="muted small"> · {{ d.device }}</span>{% endif %}
+    {% if d.race_status == "confirmed" %}<span class="badge badge-race">course</span>{% endif %}
+    <button class="link-btn" type="button" id="race-toggle" data-id="{{ d.id }}" data-status="{{ d.race_status or '' }}">
+      {{ "Ce n'est pas une course" if d.race_status == "confirmed" else "Marquer comme course" }}</button></p>
   {% if d.description %}<p class="description">{{ d.description }}</p>{% endif %}
 </section>
 

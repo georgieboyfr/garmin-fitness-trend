@@ -229,3 +229,11 @@ def test_linear_trend():
     assert tr["start"][1] == pytest.approx(1.0) and tr["end"][1] == pytest.approx(1.12)
     assert stats.linear_trend(pts[:3]) is None                                  # trop peu de points
     assert stats.linear_trend(pts, since=date(2025, 6, 1))["n"] == 7         # 30 juin -> 27 déc.
+
+
+def test_year_outlook():
+    o = stats.year_outlook(ACTS, date(2026, 11, 3))
+    assert o["distance_km"]["record"] == 30 and o["distance_km"]["record_year"] == 2025
+    assert o["distance_km"]["projection"] == round(35 / 307 * 365)
+    assert o["per_week"] == round(3 / (307 / 7), 1)
+    assert stats.year_outlook(ACTS, date(2026, 1, 5))["distance_km"]["projection"] is None   # trop tôt

@@ -13,7 +13,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from . import __version__, db, detail, metrics_job, queries, stats
+from . import __version__, courses, db, detail, metrics_job, queries, stats
 from .auth import SESSION_COOKIE
 
 TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -25,7 +25,7 @@ PAGES = [
     ("/sorties", "Sorties", True),
     ("/performance", "Performance", True),
     ("/forme", "Forme", True),
-    ("/courses", "Courses", False),
+    ("/courses", "Courses", True),
 ]
 
 router = APIRouter(include_in_schema=False)
@@ -140,8 +140,28 @@ def sortie(request: Request, activity_id: int):
         data = detail.activity_detail(cfg, conn, activity_id, acts)
     finally:
         conn.close()
+    if data is not None:
+        conn = db.connect(cfg.db_path)
+        try:
+            data["race_status"] = queries.race_decisions(conn).get(activity_id)
+        finally:
+            conn.close()
     if data is None:
         return HTMLResponse(TEMPLATES.get_template("not_found.html").render(version=__version__, nav=[
             (path, label) for path, label, ready in PAGES if ready], active=""), status_code=404)
     return render(request, "sortie.html", "/sorties", data=data)
 
+
+
+@router.get("/courses")
+def courses_page(request: Request):
+    if (redirect := _login_redirect(request)):
+        return redirect
+    cfg = request.app.state.config
+    conn = db.connect(cfg.db_path)
+    try:
+        data = courses.race_page(cfg, conn, _today(request))
+        pending = len(courses.overview(cfg, conn)["pending"])
+    finally:
+        conn.close()
+    return render(request, "courses.html", "/courses", data=data, pending=pending)

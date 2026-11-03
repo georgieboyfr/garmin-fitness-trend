@@ -118,3 +118,28 @@ def test_activity_page(client, config):
     assert r.status_code == 200 and "Bastille" in r.text and "Par kilomètre" not in r.text   # pas de série
     assert client.get("/sorties/999").status_code == 404
     assert client.get("/sorties/55", cookies={}).status_code == 200
+
+
+def test_courses_page_and_race_toggle(client, config):
+    conn = db.connect(config.db_path)
+    with conn:
+        conn.execute(
+            "INSERT INTO activities (id, start_time_utc, start_time_local, activity_type, garmin_name,"
+            " distance_m, duration_s, fit_status, first_seen_at, updated_at)"
+            " VALUES (77, ?, '2026-03-01T09:00:00', 'running', 'Semi de Grenoble', 21100, 6000, 'stored',"
+            " ?, ?)",
+            (NOW, NOW, NOW))
+    conn.close()
+    login(client)
+    assert "Aucune course confirmée" in client.get("/courses").text
+    ui = {"X-Requested-With": "admin-ui"}
+    assert client.post("/admin/api/races/77", headers=ui, json={"status": "confirmed"}).status_code == 200
+    r = client.get("/courses")
+    assert r.status_code == 200 and "Semi de Grenoble" in r.text
+    assert "badge-race" in client.get("/sorties/77").text
+    st = client.get("/admin/api/races").json()
+    assert [x["id"] for x in st["confirmed"]] == [77]
+    assert client.post("/admin/api/races/settings", headers=ui, json={"threshold": 99}).status_code == 400
+    st = client.post("/admin/api/races/settings", headers=ui,
+                     json={"keywords": ["Trail Du"], "threshold": 4}).json()
+    assert st["settings"]["keywords"] == ["trail du"] and st["settings"]["custom_keywords"]

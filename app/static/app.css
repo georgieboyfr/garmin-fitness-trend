@@ -335,3 +335,16 @@ a.act-name:hover { color: var(--accent); text-decoration: underline; }
 .trend { font-weight: 600; }
 .trend.up { color: var(--up); }
 .trend.down { color: var(--down); }
+
+/* ---------- courses ---------- */
+.badge-race { color: var(--accent); border-color: currentColor; }
+.link-btn { font: inherit; font-size: 13px; color: var(--accent); background: none; border: 0; cursor: pointer;
+            padding: 0; margin-left: 10px; text-decoration: underline; }
+.notice-line { font-size: 14px; margin: 0 0 14px; }
+.notice-line a { color: var(--accent); font-weight: 600; }
+
+/* aperçu de la description dans les records */
+.record-desc { grid-column: 2 / -1; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-desc { display: block; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            max-width: 70ch; }
+@media (max-width: 640px) { .record-desc { grid-column: 1 / -1; white-space: normal; } }

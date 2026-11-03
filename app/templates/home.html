@@ -1,6 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Accueil · Fitness Trend{% endblock %}
 
+{% macro vs_last_year(pct, year) -%}
+  {%- if pct is not none and pct | abs >= 2 -%}
+  <li><span class="delta {{ 'up' if pct > 0 else 'down' }}">{{ '+' if pct > 0 else '−' }}{{ (('%.1f' % (pct | abs)) if pct | abs < 10 else ('%.0f' % (pct | abs))) | replace('.', ',') }} %</span> par rapport à {{ year }} à la même date</li>
+  {%- elif pct is not none -%}
+  <li>Au même niveau qu'en {{ year }} à la même date</li>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro outlook(o, unit) -%}
+  {%- if o.projection is not none %}<li>Projection fin d'année : <b data-num="{{ o.projection }}" data-unit="{{ unit }}"></b></li>{% endif -%}
+  {%- if o.record is not none %}<li>Record : <span data-num="{{ o.record }}" data-unit="{{ unit }}"></span> en {{ o.record_year }}</li>{% endif -%}
+{%- endmacro %}
+
 {% macro delta(pct) -%}
   {% if pct is none %}<span class="delta">—</span>
   {% elif pct | abs < 0.5 %}<span class="delta">=</span>
@@ -22,22 +35,22 @@
   <article class="kpi">
     <header>Distance {{ tip("Kilomètres courus depuis le 1er janvier, toutes sorties de course à pied (route, trail, tapis).") }}</header>
     <div class="kpi-value" data-num="{{ y.current.distance_km }}" data-unit="km" data-dec="0"></div>
-    <footer>{{ delta(y.change_pct.distance_km) }} <span class="muted" data-num="{{ y.previous.distance_km }}" data-unit="km" data-dec="0"></span></footer>
+    <ul class="kpi-context muted">{{ vs_last_year(y.change_pct.distance_km, y.year - 1) }}{{ outlook(data.outlook.distance_km, "km") }}</ul>
   </article>
   <article class="kpi">
     <header>Dénivelé positif {{ tip("D+ recalculé : altimètre pour la Forerunner 255, carte d'altitude IGN le long de la trace pour les autres montres.") }}</header>
     <div class="kpi-value" data-num="{{ y.current.gain_m }}" data-unit="m" data-dec="0"></div>
-    <footer>{{ delta(y.change_pct.gain_m) }} <span class="muted" data-num="{{ y.previous.gain_m }}" data-unit="m" data-dec="0"></span></footer>
+    <ul class="kpi-context muted">{{ vs_last_year(y.change_pct.gain_m, y.year - 1) }}{{ outlook(data.outlook.gain_m, "m") }}</ul>
   </article>
   <article class="kpi">
     <header>Km-effort {{ tip("Kilomètres + D+/100 (convention ITRA) : 100 m de montée comptent comme 1 km. Rend comparables une année route et une année trail.") }}</header>
     <div class="kpi-value" data-num="{{ y.current.km_effort }}" data-unit="km" data-dec="0"></div>
-    <footer>{{ delta(y.change_pct.km_effort) }} <span class="muted" data-num="{{ y.previous.km_effort }}" data-unit="km" data-dec="0"></span></footer>
+    <ul class="kpi-context muted">{{ vs_last_year(y.change_pct.km_effort, y.year - 1) }}{{ outlook(data.outlook.km_effort, "km") }}</ul>
   </article>
   <article class="kpi">
     <header>Sorties {{ tip("Nombre de sorties de course à pied depuis le 1er janvier.") }}</header>
     <div class="kpi-value" data-num="{{ y.current.count }}" data-dec="0"></div>
-    <footer>{{ delta(y.change_pct.count) }} <span class="muted">{{ y.previous.count }}</span></footer>
+    <ul class="kpi-context muted">{% if data.outlook.per_week is not none %}<li><b data-num="{{ data.outlook.per_week }}" data-dec="1"></b> sortie(s) par semaine en moyenne</li>{% endif %}{{ vs_last_year(y.change_pct.count, y.year - 1) }}{% if data.outlook.count.record is not none %}<li>Record : {{ data.outlook.count.record }} en {{ data.outlook.count.record_year }}</li>{% endif %}</ul>
   </article>
 </section>
 

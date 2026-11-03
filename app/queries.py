@@ -38,7 +38,7 @@ def best_efforts(conn) -> list[dict]:
     """Meilleurs efforts de chaque sortie de course (activity_bests), avec la sortie et son terrain."""
     types = tuple(RUNNING_TYPES)
     rows = conn.execute(
-        "SELECT b.kind, b.key, b.value, b.extra, a.id, a.start_time_local, n.name, m.terrain"
+        "SELECT b.kind, b.key, b.value, b.extra, a.id, a.start_time_local, n.name, n.description, m.terrain"
         " FROM activity_bests b"
         " JOIN activities a ON a.id = b.activity_id"
         " JOIN activity_names n ON n.activity_id = a.id"
@@ -48,3 +48,16 @@ def best_efforts(conn) -> list[dict]:
     ).fetchall()
     return [dict(r) | {"year": int(r["start_time_local"][:4]), "date": r["start_time_local"][:10]}
             for r in rows]
+
+
+def start_positions(conn) -> dict[int, tuple[float, float]]:
+    """Point de départ de chaque sortie (premier point de la signature de sa trace)."""
+    import struct
+
+    return {r[0]: struct.unpack("<2d", r[1][:16]) for r in conn.execute(
+        "SELECT activity_id, signature FROM activity_tracks")}
+
+
+def race_decisions(conn) -> dict[int, str]:
+    return dict(conn.execute("SELECT activity_id, status FROM races").fetchall())
+

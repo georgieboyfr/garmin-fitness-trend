@@ -17,6 +17,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Fiche de chaque sortie (`/sorties/<id>`), accessible depuis toutes les pages : résumé (temps en mouvement et écoulé, allure, FC, charge, EF, découplage), tracé sur fond Plan IGN, photos aériennes ou OpenStreetMap, profils d'altitude, d'allure et de FC synchronisés avec la carte, temps par kilomètre, zones de FC, meilleurs efforts, passages sur le même parcours.
 - Liste des sorties : temps écoulé en plus du temps en mouvement.
 - Page Forme : repères historiques pour situer fitness, fatigue et forme (jauge entre le minimum et le maximum de l'historique, plage habituelle des 12 derniers mois, rang, valeur il y a un an, record) ; droites de tendance de l'Efficiency Factor (12 derniers mois et depuis le début, en % par an).
+- Détection des courses : score combinant nom ou description (mots-clés modifiables), effort cardiaque pour la durée, charge par heure, distance ronde, allure inhabituelle, top 3 sur un segment, départ loin de chez soi, week-end en matinée, absence d'arrêts ; courses probables à confirmer ou rejeter dans l'admin, ou depuis la fiche d'une sortie.
+- Page Courses : courses confirmées avec la forme le jour J et une semaine avant, l'allure comparée aux sorties habituelles, et un graphique forme / performance.
+- Records et tops 10 : aperçu de la description.
+- Accueil : écart avec l'an dernier seulement s'il est notable, projection de fin d'année, record annuel, sorties par semaine.
 
 ### Modifié
 - Hors de France, le D+ de Strava remplace celui du MNT Copernicus (qui compte les bâtiments) quand l'activité est appariée.

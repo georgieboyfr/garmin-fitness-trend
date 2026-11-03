@@ -48,6 +48,7 @@ async function init() {
     refreshSync(true);
     refreshElevation(true);
     refreshPhysiology();
+    refreshRaces();
     refreshStrava();
   }
 }
@@ -351,6 +352,86 @@ $("ev-recompute").addEventListener("click", (e) => {
     }
   });
 });
+
+// ---------- courses ----------
+
+const fmtShort = (d) => new Date(d + "T12:00:00").toLocaleDateString("fr-FR", { dateStyle: "medium" });
+
+function raceRow(r, withActions) {
+  const div = document.createElement("div");
+  div.className = "race";
+  const head = document.createElement("div");
+  head.className = "race-head";
+  const a = document.createElement("a");
+  a.href = `/sorties/${r.id}`;
+  a.textContent = r.name || "Sans nom";
+  const meta = document.createElement("span");
+  meta.className = "muted small";
+  meta.textContent = `${fmtShort(r.date)} · ${(r.distance_km).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} km`
+    + ` · ${r.gain_m} m D+`;
+  head.append(a, meta);
+  div.append(head);
+  if (r.reasons) {
+    const reasons = document.createElement("div");
+    reasons.className = "race-reasons";
+    const score = document.createElement("span");
+    score.className = "score";
+    score.textContent = `score ${r.score} · `;
+    reasons.append(score, r.reasons.join(" · "));
+    div.append(reasons);
+  }
+  const actions = document.createElement("div");
+  actions.className = "race-actions";
+  const button = (label, status, cls) => {
+    const b = document.createElement("button");
+    b.className = "btn small " + (cls || "");
+    b.textContent = label;
+    b.addEventListener("click", () => busy(b, async () => {
+      await api(`/races/${r.id}`, { status });
+      refreshRaces();
+    }));
+    return b;
+  };
+  if (withActions) actions.append(button("C'est une course", "confirmed", "primary"), button("Non", "rejected"));
+  else actions.append(button("Retirer", null, "ghost"));
+  div.append(actions);
+  return div;
+}
+
+function renderRaces(st) {
+  const pill = $("races-pill");
+  pill.textContent = st.pending.length ? `${st.pending.length} à valider` : "À jour";
+  pill.className = "pill " + (st.pending.length ? "warn" : "ok");
+  $("races-pending").replaceChildren(...(st.pending.length ? st.pending.map((r) => raceRow(r, true))
+    : [Object.assign(document.createElement("p"), { className: "muted small", textContent: "Aucune course probable à valider." })]));
+  $("races-confirmed-title").textContent = `Courses confirmées (${st.confirmed.length})`
+    + (st.rejected_count ? ` · ${st.rejected_count} rejetée(s)` : "");
+  $("races-confirmed").replaceChildren(...st.confirmed.map((r) => raceRow(r, false)));
+  $("races-keywords").value = st.settings.keywords.join("\n");
+  $("races-threshold").value = st.settings.threshold;
+}
+
+async function refreshRaces() {
+  try { renderRaces(await api("/races")); } catch (err) { /* session gérée ailleurs */ }
+}
+
+$("races-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  busy(e.submitter, async () => {
+    try {
+      renderRaces(await api("/races/settings", {
+        keywords: $("races-keywords").value.split("\n").map((k) => k.trim()).filter(Boolean),
+        threshold: Number($("races-threshold").value),
+      }));
+      showError("races-error", null);
+    } catch (err) {
+      showError("races-error", err);
+    }
+  });
+});
+$("races-reset").addEventListener("click", (e) => busy(e.currentTarget, async () => {
+  renderRaces(await api("/races/settings", { keywords: null }));
+}));
 
 // ---------- physiologie ----------
 

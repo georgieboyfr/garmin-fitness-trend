@@ -72,11 +72,28 @@ def cumulative_all_years(acts, today: date, metric: str) -> dict[str, list[float
             for y in years}
 
 
+def year_outlook(acts, today: date) -> dict:
+    """Projection de fin d'année au rythme actuel et record annuel, pour chaque indicateur."""
+    start = date(today.year, 1, 1)
+    elapsed = (today - start).days + 1
+    length = (date(today.year + 1, 1, 1) - start).days
+    current = totals([a for a in acts if a["start"].year == today.year and a["start"].date() <= today])
+    past = [r for r in yearly_table(acts) if r["year"] < today.year]
+    out = {}
+    for k in ("distance_km", "gain_m", "km_effort", "count"):
+        best = max(past, key=lambda r: r[k], default=None)
+        out[k] = {"projection": round(current[k] / elapsed * length) if elapsed >= 14 else None,
+                  "record": best[k] if best else None, "record_year": best["year"] if best else None}
+    out["per_week"] = round(current["count"] / (elapsed / 7), 1) if elapsed >= 7 else None
+    return out
+
+
 def home(acts, today: date) -> dict:
     last = acts[-1] if acts else None
     monday = today - timedelta(days=today.weekday())
     return {
         "ytd": year_to_date(acts, today),
+        "outlook": year_outlook(acts, today),
         "all_time": totals(acts),
         "first_year": acts[0]["start"].year if acts else today.year,
         "last": last and {
@@ -292,7 +309,7 @@ def performance(efforts, terrain: str = "road", year: int | None = None) -> dict
                       key=lambda e: e["value"])[:TOP]
         records.append({"key": key, "label": label, "top": [{
             "time_s": e["value"], "pace_s_km": e["value"] / (key / 1000), "date": e["date"],
-            "name": e["name"], "activity_id": e["id"]} for e in rows]})
+            "name": e["name"], "description": e.get("description"), "activity_id": e["id"]} for e in rows]})
 
     # meilleur temps de chaque année pour chaque distance
     by_year = {}
@@ -330,7 +347,8 @@ def performance(efforts, terrain: str = "road", year: int | None = None) -> dict
         "duration_labels": list(DURATION_LABELS.values()),
         "vam_by_year": [{"year": y, **vam_years[y]} for y in sorted(vam_years)],
         "top_climbs": [{"vam": round(e["value"]), "gain": round(e["extra"] or 0), "date": e["date"],
-                        "name": e["name"], "id": e["id"]} for e in top_climbs],
+                        "name": e["name"], "description": e.get("description"), "id": e["id"]}
+                       for e in top_climbs],
     }
 
 
