@@ -14,7 +14,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from . import __version__, courses, db, detail, metrics_job, queries, stats
+from . import __version__, courses, db, detail, estimator, metrics_job, queries, stats
 from .auth import SESSION_COOKIE
 
 TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -27,6 +27,7 @@ PAGES = [
     ("/performance", "Performance", True),
     ("/forme", "Forme", True),
     ("/courses", "Courses", True),
+    ("/estimateur", "Estimateur", True),
 ]
 
 router = APIRouter(include_in_schema=False)
@@ -190,3 +191,24 @@ def courses_page(request: Request):
     finally:
         conn.close()
     return render(request, "courses.html", "/courses", data=data, pending=pending)
+
+
+@router.get("/estimateur")
+def estimateur(request: Request, distance: str = "", gain: str = ""):
+    if (redirect := _login_redirect(request)):
+        return redirect
+    cfg = request.app.state.config
+    conn = db.connect(cfg.db_path)
+    try:
+        acts = queries.running_activities(conn)
+        efforts = queries.best_efforts(conn)
+        lthr = metrics_job.params_of(cfg, conn)["lthr"]
+    finally:
+        conn.close()
+    today = _today(request)
+    km, gain_m = _number(distance), _number(gain) or 0.0
+    estimate = estimator.predict_road(efforts, today, km * 1000, gain_m) if km else None
+    return render(request, "estimateur.html", "/estimateur",
+                  profile=estimator.current_form(acts, efforts, today, lthr),
+                  table=estimator.road_table(efforts, today), estimate=estimate,
+                  query={"distance": distance, "gain": gain})

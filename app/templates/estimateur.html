@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Estimateur · Fitness Trend{% endblock %}
+
+{% macro tip(text) -%}
+  <button class="tip" type="button" aria-label="Explication" data-tip="{{ text }}">i</button>
+{%- endmacro %}
+
+{% macro effort_link(e) -%}
+  <a class="act-name" href="/sorties/{{ e.activity_id }}" title="{{ e.name or 'Sans nom' }}"><span data-short-date="{{ e.date }}"></span></a>
+{%- endmacro %}
+
+{% block content %}
+{% set p = profile %}
+<section class="hero">
+  <h1>Estimateur</h1>
+  <p class="muted">Ton temps de course « si tu courais maintenant », à partir de ta forme des 12 dernières semaines.</p>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Route {{ tip("Formule de Riegel : temps visé = temps de référence × (distance visée / distance de référence) puissance k. L'exposant k est personnel : il est calé sur tes meilleurs efforts route des 2 dernières années (plus il est élevé, plus tu ralentis quand la distance s'allonge ; la valeur standard est 1,06). Chacun de tes meilleurs efforts route des 12 dernières semaines (3 km et plus, 20 min et plus) est extrapolé à la distance visée : l'estimation la plus rapide est retenue, car un effort d'entraînement n'est pas toujours à fond. La fourchette s'élargit quand la distance visée s'éloigne de la distance de référence.") }}</h2>
+  </div>
+  <form class="filters" method="get">
+    <label class="filter">Distance (km)
+      <input name="distance" inputmode="decimal" value="{{ query.distance }}" placeholder="ex. 15" required>
+    </label>
+    <label class="filter">D+ (m, facultatif)
+      <input name="gain" inputmode="numeric" value="{{ query.gain }}" placeholder="0">
+    </label>
+    <button class="btn-primary" type="submit">Estimer</button>
+  </form>
+
+  {% if estimate %}
+  {% set e = estimate %}
+  <div class="estimate">
+    <div class="estimate-main">
+      <span class="muted">Réaliste</span>
+      <span class="estimate-time" data-chrono="{{ e.realistic_s }}"></span>
+      <span data-pace="{{ e.realistic_pace_s_km }}"></span>
+    </div>
+    <div class="estimate-range">
+      <div><span class="muted">Optimiste</span> <b data-chrono="{{ e.optimistic_s }}"></b> <span class="muted" data-pace="{{ e.optimistic_pace_s_km }}"></span></div>
+      <div><span class="muted">Prudent</span> <b data-chrono="{{ e.prudent_s }}"></b> <span class="muted" data-pace="{{ e.prudent_pace_s_km }}"></span></div>
+    </div>
+  </div>
+  <p class="small muted">
+    {{ ('%g' % (e.distance_m / 1000)) | replace('.', ',') }} km
+    {% if e.gain_m %} avec <span data-num="{{ e.gain_m }}" data-unit="m"></span> de D+, soit <span data-num="{{ e.equivalent_m / 1000 }}" data-dec="1" data-unit="km"></span> sur le plat {{ tip("Chaque mètre de D+ compte comme environ 6 m de plat en plus (coût énergétique de Minetti pour une montée à 5 %) ; la descente est comptée comme du plat. Approximation grossière en attendant ton modèle allure-pente personnel.") }}{% endif %}
+    · calé sur ton meilleur {{ e.reference.label }} récent ({% if e.reference.kind == "distance" %}<span data-chrono="{{ e.reference.time_s }}"></span>{% else %}<span data-num="{{ e.reference.distance_m / 1000 }}" data-dec="2" data-unit="km"></span>{% endif %}, {{ effort_link(e.reference) }})
+    · exposant {{ "%.3f" | format(e.exponent.value) | replace(".", ",") }}{% if not e.exponent.personal %} (standard, pas assez d'efforts variés){% endif %}
+    {% if e.fallback %}· aucun effort route en 12 semaines : références des 6 derniers mois{% endif %}
+  </p>
+  {% elif query.distance %}
+  <p class="muted">Pas d'estimation possible : aucun effort route de 3 km ou plus sur les 6 derniers mois, ou distance invalide.</p>
+  {% endif %}
+
+  {% if table %}
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Distance</th><th>Optimiste</th><th>Réaliste</th><th>Prudent</th><th>Allure cible</th><th>Référence</th></tr></thead>
+      <tbody>
+        {% for r in table %}
+        <tr>
+          <td><a href="?distance={{ '%g' % (r.distance_m / 1000) }}">{{ r.label }}</a></td>
+          <td class="muted" data-chrono="{{ r.optimistic_s }}"></td>
+          <td class="strong" data-chrono="{{ r.realistic_s }}"></td>
+          <td class="muted" data-chrono="{{ r.prudent_s }}"></td>
+          <td data-pace="{{ r.realistic_pace_s_km }}"></td>
+          <td>{{ r.reference.label }}, {{ effort_link(r.reference) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% set x = table[0].exponent %}
+  <p class="small muted">Exposant {{ "%.3f" | format(x.value) | replace(".", ",") }}
+    {%- if x.personal %} : pente de tes meilleurs efforts route des 2 dernières années ({{ x.n }} efforts de {{ x.range_km[0] | string | replace(".", ",") }} à {{ x.range_km[1] | string | replace(".", ",") }} km){% if x.bounded %}, borné (valeur calculée {{ "%.3f" | format(x.fitted) | replace(".", ",") }}){% endif %}{% else %} : valeur standard de Riegel, faute d'efforts route assez variés{% endif %}.
+    Précision non encore mesurée sur tes courses passées.</p>
+  {% endif %}
+</section>
+
+<section class="hero">
+  <h2>Forme actuelle</h2>
+  <p class="muted">Du <span data-short-date="{{ p.start }}"></span> au <span data-short-date="{{ p.day }}"></span> :
+    {{ p.runs }} sorties, <span data-num="{{ p.distance_km }}" data-unit="km"></span>, <span data-num="{{ p.hours }}" data-dec="1" data-unit="h"></span>, <span data-num="{{ p.gain_m }}" data-unit="m"></span> de D+.</p>
+</section>
+
+<section class="kpis">
+  <article class="kpi">
+    <header>Fitness {{ tip("Charge chronique (HRSS moyen sur environ 6 semaines), comme sur la page Forme.") }}</header>
+    <div class="kpi-value">{{ p.load.fitness | string | replace(".", ",") if p.load else "—" }}</div>
+    {% if p.load %}<footer class="muted">{{ p.load.zone_label }}</footer>{% endif %}
+  </article>
+  <article class="kpi">
+    <header>Forme {{ tip("Fitness − fatigue de la veille. Positive : frais ; négative : en charge.") }}</header>
+    <div class="kpi-value">{{ ('%+.1f' % p.load.form) | replace('-', '−') | replace('.', ',') if p.load else "—" }}</div>
+    {% if p.load %}<footer class="muted">Fatigue {{ p.load.fatigue | string | replace(".", ",") }}</footer>{% endif %}
+  </article>
+  <article class="kpi">
+    <header>Efficiency Factor {{ tip("Médiane de l'EF (vitesse / FC) de tes sorties faciles et plates sur la période, comparée à celle des 12 mois précédents. Plus haut = plus rapide à FC égale.") }}</header>
+    <div class="kpi-value">{{ ("%.2f" | format(p.ef.value)) | replace(".", ",") if p.ef else "—" }}</div>
+    {% if p.ef %}<footer class="muted">{{ p.ef.n }} sorties{% if p.ef.delta_pct is not none %} · <span class="delta {{ 'up' if p.ef.delta_pct > 0 else 'down' }}">{{ ('%+.1f' % p.ef.delta_pct) | replace('-', '−') | replace('.', ',') }} %</span> vs 12 mois{% endif %}</footer>{% endif %}
+  </article>
+  <article class="kpi">
+    <header>Meilleure VAM {{ tip("Meilleure vitesse ascensionnelle sur une montée de plus de 200 m de D+ pendant la période.") }}</header>
+    {% set top = p.climbs | selectattr("key", "equalto", 0) | first %}
+    <div class="kpi-value">{% if top %}<span data-num="{{ top.vam }}"></span><span class="kpi-unit">m/h</span>{% else %}—{% endif %}</div>
+    {% if top %}<footer class="muted">{{ top.gain_m }} m · {{ effort_link(top) }}</footer>{% endif %}
+  </article>
+</section>
+
+<div class="grid-2">
+  {% for terrain, label in (("road", "Route"), ("trail", "Trail")) %}
+  {% set c = p[terrain] %}
+  <section class="card">
+    <div class="card-head"><h2>Courbe allure-durée · {{ label }} {{ tip("Meilleure distance tenue sur chaque durée et meilleur temps sur chaque distance pendant la période, n'importe où dans une sortie.") }}</h2></div>
+    {% if c.durations or c.distances %}
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Effort</th><th>Résultat</th><th>Allure</th><th>Date</th></tr></thead>
+        <tbody>
+          {% for r in c.durations %}
+          <tr><td>{{ r.label }}</td><td data-num="{{ r.distance_m / 1000 }}" data-dec="2" data-unit="km"></td>
+            <td data-pace="{{ r.pace_s_km }}"></td><td>{{ effort_link(r) }}</td></tr>
+          {% endfor %}
+          {% for r in c.distances %}
+          <tr><td>{{ r.label }}</td><td data-chrono="{{ r.time_s }}"></td>
+            <td data-pace="{{ r.pace_s_km }}"></td><td>{{ effort_link(r) }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="muted">Aucune sortie {{ label | lower }} sur la période.</p>{% endif %}
+  </section>
+  {% endfor %}
+</div>
+
+<div class="grid-2">
+  <section class="card">
+    <div class="card-head"><h2>Montées {{ tip("Meilleure VAM (mètres de D+ par heure) sur chaque palier de D+ pendant la période, à l'intérieur d'une même montée.") }}</h2></div>
+    {% if p.climbs %}
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Palier</th><th>VAM</th><th>Temps</th><th>Date</th></tr></thead>
+        <tbody>
+          {% for r in p.climbs %}
+          <tr><td>{{ r.label }}{% if r.key == 0 %} ({{ r.gain_m }} m){% endif %}</td><td data-num="{{ r.vam }}" data-unit="m/h"></td>
+            <td {% if r.time_s %}data-chrono="{{ r.time_s }}"{% endif %}></td><td>{{ effort_link(r) }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="muted">Aucune montée mesurée sur la période.</p>{% endif %}
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>Allure en descente {{ tip("Allure moyenne en mouvement selon la pente, sur toutes les sorties de la période (pente lissée sur 50 m). Ce n'est pas un effort maximal : c'est ton allure habituelle dans ces pentes. Vitesse verticale = mètres descendus par heure.") }}</h2></div>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Pente</th><th>Allure</th><th>Vit. verticale</th><th>Temps</th></tr></thead>
+        <tbody>
+          {% for r in p.slopes %}
+          <tr><td>{{ r.label }}</td><td {% if r.pace_s_km %}data-pace="{{ r.pace_s_km }}"{% endif %}>{% if not r.pace_s_km %}—{% endif %}</td>
+            <td>{% if r.vertical_mh %}<span data-num="{{ r.vertical_mh }}" data-unit="m/h"></span>{% else %}—{% endif %}</td>
+            <td data-duration="{{ r.seconds }}"></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

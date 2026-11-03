@@ -53,8 +53,8 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
     - [x] Commit et tag `v0.2.0` (3 novembre 2026), pages vérifiées en local sur ordinateur et en largeur mobile
     - [x] Push du tag, image construite par la CI, mise à jour du Synology et vérification sur le téléphone (3 novembre 2026)
 - [ ] Phase 3 — Estimateur (en cours ; section 5 du brief ; terminé quand l'erreur moyenne, mesurée sur les courses passées, est affichée)
-  - [ ] 1. Forme actuelle : profil calculé sur les 6 à 12 dernières semaines (courbe allure-durée récente, VAM, allure en descente, fitness, EF), fonction pure versionnée, visible sur une page Estimateur minimale
-  - [ ] 2. Route : Riegel à exposant personnel calé sur les meilleurs efforts récents, fourchette optimiste / réaliste / prudent, allure cible ; saisie d'une distance (et D+ éventuel), « si je courais maintenant »
+  - [x] 1. Forme actuelle : profil calculé sur les 6 à 12 dernières semaines (courbe allure-durée récente, VAM, allure en descente, fitness, EF), fonction pure versionnée, visible sur une page Estimateur minimale (3 novembre 2026)
+  - [x] 2. Route : Riegel à exposant personnel calé sur les meilleurs efforts récents, fourchette optimiste / réaliste / prudent, allure cible ; saisie d'une distance (et D+ éventuel), « si je courais maintenant » (3 novembre 2026 ; choix à valider par Greg, section 10 du brief)
   - [ ] 3. Validation route : estimateur rejoué sur les courses confirmées avec la forme de la veille, erreur moyenne affichée
   - [ ] 4. Modèle allure-pente personnel (allure selon la pente à effort égal, montée et descente), calé sur les sorties ; comparé à la VAP de Minetti
   - [ ] 5. Trail sur GPX : import du GPX, découpage en tronçons homogènes, temps par tronçon (modèle allure-pente et facteur de fatigue tiré de la courbe allure-durée), profil et temps de passage

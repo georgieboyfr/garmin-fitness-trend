@@ -1,0 +1,142 @@
+import json
+import math
+from datetime import date, datetime
+
+import pytest
+
+from app import estimator
+
+DAY = date(2026, 11, 3)
+
+
+def eff(kind, key, value, day, terrain="road", extra=None, id=1, name="x"):
+    return {"kind": kind, "key": key, "value": value, "extra": extra, "id": id, "name": name,
+            "date": day, "year": int(day[:4]), "terrain": terrain, "avg_hr": None}
+
+
+def act(day, km=10.0, terrain="road", hrss=50.0, ef=None, avg_hr=140, gain=0.0, bins=None, moving=3600):
+    return {"start": datetime.fromisoformat(day + "T09:00:00"), "distance_km": km, "terrain": terrain,
+            "hrss": hrss, "ef": ef, "avg_hr": avg_hr, "gain_m": gain, "moving_duration_s": moving,
+            "grade_bins": json.dumps(bins) if bins else None}
+
+
+# ---------- forme actuelle ----------
+
+def test_pace_curve_keeps_best_of_each_effort_per_terrain():
+    efforts = [eff("duration", 1200, 4000, "2026-10-01"), eff("duration", 1200, 4200, "2026-10-10", id=2),
+               eff("distance", 5000, 1500, "2026-10-01"), eff("distance", 5000, 1450, "2026-10-12", id=3),
+               eff("distance", 5000, 1300, "2026-10-12", terrain="trail")]
+    curve = estimator.pace_curve(efforts, "road")
+    assert curve["durations"] == [{"key": 1200, "label": "20 min", "distance_m": 4200, "pace_s_km": 285.7,
+                                   "date": "2026-10-10", "activity_id": 2, "name": "x"}]
+    assert curve["distances"][0]["time_s"] == 1450 and curve["distances"][0]["pace_s_km"] == 290
+
+
+def test_slope_paces_aggregates_bins_into_bands():
+    bins = [[0, 600, 1800], [-2, 300, 900],               # plat : 900 s pour 2 700 m
+            [-8, 200, 700], [-6, 200, 700],               # descente douce
+            [-14, 100, 300]]                              # descente : moins de 5 min
+    out = {r["low"]: r for r in estimator.slope_paces([act("2026-10-01", bins=bins)])}
+    assert out[-2]["pace_s_km"] == pytest.approx(333.3, abs=0.1) and out[-2]["vertical_mh"] is None
+    assert out[-10]["pace_s_km"] == pytest.approx(285.7, abs=0.1)
+    assert out[-10]["vertical_mh"] == round((700 * 0.07 + 700 * 0.05) / 400 * 3600)
+    assert out[-20]["seconds"] == 100 and out[-20]["pace_s_km"] is None
+
+
+def test_current_form_uses_only_the_12_weeks_before_the_evening_of_the_day():
+    acts = [act("2026-05-01", km=30), act("2026-08-12", km=8), act("2026-11-03", km=12),
+            act("2026-11-04", km=50)]
+    efforts = [eff("distance", 10000, 2900, "2026-05-01"), eff("distance", 10000, 3100, "2026-09-01"),
+               eff("climb", 0, 900, "2026-10-01", terrain="trail", extra=400)]
+    p = estimator.current_form(acts, efforts, DAY, lthr=170)
+    assert p["version"] == estimator.PROFILE_VERSION
+    assert p["start"] == "2026-08-12" and p["runs"] == 2 and p["distance_km"] == 20
+    assert p["road"]["distances"][0]["time_s"] == 3100
+    assert p["climbs"][0]["vam"] == 900 and p["climbs"][0]["time_s"] == 1600
+    assert p["load"]["fitness"] > 0
+
+
+def test_current_form_ef_compared_with_previous_year():
+    acts = [act(f"2026-0{m}-15", ef=1.50) for m in range(1, 8)] + [act("2026-10-01", ef=1.65)]
+    ef = estimator.current_form(acts, [], DAY, lthr=170)["ef"]
+    assert ef == {"value": 1.65, "n": 1, "reference": 1.5, "delta_pct": 10.0}
+
+
+def test_current_form_empty_history():
+    p = estimator.current_form([], [], DAY, lthr=170)
+    assert p["runs"] == 0 and p["load"] is None and p["ef"] is None and p["climbs"] == []
+
+
+# ---------- route : Riegel ----------
+
+def riegel_efforts(k=1.10, base_day="2026-10-01", old_day="2025-06-01"):
+    """Frontière parfaite d'exposant k : 5 km en 25 min."""
+    def t(d):
+        return 1500 * (d / 5000) ** k
+    return [eff("distance", 5000, t(5000), base_day), eff("distance", 10000, t(10000), old_day, id=2),
+            eff("distance", 21097.5, t(21097.5), old_day, id=3), eff("distance", 1000, 200, base_day)]
+
+
+def test_personal_exponent_fits_the_frontier():
+    x = estimator.personal_exponent(riegel_efforts(1.10), DAY)
+    assert x["personal"] and x["value"] == pytest.approx(1.10, abs=0.001) and x["n"] == 3
+    assert x["range_km"] == [5.0, 21.1]
+
+
+def test_personal_exponent_bounded_and_default():
+    assert estimator.personal_exponent(riegel_efforts(1.40), DAY)["value"] == estimator.EXPONENT_BOUNDS[1]
+    assert estimator.personal_exponent(riegel_efforts(1.40), DAY)["bounded"]
+    few = [eff("distance", 5000, 1500, "2026-10-01"), eff("distance", 10000, 3100, "2026-10-01")]
+    x = estimator.personal_exponent(few, DAY)     # rapport de distances insuffisant
+    assert not x["personal"] and x["value"] == estimator.RIEGEL_DEFAULT
+
+
+def test_road_points_ignore_short_efforts_trail_and_other_dates():
+    efforts = riegel_efforts() + [eff("duration", 300, 1500, "2026-10-01"),
+                                  eff("duration", 1200, 4000, "2026-10-01"),
+                                  eff("distance", 10000, 2000, "2026-10-01", terrain="trail")]
+    pts = estimator.road_points(efforts, date(2026, 8, 12), DAY)
+    assert [(p["kind"], p["distance_m"]) for p in pts] == [("duration", 4000), ("distance", 5000)]
+
+
+def test_predict_road_extrapolates_the_fastest_recent_effort():
+    efforts = riegel_efforts(1.10)
+    p = estimator.predict_road(efforts, DAY, 10000)
+    assert p["reference"]["distance_m"] == 5000            # seul effort route des 12 semaines
+    assert p["realistic_s"] == round(1500 * 2 ** 1.10)
+    spread = estimator.BASE_SPREAD + estimator.EXPONENT_SPREAD * math.log(2)
+    assert p["optimistic_s"] == pytest.approx(p["realistic_s"] * math.exp(-spread), abs=1)
+    assert p["prudent_s"] == pytest.approx(p["realistic_s"] * math.exp(spread), abs=1)
+    assert p["realistic_pace_s_km"] == pytest.approx(p["realistic_s"] / 10, abs=0.1)
+    assert not p["fallback"]
+
+
+def test_predict_road_takes_the_best_of_several_references():
+    efforts = riegel_efforts(1.10) + [eff("distance", 10000, 3000, "2026-10-20", id=9)]   # 10 km rapide
+    p = estimator.predict_road(efforts, DAY, 21097.5)
+    assert p["reference"]["activity_id"] == 9
+    assert p["realistic_s"] == round(3000 * 2.10975 ** p["exponent"]["value"])
+
+
+def test_predict_road_gain_adds_flat_equivalent_distance():
+    efforts = riegel_efforts(1.10)
+    flat = estimator.predict_road(efforts, DAY, 10000)
+    hilly = estimator.predict_road(efforts, DAY, 10000, gain_m=100)
+    assert estimator.CLIMB_EQUIVALENT == pytest.approx(6.0, abs=0.2)
+    assert hilly["equivalent_m"] == round(10000 + 100 * estimator.CLIMB_EQUIVALENT)
+    assert hilly["realistic_s"] > flat["realistic_s"]
+
+
+def test_predict_road_falls_back_to_six_months_then_none():
+    efforts = [eff("distance", 5000, 1500, "2026-07-01")]
+    p = estimator.predict_road(efforts, DAY, 10000)
+    assert p["fallback"] and p["window_days"] == estimator.FALLBACK_WINDOW_DAYS
+    assert estimator.predict_road([eff("distance", 5000, 1500, "2026-01-01")], DAY, 10000) is None
+    assert estimator.predict_road(efforts, DAY, 0) is None
+
+
+def test_road_table_standard_distances():
+    rows = estimator.road_table(riegel_efforts(1.10), DAY)
+    assert [r["label"] for r in rows] == ["5 km", "10 km", "Semi", "Marathon"]
+    assert rows[0]["realistic_s"] == 1500
+    assert all(a["realistic_s"] < b["realistic_s"] for a, b in zip(rows, rows[1:], strict=False))

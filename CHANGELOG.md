@@ -4,6 +4,11 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 
 ## [Non publié]
 
+### Ajouté
+- Métriques en version 5 (toutes les sorties sont recalculées) : temps en mouvement et distance par tranche de pente de 2 %.
+- Page Estimateur (nouvel onglet) : forme actuelle sur les 12 dernières semaines (courbe allure-durée route et trail, VAM par palier, allure en descente par bande de pente, fitness et forme, Efficiency Factor comparé aux 12 mois précédents), calculée par une fonction pure versionnée rejouable à n'importe quelle date.
+- Estimateur route : formule de Riegel à exposant personnel (calé sur la frontière des meilleurs efforts route des 2 dernières années), niveau tiré des meilleurs efforts route des 12 dernières semaines, fourchette optimiste / réaliste / prudent et allure cible ; saisie d'une distance et d'un D+ facultatif, tableau 5 km, 10 km, semi, marathon.
+
 ## [0.2.0] - 2026-11-03
 
 Phase 2 (statistiques) : pages Accueil, Volume et régularité, Sorties, Performance, Forme et Courses, fiche de chaque sortie, détection des courses. Au premier démarrage, toutes les sorties sont recalculées (métriques en version 4).

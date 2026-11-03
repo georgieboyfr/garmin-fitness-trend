@@ -156,3 +156,11 @@ def test_courses_page_and_race_toggle(client, config):
     st = client.post("/admin/api/races/settings", headers=ui,
                      json={"keywords": ["Trail Du"], "threshold": 4}).json()
     assert st["settings"]["keywords"] == ["trail du"] and st["settings"]["custom_keywords"]
+
+
+def test_estimateur_page(client):
+    login(client)
+    for q in ("", "?distance=10", "?distance=12,5&gain=150", "?distance=abc"):
+        r = client.get("/estimateur" + q)
+        assert r.status_code == 200 and "Forme actuelle" in r.text
+    assert 'href="/estimateur"' in client.get("/").text
