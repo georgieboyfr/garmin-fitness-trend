@@ -43,6 +43,7 @@ async function init() {
   $("login-card").hidden = !s.admin_enabled || s.authenticated;
   $("admin-content").hidden = !s.authenticated;
   $("logout-btn").hidden = !s.authenticated;
+  $("stats-link").hidden = !s.authenticated;
   if (s.authenticated) {
     refreshGarmin();
     refreshSync(true);
