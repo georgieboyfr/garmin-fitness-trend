@@ -57,6 +57,11 @@
     const paceBounds = sortedPace.length
       ? { min: Math.max(120, Math.floor((pct(0.05) - 30) / 60) * 60), max: Math.ceil((pct(0.95) + 60) / 60) * 60 }
       : {};
+    // indice du point de profil atteint à un instant donné (pour surligner les intervalles)
+    const kmIndexAt = (sec) => {
+      let i = P.time_s.findIndex((v) => v != null && v >= sec);
+      return i < 0 ? P.time_s.length - 1 : i;
+    };
     // une graduation par kilomètre (ou tous les 2, 5, 10 km sur les longues sorties)
     const totalKm = P.km[P.km.length - 1] || 1;
     const kmStep = [1, 2, 5, 10, 20].find((s) => totalKm / s <= 12) || 50;
@@ -79,7 +84,11 @@
         const bounds = name === "pace" ? { ...paceBounds, interval: paceInterval } : {};
         yAxis.push({ type: "value", gridIndex: i, scale: true, inverse: name === "pace", splitNumber: 3, ...t.axis,
           ...bounds, axisLabel: { ...t.axis.axisLabel, formatter: (v) => name === "pace" ? paceLabel(v) : GFT.num(v) } });
+        const efforts = name === "pace" && P.intervals
+          ? P.intervals.rows.filter((r) => r.kind === "effort" || r.kind === "tour") : [];
         series.push({ name: conf.label, type: "line", xAxisIndex: i, yAxisIndex: i, data: conf.data, showSymbol: false,
+          ...(efforts.length ? { markArea: { silent: true, itemStyle: { color: t.accentSoft },
+            data: efforts.map((r) => [{ xAxis: kmIndexAt(r.start_s) }, { xAxis: kmIndexAt(r.start_s + r.duration_s) }]) } } : {}),
           connectNulls: name !== "pace", lineStyle: { width: 1.6, color: conf.color }, itemStyle: { color: conf.color },
           ...(conf.area ? { areaStyle: { color: conf.color, opacity: 0.12 } } : {}) });
       });

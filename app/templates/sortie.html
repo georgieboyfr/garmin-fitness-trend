@@ -66,6 +66,36 @@
 </section>
 {% endif %}
 
+{% set iv = d.profiles.intervals %}
+{% if iv %}
+<section class="card">
+  <div class="card-head">
+    <h2>Intervalles {{ tip("Tours enregistrés par la montre (séance structurée ou bouton « tour »), ou à défaut blocs d'effort détectés automatiquement sur l'allure : efforts nettement plus rapides et de durées comparables, au moins trois. La détection peut se tromper ; les efforts sont aussi surlignés sur le profil d'allure.") }}</h2>
+    <span class="muted small">{{ "tours de la montre" if iv.origin == "laps" else "détectés automatiquement" }}</span>
+  </div>
+  {% if iv.summary %}
+  <p class="interval-summary"><b>{{ iv.summary.count }} × <span data-duration="{{ iv.summary.mean_duration_s }}"></span></b>
+    (<span data-num="{{ iv.summary.mean_distance_m }}" data-unit="m"></span> en moyenne){% if iv.summary.pace_s_km %} à
+    <b data-pace="{{ iv.summary.pace_s_km }}"></b>{% endif %}</p>
+  {% endif %}
+  <div class="table-wrap">
+    <table class="data intervals">
+      <thead><tr><th>#</th><th>Type</th><th>Durée</th><th>Distance</th><th>Allure</th><th>FC moy.</th><th>FC max</th></tr></thead>
+      <tbody>
+        {% for r in iv.rows %}
+        <tr class="iv-{{ 'effort' if r.kind == 'effort' else 'other' }}">
+          <td>{{ loop.index }}</td><td>{{ r.kind }}</td><td data-chrono="{{ r.duration_s }}"></td>
+          <td data-num="{{ r.distance_m }}" data-unit="m"></td>
+          <td {% if r.pace_s_km %}data-pace="{{ r.pace_s_km }}"{% endif %}>{% if not r.pace_s_km %}—{% endif %}</td>
+          <td>{{ r.avg_hr or "—" }}</td><td>{{ r.max_hr or "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
 <section class="grid-2">
   {% if d.profiles.splits %}
   <article class="card">
@@ -89,11 +119,24 @@
     <h2>Temps par zone de FC</h2>
     <div class="chart chart-zones" id="chart-zones" role="img" aria-label="Temps passé dans chaque zone de FC"></div>
     {% if d.bests.distance or d.bests.climb %}
-    <h2 class="subhead">Meilleurs efforts dans la sortie</h2>
-    <dl class="facts">
-      {% for b in d.bests.distance %}<div><dt>{{ b.label }}</dt><dd data-chrono="{{ b.time_s }}"></dd></div>{% endfor %}
-      {% if d.bests.climb %}<div><dt>VAM ({{ d.bests.climb.gain }} m)</dt><dd data-num="{{ d.bests.climb.vam }}" data-unit="m/h"></dd></div>{% endif %}
-    </dl>
+    <h2 class="subhead">Meilleurs efforts dans la sortie {{ tip("Meilleur temps sur chaque distance à l'intérieur de la sortie, et son classement parmi toutes tes sorties de même terrain (route ou trail) : dans l'année de la sortie, puis toutes années confondues. La VAM est classée route et trail confondus.") }}</h2>
+    {% macro rank_line(r) -%}
+      {%- if r -%}
+      <span class="rank {{ 'rank-top' if r.in_year.rank <= 3 else '' }}">{{ r.in_year.rank }}<sup>{{ 'er' if r.in_year.rank == 1 else 'e' }}</sup> en {{ r.year }} <span class="muted">/ {{ r.in_year.of }}</span></span>
+      <span class="rank {{ 'rank-top' if r.all_time.rank <= 3 else '' }}">{{ r.all_time.rank }}<sup>{{ 'er' if r.all_time.rank == 1 else 'e' }}</sup> au total <span class="muted">/ {{ r.all_time.of }}</span></span>
+      {%- endif -%}
+    {%- endmacro %}
+    <table class="data bests">
+      <tbody>
+        {% for b in d.bests.distance %}
+        <tr><td>{{ b.label }}</td><td data-chrono="{{ b.time_s }}"></td><td class="ranks">{{ rank_line(b.ranks) }}</td></tr>
+        {% endfor %}
+        {% if d.bests.climb %}
+        <tr><td>VAM <span class="muted small">({{ d.bests.climb.gain }} m)</span></td>
+          <td data-num="{{ d.bests.climb.vam }}" data-unit="m/h"></td><td class="ranks">{{ rank_line(d.bests.climb.ranks) }}</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
     {% endif %}
   </article>
 </section>

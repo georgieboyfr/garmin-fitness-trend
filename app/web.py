@@ -137,7 +137,7 @@ def sortie(request: Request, activity_id: int):
     conn = db.connect(cfg.db_path)
     try:
         acts = queries.running_activities(conn)
-        data = detail.activity_detail(cfg, conn, activity_id, acts)
+        data = detail.activity_detail(cfg, conn, activity_id, acts, queries.best_efforts(conn))
     finally:
         conn.close()
     if data is not None:

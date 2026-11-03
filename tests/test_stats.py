@@ -237,3 +237,20 @@ def test_year_outlook():
     assert o["distance_km"]["projection"] == round(35 / 307 * 365)
     assert o["per_week"] == round(3 / (307 / 7), 1)
     assert stats.year_outlook(ACTS, date(2026, 1, 5))["distance_km"]["projection"] is None   # trop tôt
+
+
+def test_effort_ranks():
+    from app.detail import effort_ranks
+
+    efforts = [
+        {"kind": "distance", "key": 5000, "value": v, "id": i, "year": y, "terrain": t}
+        for i, (v, y, t) in enumerate([(1300, 2025, "road"), (1250, 2026, "road"), (1280, 2026, "road"),
+                                       (1200, 2026, "trail"), (1350, 2026, "road")])
+    ]
+    r = effort_ranks(efforts, 2, "distance", 5000, "road", 2026)
+    assert r["in_year"] == {"rank": 2, "of": 3}
+    assert r["all_time"] == {"rank": 2, "of": 4}                    # le trail est classé à part
+    climbs = [{"kind": "climb", "key": 0, "value": v, "id": i, "year": 2026, "terrain": t}
+              for i, (v, t) in enumerate([(900, "trail"), (950, "road")])]
+    assert effort_ranks(climbs, 0, "climb", 0, "trail", 2026, higher_is_better=True)["all_time"]["rank"] == 2
+    assert effort_ranks(efforts, 99, "distance", 5000, "road", 2026) is None

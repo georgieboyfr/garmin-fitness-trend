@@ -5,6 +5,7 @@ temps par kilomètre, meilleurs efforts et comparaison avec les autres passages 
 import numpy as np
 import pyarrow.parquet as pq
 
+from . import intervals
 from .bests import DISTANCES_M, DURATIONS_S, clean_distance
 from .elevation import median_filter, resample, series_distance
 from .elevation_job import dem_profile_path
@@ -32,7 +33,21 @@ def _round(values, digits):
     return [None if v is None or not np.isfinite(v) else round(float(v), digits) for v in values]
 
 
-def profiles(config, activity_id, source) -> dict:
+def session_intervals(fit_path, terrain, t, distance, hr) -> dict | None:
+    """Intervalles de la séance : tours de la montre s'ils la décrivent, sinon détection sur
+    l'allure (route seulement)."""
+    rows = intervals.from_laps(intervals.read_laps(fit_path)) if fit_path and fit_path.exists() else None
+    origin = "laps"
+    if rows is None and terrain == "road":
+        rows, origin = intervals.detect(t, distance, hr), "detected"
+    if not rows:
+        return None
+    for r in rows:
+        r["pace_s_km"] = r["duration_s"] / r["distance_m"] * 1000 if r["distance_m"] > 20 else None
+    return {"origin": origin, "rows": rows, "summary": intervals.summary(rows)}
+
+
+def profiles(config, activity_id, source, fit_path=None, terrain=None) -> dict:
     table = read_series(config.series_dir, activity_id,
                         ["timestamp", "distance_m", "lat", "lon", "altitude_m", "heart_rate"])
     t = _seconds(table.column("timestamp").to_numpy(zero_copy_only=False))
@@ -93,6 +108,7 @@ def profiles(config, activity_id, source) -> dict:
             "loss_m": round(float(-diffs[diffs < 0].sum())) if diffs.size else None,
         })
     return {
+        "intervals": session_intervals(fit_path, terrain, t, raw_d, hr),
         "km": _round((grid - grid[0]) / 1000, 3),
         "time_s": _round(t_at - t_at[0], 0),
         "altitude": _round(alt_at, 1), "hr": _round(hr_at, 0), "pace": _round(pace, 0),
@@ -100,7 +116,26 @@ def profiles(config, activity_id, source) -> dict:
     }
 
 
-def activity_detail(config, conn, activity_id: int, acts) -> dict | None:
+def effort_ranks(efforts, activity_id, kind, key, terrain, year, higher_is_better=False) -> dict | None:
+    """Rang d'un meilleur effort de la sortie parmi ceux de même nature : dans l'année et sur toute
+    la période (même terrain, sauf pour la VAM, route et trail confondus)."""
+    pool = [e for e in efforts if e["kind"] == kind and e["key"] == key
+            and (kind == "climb" or e["terrain"] == terrain)]
+    mine = next((e for e in pool if e["id"] == activity_id), None)
+    if mine is None:
+        return None
+
+    def rank(rows):
+        def beats(e):
+            return e["value"] > mine["value"] if higher_is_better else e["value"] < mine["value"]
+
+        better = sum(1 for e in rows if beats(e))
+        return {"rank": better + 1, "of": len(rows)}
+
+    return {"year": year, "in_year": rank([e for e in pool if e["year"] == year]), "all_time": rank(pool)}
+
+
+def activity_detail(config, conn, activity_id: int, acts, efforts=None) -> dict | None:
     """acts : toutes les sorties de course (queries.running_activities), pour le parcours."""
     a = next((x for x in acts if x["id"] == activity_id), None)
     if a is None:
@@ -125,6 +160,10 @@ def activity_detail(config, conn, activity_id: int, acts) -> dict | None:
 
     zones = [m[f"zone{i}_s"] or 0 for i in range(1, 6)] if m else [0] * 5
     best = {(b["kind"], b["key"]): b["value"] for b in bests}
+    year = a["start"].year
+
+    def ranks(kind, key, higher=False):
+        return effort_ranks(efforts or [], activity_id, kind, key, a.get("terrain"), year, higher)
     climb_gain = next((b["extra"] for b in bests if b["kind"] == "climb"), None)
     return {
         "id": activity_id, "name": a["name"], "description": a["description"],
@@ -142,14 +181,18 @@ def activity_detail(config, conn, activity_id: int, acts) -> dict | None:
         "decoupling_pct": round(m["decoupling_pct"], 1) if m and m["decoupling_pct"] is not None else None,
         "zones_s": zones,
         "bests": {
-            "distance": [{"label": DISTANCE_LABELS[k], "time_s": best[("distance", k)]}
+            "distance": [{"label": DISTANCE_LABELS[k], "time_s": best[("distance", k)],
+                          "ranks": ranks("distance", k)}
                          for k in DISTANCES_M if ("distance", k) in best],
             "duration": [{"label": DURATION_LABELS[k], "pace_s_km": k / (best[("duration", k)] / 1000)}
                          for k in DURATIONS_S if ("duration", k) in best],
-            "climb": {"vam": round(best[("climb", 0)]), "gain": round(climb_gain or 0)}
+            "climb": {"vam": round(best[("climb", 0)]), "gain": round(climb_gain or 0),
+                      "ranks": ranks("climb", 0, higher=True)}
             if ("climb", 0) in best else None,
         },
         "route": cmp, "passages": passages,
-        "profiles": profiles(config, activity_id, e["source"] if e else None)
+        "profiles": profiles(config, activity_id, e["source"] if e else None,
+                             config.fit_dir / f"{activity_id}.fit" if a["source"] == "garmin" else None,
+                             a.get("terrain"))
         if s and s["status"] == "ok" else {"km": [], "track": [], "splits": []},
     }

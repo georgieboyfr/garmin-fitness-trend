@@ -21,6 +21,8 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Page Courses : courses confirmées avec la forme le jour J et une semaine avant, l'allure comparée aux sorties habituelles, et un graphique forme / performance.
 - Records et tops 10 : aperçu de la description.
 - Accueil : écart avec l'an dernier seulement s'il est notable, projection de fin d'année, record annuel, sorties par semaine.
+- Fiche de sortie : intervalles de la séance (tours de la montre si séance structurée ou tours manuels, sinon blocs d'effort détectés sur l'allure, route seulement), résumé « N × durée à allure », efforts surlignés sur le profil d'allure.
+- Fiche de sortie : classement de chaque meilleur effort dans l'année et sur toute la période (même terrain ; VAM route et trail confondus).
 
 ### Modifié
 - Hors de France, le D+ de Strava remplace celui du MNT Copernicus (qui compte les bâtiments) quand l'activité est appariée.
