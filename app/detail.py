@@ -8,7 +8,7 @@ from datetime import timedelta
 import numpy as np
 import pyarrow.parquet as pq
 
-from . import hr_speed, intervals
+from . import grade, hr_speed, intervals
 from .bests import CLIMB_GAINS_M, DISTANCES_M, DURATIONS_S, clean_distance
 from .elevation import median_filter, resample, series_distance
 from .elevation_job import dem_profile_path
@@ -98,6 +98,12 @@ def profiles(config, activity_id, source, fit_path=None, terrain=None) -> dict:
         track = np.column_stack([np.interp(grid, rd[order], rl[order]),
                                  np.interp(grid, rd[order], ro[order])]).round(6).tolist()
 
+    # distance équivalente sur le plat (VAP par kilomètre, sorties trail)
+    eq = None
+    finite_alt = np.isfinite(alt_at)
+    if terrain == "trail" and finite_alt.sum() > 1:
+        eq = grade.equivalent_distance(grid, np.interp(grid, grid[finite_alt], alt_at[finite_alt]))
+
     # temps par kilomètre (dernier kilomètre partiel inclus)
     splits = []
     bounds = list(np.arange(dc[0], dc[-1], 1000.0)) + [dc[-1]]
@@ -110,7 +116,9 @@ def profiles(config, activity_id, source, fit_path=None, terrain=None) -> dict:
         seg_alt = alt_at[sel]
         seg_alt = seg_alt[np.isfinite(seg_alt)]
         diffs = np.diff(seg_alt)
+        eq_m = float(np.interp(b, grid, eq) - np.interp(a, grid, eq)) if eq is not None else 0.0
         splits.append({
+            "gap_pace_s_km": round((tb - ta) / eq_m * 1000) if eq_m > 50 else None,
             "km": k, "distance_m": round(b - a), "time_s": round(tb - ta),
             "pace_s_km": round((tb - ta) / (b - a) * 1000),
             "avg_hr": round(float(np.nanmean(h))) if np.isfinite(h).any() else None,

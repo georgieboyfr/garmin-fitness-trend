@@ -143,11 +143,15 @@
     <h2>Par kilomètre</h2>
     <div class="table-wrap">
       <table class="data">
-        <thead><tr><th>Km</th><th>Temps</th><th>Allure</th><th>FC</th><th>D+</th><th>D−</th></tr></thead>
+        {% set gap_col = d.profiles.splits | selectattr("gap_pace_s_km") | list | length > 0 %}
+        <thead><tr><th>Km</th><th>Temps</th><th>Allure</th>
+          {% if gap_col %}<th>VAP {{ tip("Allure ajustée à la pente sur chaque kilomètre : l'allure équivalente sur le plat pour le même effort. Temps écoulé, comme l'allure du kilomètre.") }}</th>{% endif %}
+          <th>FC</th><th>D+</th><th>D−</th></tr></thead>
         <tbody>
           {% for s in d.profiles.splits %}
           <tr><td>{% if s.distance_m < 990 %}<span class="muted">{{ s.distance_m }} m</span>{% else %}{{ s.km }}{% endif %}</td>
             <td data-chrono="{{ s.time_s }}"></td><td data-pace="{{ s.pace_s_km }}"></td>
+            {% if gap_col %}<td {% if s.gap_pace_s_km %}data-pace="{{ s.gap_pace_s_km }}"{% endif %}>{% if not s.gap_pace_s_km %}—{% endif %}</td>{% endif %}
             <td>{{ s.avg_hr or "—" }}</td><td>{{ s.gain_m if s.gain_m is not none else "—" }}</td>
             <td>{{ s.loss_m if s.loss_m is not none else "—" }}</td></tr>
           {% endfor %}
