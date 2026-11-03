@@ -357,7 +357,14 @@ $("ev-recompute").addEventListener("click", (e) => {
 
 const fmtShort = (d) => new Date(d + "T12:00:00").toLocaleDateString("fr-FR", { dateStyle: "medium" });
 
-function raceRow(r, withActions) {
+// actions selon la liste : en attente, confirmée ou rejetée
+const RACE_ACTIONS = {
+  pending: [["C'est une course", "confirmed", "primary"], ["Non", "rejected"]],
+  confirmed: [["Ce n'est pas une course", "rejected", "ghost"], ["Remettre en attente", null, "ghost"]],
+  rejected: [["C'est une course", "confirmed", "primary"], ["Remettre en attente", null, "ghost"]],
+};
+
+function raceRow(r, list) {
   const div = document.createElement("div");
   div.className = "race";
   const head = document.createElement("div");
@@ -398,8 +405,7 @@ function raceRow(r, withActions) {
     }));
     return b;
   };
-  if (withActions) actions.append(button("C'est une course", "confirmed", "primary"), button("Non", "rejected"));
-  else actions.append(button("Retirer", null, "ghost"));
+  actions.append(...RACE_ACTIONS[list].map(([label, status, cls]) => button(label, status, cls)));
   div.append(actions);
   return div;
 }
@@ -408,11 +414,12 @@ function renderRaces(st) {
   const pill = $("races-pill");
   pill.textContent = st.pending.length ? `${st.pending.length} à valider` : "À jour";
   pill.className = "pill " + (st.pending.length ? "warn" : "ok");
-  $("races-pending").replaceChildren(...(st.pending.length ? st.pending.map((r) => raceRow(r, true))
+  $("races-pending").replaceChildren(...(st.pending.length ? st.pending.map((r) => raceRow(r, "pending"))
     : [Object.assign(document.createElement("p"), { className: "muted small", textContent: "Aucune course probable à valider." })]));
-  $("races-confirmed-title").textContent = `Courses confirmées (${st.confirmed.length})`
-    + (st.rejected_count ? ` · ${st.rejected_count} rejetée(s)` : "");
-  $("races-confirmed").replaceChildren(...st.confirmed.map((r) => raceRow(r, false)));
+  $("races-confirmed-title").textContent = `Courses confirmées (${st.confirmed.length})`;
+  $("races-confirmed").replaceChildren(...st.confirmed.map((r) => raceRow(r, "confirmed")));
+  $("races-rejected-title").textContent = `Sorties rejetées (${st.rejected.length})`;
+  $("races-rejected").replaceChildren(...st.rejected.map((r) => raceRow(r, "rejected")));
   $("races-keywords").value = st.settings.keywords.join("\n");
   $("races-threshold").value = st.settings.threshold;
 }

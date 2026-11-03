@@ -139,6 +139,10 @@ def test_courses_page_and_race_toggle(client, config):
     assert "badge-race" in client.get("/sorties/77").text
     st = client.get("/admin/api/races").json()
     assert [x["id"] for x in st["confirmed"]] == [77]
+    client.post("/admin/api/races/77", headers=ui, json={"status": "rejected"})
+    st = client.get("/admin/api/races").json()
+    assert [x["id"] for x in st["rejected"]] == [77] and st["confirmed"] == []
+    client.post("/admin/api/races/77", headers=ui, json={"status": "confirmed"})       # on revient dessus
     assert client.post("/admin/api/races/settings", headers=ui, json={"threshold": 99}).status_code == 400
     st = client.post("/admin/api/races/settings", headers=ui,
                      json={"keywords": ["Trail Du"], "threshold": 4}).json()

@@ -47,7 +47,8 @@ def overview(config, conn) -> dict:
         "pending": pending,
         "confirmed": sorted((_summary(by_id[i]) for i, st in decisions.items()
                              if st == "confirmed" and i in by_id), key=lambda r: r["date"], reverse=True),
-        "rejected_count": sum(1 for st in decisions.values() if st == "rejected"),
+        "rejected": sorted((_summary(by_id[i]) for i, st in decisions.items()
+                            if st == "rejected" and i in by_id), key=lambda r: r["date"], reverse=True),
     }
 
 
