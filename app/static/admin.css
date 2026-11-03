@@ -178,6 +178,7 @@ input[type="file"] { font: inherit; font-size: 14px; max-width: 100%; }
 .race:first-child { border-top: 0; }
 .race-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .race-head a { font-weight: 600; color: inherit; }
+.race-desc { font-size: 14px; white-space: pre-line; }
 .race-reasons { font-size: 13px; color: var(--muted); }
 .race-actions { display: flex; gap: 8px; }
 .score { font-size: 12px; font-weight: 700; color: var(--accent); }

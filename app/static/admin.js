@@ -371,6 +371,12 @@ function raceRow(r, withActions) {
     + ` · ${r.gain_m} m D+`;
   head.append(a, meta);
   div.append(head);
+  if (r.description) {
+    const desc = document.createElement("div");
+    desc.className = "race-desc";
+    desc.textContent = r.description;
+    div.append(desc);
+  }
   if (r.reasons) {
     const reasons = document.createElement("div");
     reasons.className = "race-reasons";

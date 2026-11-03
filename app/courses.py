@@ -23,6 +23,7 @@ def _activities(conn):
 
 def _summary(a) -> dict:
     return {"id": a["id"], "date": a["start"].date().isoformat(), "name": a["name"],
+            "description": a["description"],
             "distance_km": round(a["distance_km"], 2), "gain_m": round(a["gain_m"]),
             "moving_s": a["moving_duration_s"], "elapsed_s": a.get("elapsed_s"), "terrain": a.get("terrain"),
             "pace_s_km": stats.pace_s_per_km(a["moving_duration_s"], a["distance_km"]),
