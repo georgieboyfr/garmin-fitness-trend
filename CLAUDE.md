@@ -10,6 +10,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 
 - Une phase à la fois (section 8 du brief), terminée, testée et taguée avant la suivante.
 - Conventional Commits, petites étapes, versionnement sémantique, `CHANGELOG.md` à jour.
+- À chaque version poussée (tag `vX.Y.Z`), `README.md` mis à jour et poussé aussi : fonctionnalités, feuille de route, limites (demande de Greg du 3 novembre 2026).
 - Tests unitaires pour chaque calcul (D+, records, charge, détection des courses, estimations).
 - Course à pied uniquement (`running`, `trail_running`, tapis) dans les statistiques et la charge.
 - Le FIT brut est la source de vérité ; chaque étape est idempotente ; les calculs sont versionnés.

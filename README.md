@@ -1,7 +1,8 @@
 # Garmin Fitness Trend
 
 Statistiques de course à pied auto-hébergées, à partir des activités Garmin Connect : volume,
-records, forme, courses, et la fiche détaillée de chaque sortie.
+records, forme, courses, la fiche détaillée de chaque sortie, et un estimateur de temps de
+course sur route ou sur le GPX d'un trail.
 
 Une seule image Docker, légère (Python, SQLite, pas de base de données à installer), publiée
 pour amd64 et arm64 : elle tourne sur à peu près tout, d'un NAS à un Raspberry Pi ou un vieux
@@ -37,12 +38,25 @@ Course à pied uniquement (route, trail, tapis) : les autres sports sont ignoré
   d'altitude, d'allure et de FC, temps et VAP par kilomètre, intervalles (tours de la montre
   ou détection automatique), zones de FC, meilleurs efforts et leur classement, comparaison
   avec les autres passages sur le même parcours, et **forme du jour** : la FC de la sortie
-  face à celle attendue à cette vitesse ajustée à la pente.
+  face à celle attendue à cette vitesse ajustée à la pente. Pour une course, l'estimateur
+  rejoué sur sa propre trace (forme de la veille et d'aujourd'hui) face au temps réel, en
+  écart cumulé ou en temps de passage le long du parcours.
 - **Performance** : records route et trail sur 1 km à marathon (top 10, par année), courbe
   allure-durée, VAM, meilleures montées par palier de D+.
 - **Forme** : fitness, fatigue et forme (modèle de Banister) situées dans l'historique, temps
   par zone de FC, Efficiency Factor et découplage cardiaque.
 - **Courses** : détection automatique des courses, validation en un clic, forme le jour J.
+- **Estimateur** : temps de course « si je courais maintenant », avec une fourchette.
+  - Route : formule de Riegel depuis tes meilleurs efforts des 4 derniers mois, chacun ramené
+    à ta forme du jour par l'évolution de ta vitesse à FC égale.
+  - Trail sur un GPX importé : altitude du MNT, distance équivalente plat selon ton modèle
+    allure-pente personnel, fatigue au-delà de 2 h tirée de tes sorties longues, arrêts
+    habituels en course ou saisis aux ravitaillements ; tronçons (montée, descente,
+    vallonné…), temps de passage et profil.
+  - Tes courses passées les plus proches, effet de la forme (plus ou moins de fitness le
+    jour J), précision rejouée sur tes courses passées.
+  - **Courses suivies** : prédiction enregistrée chaque semaine, courbe avec fourchette et
+    objectif, puis résultat une fois la course courue et reliée à sa sortie.
 
 | Fiche de sortie | Sorties |
 | --- | --- |
@@ -53,7 +67,9 @@ Course à pied uniquement (route, trail, tapis) : les autres sports sont ignoré
 Les noms des sorties sont masqués sur ces captures.
 
 **Admin** : connexion Garmin (MFA compris), synchro manuelle et journal, import Strava,
-réglages du D+, LTHR et FC (avec une estimation tirée des sorties), courses probables.
+réglages du D+, LTHR et FC (avec une estimation tirée des sorties), courses probables,
+calibration de l'estimateur (correction proposée d'après les courses passées, appliquée sur
+demande).
 
 ## Installation
 
@@ -112,7 +128,7 @@ Seul l'export le plus récent compte ; un fichier déjà traité n'est pas relu.
 | --- | --- | --- |
 | 1. Socle | Synchro Garmin, lecture des FIT, D+, import Strava, admin, image Docker | Terminée (v0.1) |
 | 2. Statistiques | Pages Volume, Sorties, Performance, Forme, Courses ; fiche de sortie ; détection des courses | Terminée (v0.2) |
-| 3. Estimateur | Temps de course estimé depuis un GPX ou une distance et la forme actuelle (route : Riegel personnalisé ; trail : modèle allure-pente personnel par tronçon), validé sur les courses passées, suivi des prédictions semaine après semaine | À venir |
+| 3. Estimateur | Temps de course estimé depuis un GPX ou une distance et la forme actuelle (route : Riegel, références ajustées par la FC ; trail : modèle allure-pente personnel par tronçon, fatigue, arrêts), validé sur les courses passées, courses suivies semaine après semaine | Terminée (v0.3) |
 | 4. Coach | Plan d'entraînement adaptatif autour des courses prévues (ou maintien de forme), séances détectées, bilan du dimanche, réajustement ; coach conversationnel qui propose sans imposer | À venir |
 | 5. Extensions | Temps par tronçon en trail, envoi des séances vers la montre, idées en attente (météo, carte de toutes les traces, suivi des chaussures…) | À venir |
 
@@ -142,4 +158,9 @@ construit l'image pour amd64 et arm64 et la publie sur
   l'admin.
 - Le service d'altitude IGN demande une connexion Internet au moment du calcul ; en cas de
   coupure, le D+ est simplement reporté à la synchro suivante.
+- L'estimateur se cale sur les données de chaque coureur (pentes, fatigue, arrêts, relation
+  FC / vitesse), mais ses réglages ont été choisis sur un petit nombre de courses d'un seul
+  coureur : l'erreur affichée sur ces courses est flatteuse. La page sépare la vraie
+  précision, mesurée sur les prédictions enregistrées avant le départ des courses suivies.
+  Avec peu de courses dans l'historique, elle n'est pas mesurable au début.
 - Un seul utilisateur.
