@@ -458,7 +458,7 @@ Pour l'assistant en langage naturel, exclure par prudence les noms issus de Stra
 Idées de Greg ou limites relevées pendant le développement, à reprendre seulement sur demande. Chaque entrée porte sa date.
 
 - *3 novembre 2026* — Intervalles très courts (30/30, 45/40…) : la détection sur l'allure exige 40 s d'effort minimum et ne les voit pas ; seuls les tours de la montre les décrivent. Piste : abaisser le seuil pour les séances nommées « 30/30 » ou détecter sur la FC. Facile à moyenne.
-- *3 novembre 2026* — Fiche d'une course réalisée : superposer le temps estimé par l'estimateur (avec la forme de la veille) et le temps réel dans un graphique, format à définir avec Greg (par exemple temps de passage estimés et réels le long du parcours, ou écart cumulé au fil des kilomètres, avec le profil d'altitude). S'appuie sur le rejeu des courses (étapes 3 et 7 de la phase 3) et sur le lien course / prédiction de l'étape 10. Moyenne.
+- *3 novembre 2026* — Fiche d'une course réalisée : superposer le temps estimé par l'estimateur (avec la forme de la veille) et le temps réel dans un graphique, format à définir avec Greg (par exemple temps de passage estimés et réels le long du parcours, ou écart cumulé au fil des kilomètres, avec le profil d'altitude). Le calcul se lance depuis la fiche de la course elle-même, par un bouton, sans passer par la page Estimateur ni importer de GPX (la trace de la sortie sert de parcours) ; deux estimations possibles : avec la forme de la veille de la course et avec la forme d'aujourd'hui (« que ferais-je maintenant sur ce parcours »). S'appuie sur le rejeu des courses (étapes 3 et 7 de la phase 3) et sur le lien course / prédiction de l'étape 10. Moyenne.
 
 ## 8. Plan de livraison
 
