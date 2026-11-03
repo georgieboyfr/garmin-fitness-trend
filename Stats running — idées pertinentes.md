@@ -540,4 +540,5 @@ Audit de l'existant et plan module par module, validés avant la phase 1.
   - sorties de course Strava sans équivalent Garmin, d'au moins 1 km et avec une trace dans l'archive : importées comme activités « source Strava » (id négatif), trace lue et D+ calculé comme les autres (MNT). Cela couvre les 11 sorties de nov.–déc. 2020 (avant la première montre Garmin) et les 3 sorties partagées sans montre ; « Passage Fabien » (0,3 km) est écarté par le seuil de 1 km. Si Garmin fournit plus tard la même sortie, la copie Strava est remplacée ;
   - résultat sur l'export du 29 octobre 2026 : 670 activités appariées, 179 noms repris (les autres sont les noms génériques de Strava), 14 sorties importées ;
   - le D+ de Strava de chaque sortie est conservé, pour comparaison seulement.
+- **Accès aux pages de statistiques** (décision de Greg, 3 novembre 2026) : protégées par la même connexion que l'admin (session de 30 jours), car elles montrent FC, lieux, noms et descriptions. Une page non connectée renvoie vers la connexion puis revient à la page demandée.
 

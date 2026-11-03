@@ -21,7 +21,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 ## État d'avancement
 
 - [x] Phase 0 — Audit et plan validés (2 novembre 2026, voir section 10 du brief)
-- [ ] Phase 1 — Socle (en cours)
+- [x] Phase 1 — Socle (v0.1.1, en production sur le Synology le 3 novembre 2026)
   - [x] 1. Squelette : `app/`, migrations, tests, Dockerfile
   - [x] 2. Connexion Garmin depuis l'admin (`garminconnect` 0.3.20), admin protégée minimale
   - [x] 3. Synchro : reprise des FIT existants, métadonnées, incrémental
@@ -29,8 +29,17 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 5. D+ altimètre ou MNT (calibration croisée MNT/baromètre, voir section 10 du brief)
   - [x] 6. Noms et descriptions Strava, sorties sans montre importées
   - [x] 7. CI GitHub, image amd64/arm64 sur ghcr (v0.1.0 publiée le 3 novembre 2026)
-  - [ ] Bascule du Synology sur l'image 0.1.0 et vérification sur ordinateur et mobile
-- [ ] Phase 2 — Statistiques
+  - [x] Bascule du Synology et vérification de l'admin
+- [ ] Phase 2 — Statistiques (en cours)
+  - [ ] 1. Socle de l'interface : templates Jinja, navigation, thèmes clair/sombre, ECharts, accès protégé, page d'accueil
+  - [ ] 2. Métriques par activité versionnées : temps en mouvement, TRIMP/HRSS, zones FC (LTHR), route ou trail, estimation de la LTHR
+  - [ ] 3. Page Volume et régularité
+  - [ ] 4. Page Sorties : liste paginée
+  - [ ] 5. Records en fenêtre glissante, courbe allure-durée, VAM : page Performance
+  - [ ] 6. Page Forme : Fitness/Fatigue/Form, Efficiency Factor, découplage, temps par zone
+  - [ ] 7. Parcours similaires et comparaison des temps (page Sorties)
+  - [ ] 8. Détection des courses, validation dans l'admin, page Courses
+  - [ ] 9. Vérification ordinateur et mobile, v0.2.0
 - [ ] Phase 3 — Estimateur
 - [ ] Phase 4 — Coach
 - [ ] Phase 5 — Extensions
