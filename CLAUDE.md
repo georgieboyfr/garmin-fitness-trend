@@ -17,6 +17,8 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 - Secrets uniquement dans `.env` (jamais commité), données dans `/data` (jamais commité).
 - En cas d'ambiguïté, poser la question à Greg plutôt que supposer.
 - « Terminé » = tests verts, image Docker construite, visible sur ordinateur et mobile, CHANGELOG à jour.
+- Sessions courtes : une étape par session. Étape terminée = commit, suivi ci-dessous à jour, puis proposer à Greg de couper la session et lui donner la phrase de reprise : « Lis CLAUDE.md et reprends à la prochaine étape non cochée de la phase en cours. »
+- Toute idée de Greg non implémentée est notée, datée, dans la section 7 du brief (« Idées notées en cours de route »).
 
 ## État d'avancement
 
@@ -39,7 +41,9 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 6. Page Forme : Fitness/Fatigue/Form, Efficiency Factor, découplage, temps par zone
   - [x] 7. Parcours similaires et comparaison des temps, fiche de chaque sortie (carte, profils, temps au km)
   - [x] 8. Détection des courses, validation dans l'admin, page Courses
-  - [ ] 9. Vérification ordinateur et mobile, v0.2.0
+  - [x] 8 bis. Fiche de sortie : intervalles (tours de la montre ou détection sur l'allure), classement des meilleurs efforts (3 novembre 2026)
+  - [ ] 8 ter. Modifications notées par Greg (liste à recueillir en début de session, à reporter ici étape par étape)
+  - [ ] 9. Vérification ordinateur et mobile, v0.2.0 (tag, CHANGELOG, image construite par la CI, mise à jour du Synology)
 - [ ] Phase 3 — Estimateur
 - [ ] Phase 4 — Coach
 - [ ] Phase 5 — Extensions

@@ -453,6 +453,12 @@ Pour l'assistant en langage naturel, exclure par prudence les noms issus de Stra
 - **Notifications via ntfy** auto-hébergé sur le Synology. Facile.
 - **Jeu de données de démonstration** et fichiers FIT de test, pour les tests automatiques et pour montrer l'application sans exposer les données réelles. Facile.
 
+**Idées notées en cours de route (non implémentées)**
+
+Idées de Greg ou limites relevées pendant le développement, à reprendre seulement sur demande. Chaque entrée porte sa date.
+
+- *3 novembre 2026* — Intervalles très courts (30/30, 45/40…) : la détection sur l'allure exige 40 s d'effort minimum et ne les voit pas ; seuls les tours de la montre les décrivent. Piste : abaisser le seuil pour les séances nommées « 30/30 » ou détecter sur la FC. Facile à moyenne.
+
 ## 8. Plan de livraison
 
 Cinq phases après l'audit, chacune close par un tag de version mineure ; la v1.0.0 arrive à la fin de la phase 4.
@@ -555,4 +561,6 @@ Audit de l'existant et plan module par module, validés avant la phase 1.
 - **Repères de la page Forme** (demande de Greg) : chaque indicateur est situé dans l'historique (jauge minimum–maximum, plage habituelle des 12 derniers mois, rang, valeur un an plus tôt, record) ; tendance linéaire de l'EF sur 12 mois et depuis le début.
 - **Détection des courses** (3 novembre 2026) : score par indice (nom ou description 3, FC moyenne au-dessus d'un seuil selon la durée 2, distance ronde à effort soutenu 2, allure 8 % plus rapide que les sorties comparables 2, top 3 sur une distance 2, charge par heure dans les 10 % les plus élevées 1, départ à plus de 25 km du lieu habituel 1, week-end en matinée 1, moins de 2 % d'arrêts sur route 1) ; proposée à partir de 5 points (réglable). Sur l'historique : 23 candidates, dont toutes les courses connues ; les faux positifs sont surtout des séances de fractionné de préparation. Une course se marque aussi depuis la fiche de la sortie.
 - **Accueil** (demande de Greg) : l'écart avec l'an dernier n'est affiché que s'il dépasse 2 % ; à la place, projection de fin d'année au rythme actuel, record annuel, sorties par semaine.
+- **Intervalles d'une séance** (demande de Greg, seuils choisis en autonomie le 3 novembre 2026, à valider) : tours de la montre s'ils décrivent la séance (tours marqués effort / récupération par un entraînement structuré, ou au moins 3 tours manuels ; les tours automatiques au km sont ignorés) ; sinon, sur route seulement, détection sur l'allure lissée sur 20 s : deux groupes de vitesse écartés d'au moins 25 %, au moins 3 efforts de 40 s à 20 min, de durées régulières (écart-type sous 35 % de la moyenne), couvrant moins de 60 % de la sortie. Sur l'historique : 39 sorties décrites par les tours, 74 détectées, dont les séances nommées (« 2x8 45/40 » → 16 efforts, « 3x8' » → 3) ; quelques sorties sans nom de séance détectées avec 3 efforts, à surveiller.
+- **Classement des meilleurs efforts** sur la fiche de sortie (demande de Greg) : rang dans l'année de la sortie et sur toute la période, parmi les sorties de même terrain ; VAM route et trail confondus.
 
