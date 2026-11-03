@@ -18,8 +18,8 @@ from datetime import UTC, date, datetime, timedelta
 import numpy as np
 import pyarrow.parquet as pq
 
-from . import settings
-from .bests import activity_bests
+from . import grade, hr_speed, settings
+from .bests import activity_bests, clean_distance
 from .elevation import median_filter, resample, series_distance
 from .elevation_job import dem_profile_path
 from .metrics import _seconds, activity_metrics
@@ -29,7 +29,7 @@ from .sports import RUNNING_TYPES
 log = logging.getLogger("metrics")
 
 METRICS_VERSION = 4   # 2 : meilleurs efforts (bests.py) ; 3 : EF et découplage ;
-                      # 4 : FC moyenne des efforts, paliers de montée
+                      # 4 : FC moyenne des efforts, paliers de montée, VAP, portions stables
 
 
 def _now_iso() -> str:
@@ -92,8 +92,10 @@ def compute_pending(config, conn, progress=None) -> Counter:
                                 ["timestamp", "distance_m", "lat", "lon", "heart_rate", "altitude_m"])
             m = activity_metrics(table, gains.get(activity_id),
                                  p["hr_rest"], p["hr_max"], p["lthr"], p["sex"])
-            bests = [] if m["terrain"] == "indoor" else _bests(config, activity_id, table,
-                                                               sources.get(activity_id))
+            if m["terrain"] == "indoor":
+                bests, extra = [], {"gap_pace_s_km": None, "steady_blocks": None}
+            else:
+                bests, extra = _bests_and_profile(config, activity_id, table, sources.get(activity_id))
         except Exception as e:
             log.warning("Métriques de %s en erreur : %s", activity_id, e)
             counts["metrics_errors"] += 1
@@ -102,8 +104,8 @@ def compute_pending(config, conn, progress=None) -> Counter:
             conn.execute(
                 "INSERT INTO activity_metrics (activity_id, elapsed_s, moving_s, avg_hr, max_hr, trimp, hrss,"
                 " zone1_s, zone2_s, zone3_s, zone4_s, zone5_s, hr_best_20min, hr_best_30min, hr_best_60min,"
-                " terrain, ef, decoupling_pct, version, params, computed_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                " terrain, ef, decoupling_pct, gap_pace_s_km, steady_blocks, version, params, computed_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT(activity_id) DO UPDATE SET elapsed_s=excluded.elapsed_s,"
                 " moving_s=excluded.moving_s, avg_hr=excluded.avg_hr, max_hr=excluded.max_hr,"
                 " trimp=excluded.trimp, hrss=excluded.hrss, zone1_s=excluded.zone1_s,"
@@ -111,11 +113,13 @@ def compute_pending(config, conn, progress=None) -> Counter:
                 " zone5_s=excluded.zone5_s, hr_best_20min=excluded.hr_best_20min,"
                 " hr_best_30min=excluded.hr_best_30min, hr_best_60min=excluded.hr_best_60min,"
                 " terrain=excluded.terrain, ef=excluded.ef, decoupling_pct=excluded.decoupling_pct,"
+                " gap_pace_s_km=excluded.gap_pace_s_km, steady_blocks=excluded.steady_blocks,"
                 " version=excluded.version, params=excluded.params,"
                 " computed_at=excluded.computed_at",
                 (activity_id, m["elapsed_s"], m["moving_s"], m["avg_hr"], m["max_hr"], m["trimp"], m["hrss"],
                  *m["zones_s"], m["hr_best_20min"], m["hr_best_30min"], m["hr_best_60min"], m["terrain"],
-                 m["ef"], m["decoupling_pct"], METRICS_VERSION, key, _now_iso()),
+                 m["ef"], m["decoupling_pct"], extra["gap_pace_s_km"], extra["steady_blocks"],
+                 METRICS_VERSION, key, _now_iso()),
             )
             conn.execute("DELETE FROM activity_bests WHERE activity_id=?", (activity_id,))
             conn.executemany(
@@ -142,11 +146,25 @@ def _altitude_profile(config, activity_id, table, source):
     return (dist, median_filter(alt, 3)) if alt.size > 1 else (None, None)
 
 
-def _bests(config, activity_id, table, source):
+def _bests_and_profile(config, activity_id, table, source):
+    """Meilleurs efforts, VAP et portions stables : tout ce qui demande le profil d'altitude."""
     t = _seconds(table.column("timestamp").to_numpy(zero_copy_only=False))
+    raw_d = np.asarray(series_distance(table), dtype=float)
     dist, alt = _altitude_profile(config, activity_id, table, source)
     hr = table.column("heart_rate").to_numpy(zero_copy_only=False).astype(float)
-    return activity_bests(t, np.asarray(series_distance(table)), dist, alt, hr)
+    bests = activity_bests(t, raw_d, dist, alt, hr)
+    ok = np.isfinite(t) & np.isfinite(raw_d)
+    gap, eq_at_t = None, None
+    if dist is not None and ok.sum() > 1:
+        # le profil suit la distance brute de la série : le temps s'y lit sur la même échelle
+        t_at = np.interp(dist, np.maximum.accumulate(raw_d[ok]), t[ok])
+        gap = grade.gap_pace(t_at, dist, alt)
+        eq_at_t = np.interp(np.maximum.accumulate(raw_d[ok]), dist, grade.equivalent_distance(dist, alt))
+        t_eq = t[ok]
+    else:
+        t_eq, eq_at_t = clean_distance(t, raw_d)      # sans altitude : plat
+    blocks = hr_speed.steady_blocks(t_eq, eq_at_t, hr[ok])      # clean_distance garde aussi les points ok
+    return bests, {"gap_pace_s_km": gap, "steady_blocks": json.dumps(blocks) if blocks else None}
 
 
 def lthr_estimate(conn, today: date, days=365) -> dict:

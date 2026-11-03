@@ -2,10 +2,13 @@
 Fiche d'une sortie : résumé, tracé, profils (altitude, allure, FC) le long de la distance,
 temps par kilomètre, meilleurs efforts et comparaison avec les autres passages du parcours.
 """
+import json
+from datetime import timedelta
+
 import numpy as np
 import pyarrow.parquet as pq
 
-from . import intervals
+from . import hr_speed, intervals
 from .bests import CLIMB_GAINS_M, DISTANCES_M, DURATIONS_S, clean_distance
 from .elevation import median_filter, resample, series_distance
 from .elevation_job import dem_profile_path
@@ -142,6 +145,33 @@ def effort_ranks(efforts, activity_id, kind, key, terrain, year, higher_is_bette
     return {"year": year, "in_year": rank([e for e in pool if e["year"] == year]), "all_time": rank(pool)}
 
 
+def form_of_day(conn, a) -> dict:
+    """Forme du jour (hr_speed.py) : FC de la sortie face à celle attendue à sa vitesse ajustée,
+    d'après les portions stables des 90 jours précédents. reason explique une absence."""
+    row = conn.execute("SELECT steady_blocks FROM activity_metrics WHERE activity_id=?",
+                       (a["id"],)).fetchone()
+    if not a.get("avg_hr"):
+        return {"result": None, "reason": "sortie sans FC"}
+    if a.get("terrain") == "indoor":
+        return {"result": None, "reason": "tapis : la vitesse mesurée par la montre n'est pas assez fiable"}
+    blocks = json.loads(row[0]) if row and row[0] else []
+    since = (a["start"] - timedelta(days=hr_speed.HISTORY_DAYS)).isoformat()
+    history = []
+    for (text,) in conn.execute(
+            "SELECT m.steady_blocks FROM activity_metrics m JOIN activities x ON x.id = m.activity_id"
+            " WHERE x.start_time_local >= ? AND x.start_time_local < ? AND m.steady_blocks IS NOT NULL"
+            " AND m.terrain != 'indoor' AND x.deleted_in_garmin = 0",
+            (since, a["start"].isoformat())):
+        history.extend(json.loads(text))
+    model = hr_speed.fit(history)
+    if model is None:
+        return {"result": None, "reason": "pas assez de minutes stables dans les 90 jours précédents"}
+    result = hr_speed.assess(model, blocks)
+    if result is None:
+        return {"result": None, "reason": "trop peu de minutes à allure stable dans cette sortie"}
+    return {"result": result, "reason": None}
+
+
 def activity_detail(config, conn, activity_id: int, acts, efforts=None) -> dict | None:
     """acts : toutes les sorties de course (queries.running_activities), pour le parcours."""
     a = next((x for x in acts if x["id"] == activity_id), None)
@@ -181,6 +211,8 @@ def activity_detail(config, conn, activity_id: int, acts, efforts=None) -> dict 
         "elevation_source": e["source"] if e else None,
         "moving_s": a["moving_duration_s"], "elapsed_s": a.get("elapsed_s"),
         "pace_s_km": pace_s_per_km(a["moving_duration_s"], a["distance_km"]),
+        "gap_pace_s_km": m["gap_pace_s_km"] if m and a.get("terrain") == "trail" else None,
+        "form_of_day": form_of_day(conn, a),
         "avg_hr": round(a["avg_hr"]) if a["avg_hr"] else None,
         "max_hr": round(a["max_hr"]) if a["max_hr"] else None,
         "hrss": round(a["hrss"]) if a.get("hrss") is not None else None,

@@ -121,7 +121,9 @@
               {%- if r.elapsed_s and r.elapsed_s - r.moving_s >= 60 %}<span class="sub" title="Temps écoulé, arrêts compris">écoulé <span data-duration="{{ r.elapsed_s }}"></span></span>{% endif %}
             {%- else %}—{% endif -%}
           </td>
-          <td class="col-strong" data-label="Allure" {% if r.pace_s_km %}data-pace="{{ r.pace_s_km }}"{% endif %}>{% if not r.pace_s_km %}—{% endif %}</td>
+          <td class="col-strong" data-label="Allure">{% if r.pace_s_km %}<span data-pace="{{ r.pace_s_km }}"></span>
+              {%- if r.gap_pace_s_km %}<span class="sub" title="Allure ajustée à la pente : l'allure équivalente sur le plat pour le même effort">VAP <span data-pace="{{ r.gap_pace_s_km }}"></span></span>{% endif %}
+            {%- else %}—{% endif %}</td>
           <td class="col-minor" data-label="FC moy.">{{ r.avg_hr or "—" }}</td>
           <td class="col-minor" data-label="Charge">{{ r.hrss if r.hrss is not none else "—" }}</td>
         </tr>

@@ -29,6 +29,8 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Page Forme : jauges et chiffres colorés selon l'état (vert favorable, jaune à surveiller, rouge défavorable), zones colorées sur la jauge de forme, position par rapport à la plage habituelle ; périmètre du découplage indiqué (route plate, au moins une heure).
 - Page Courses : info-bulle sur « Vs habituel » et allure habituelle au survol.
 - Cumuls jour par jour (Accueil, Volume) : repère « aujourd'hui » et bouton qui affiche toutes les années à la date du jour.
+- VAP (allure ajustée à la pente, formule de Minetti) des sorties trail, sur la fiche et dans la liste des sorties.
+- Fiche de sortie : « Forme du jour », la FC de la sortie face à celle attendue à sa vitesse ajustée à la pente, d'après les minutes stables des 90 jours précédents (fractionné et dénivelé pris en compte).
 
 ### Modifié
 - Liste des sorties : colonne « vs parcours » retirée (l'écart au parcours reste sur la fiche de la sortie) ; temps en mouvement et temps écoulé réunis dans une colonne « Temps » (l'écoulé n'apparaît que s'il diffère d'au moins une minute) ; FC et charge en retrait, description sur une ligne.

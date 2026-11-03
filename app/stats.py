@@ -326,6 +326,7 @@ def activity_list(acts, year=None, terrain="all", sort="date", order="desc", pag
             "description": a["description"], "terrain": a.get("terrain"),
             "distance_km": round(a["distance_km"], 2), "gain_m": round(a["gain_m"]),
             "moving_s": a["moving_duration_s"], "elapsed_s": a.get("elapsed_s"), "pace_s_km": a["pace_s_km"],
+            "gap_pace_s_km": a.get("gap_pace_s_km") if a.get("terrain") == "trail" else None,
             "avg_hr": round(a["avg_hr"]) if a["avg_hr"] else None,
             "hrss": round(a["hrss"]) if a.get("hrss") is not None else None,
             "source": a["source"],

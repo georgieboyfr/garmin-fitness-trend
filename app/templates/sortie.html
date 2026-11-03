@@ -31,13 +31,33 @@
     <footer class="muted">{% if d.elapsed_s %}écoulé <span data-duration="{{ d.elapsed_s }}"></span>{% endif %}</footer></article>
   <article class="kpi"><header>Allure</header>
     <div class="kpi-value" {% if d.pace_s_km %}data-pace="{{ d.pace_s_km }}"{% endif %}>{% if not d.pace_s_km %}—{% endif %}</div>
-    <footer class="muted">moyenne en mouvement</footer></article>
+    <footer class="muted">{% if d.gap_pace_s_km %}VAP <span data-pace="{{ d.gap_pace_s_km }}"></span> {{ tip("Allure ajustée à la pente : l'allure que tu aurais tenue sur le plat pour le même effort (formule de Minetti, base de la GAP de Strava). Elle rend une sortie trail comparable à une sortie route. Limite : la technicité du terrain n'est pas prise en compte, et dans les descentes raides la VAP sous-estime l'effort.") }}{% else %}moyenne en mouvement{% endif %}</footer></article>
   <article class="kpi"><header>FC moyenne</header>
     <div class="kpi-value">{{ d.avg_hr or "—" }}</div>
     <footer class="muted">{% if d.max_hr %}max {{ d.max_hr }}{% endif %}</footer></article>
   <article class="kpi"><header>Charge {{ tip("HRSS : charge cardiaque de la sortie, 100 = une heure à la LTHR.") }}</header>
     <div class="kpi-value">{{ d.hrss if d.hrss is not none else "—" }}</div>
     <footer class="muted">{% if d.hrss_per_h is not none %}{{ d.hrss_per_h }} par heure{% endif %}</footer></article>
+</section>
+
+{% set f = d.form_of_day %}
+<section class="card form-day {{ 'state-' ~ {'better': 'good', 'same': 'neutral', 'worse': 'warn'}[f.result.verdict] if f.result else '' }}">
+  <div class="card-head">
+    <h2>Forme du jour {{ tip("Ta FC sur cette sortie comparée à celle que tu as d'habitude à la même vitesse. La vitesse est ajustée à la pente (le dénivelé est donc pris en compte) et seules comptent les minutes à allure stable, après 10 minutes d'échauffement et au moins 90 secondes après un changement d'allure : sur une séance de fractionné, seuls le milieu des efforts longs et les récupérations entrent en compte. La relation entre FC et vitesse est apprise sur tes 90 jours précédents. Une FC plus basse que prévu signale une bonne forme ; plus haute : fatigue, chaleur, maladie ou manque de sommeil.") }}</h2>
+  </div>
+  {% if f.result %}{% set r = f.result %}
+  <p class="form-day-verdict">
+    {% if r.verdict == "better" %}<b>Plus en forme que d'habitude</b> : FC {{ r.hr_diff | abs | round | int }} bpm plus basse que prévu à cette vitesse
+    {% elif r.verdict == "worse" %}<b>Moins en forme que d'habitude</b> : FC {{ r.hr_diff | abs | round | int }} bpm plus haute que prévu à cette vitesse
+    {% else %}<b>Conforme à ton habitude</b> : FC à {{ r.hr_diff | abs | round | int }} bpm près de celle attendue{% endif %}
+  </p>
+  <p class="muted small">
+    {% if r.verdict != "same" %}À effort cardiaque égal, cela revient à courir environ {{ (r.speed_pct | abs | round(1) | string) | replace('.', ',') }} % {{ "plus vite" if r.speed_pct > 0 else "moins vite" }}. {% endif %}
+    Sur {{ r.blocks }} minutes stables à <span data-num="{{ r.speed_mps * 3.6 }}" data-dec="1" data-unit="km/h"></span> de vitesse ajustée :
+    FC {{ r.hr }} pour {{ r.expected_hr }} attendus (relation apprise sur {{ r.history_blocks }} minutes des 90 jours précédents).</p>
+  {% else %}
+  <p class="muted small">Pas d'indicateur pour cette sortie : {{ f.reason }}.</p>
+  {% endif %}
 </section>
 
 {% if d.ef or d.decoupling_pct is not none %}
