@@ -52,7 +52,19 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [ ] 9. Vérification ordinateur et mobile, v0.2.0 (tag, CHANGELOG, image construite par la CI, mise à jour du Synology)
     - [x] Commit et tag `v0.2.0` (3 novembre 2026), pages vérifiées en local sur ordinateur et en largeur mobile
     - [ ] Push du tag, image construite par la CI, mise à jour du Synology et vérification sur le téléphone
-- [ ] Phase 3 — Estimateur
+- [ ] Phase 3 — Estimateur (section 5 du brief ; terminé quand l'erreur moyenne, mesurée sur les courses passées, est affichée)
+  - [ ] 1. Forme actuelle : profil calculé sur les 6 à 12 dernières semaines (courbe allure-durée récente, VAM, allure en descente, fitness, EF), fonction pure versionnée, visible sur une page Estimateur minimale
+  - [ ] 2. Route : Riegel à exposant personnel calé sur les meilleurs efforts récents, fourchette optimiste / réaliste / prudent, allure cible ; saisie d'une distance (et D+ éventuel), « si je courais maintenant »
+  - [ ] 3. Validation route : estimateur rejoué sur les courses confirmées avec la forme de la veille, erreur moyenne affichée
+  - [ ] 4. Modèle allure-pente personnel (allure selon la pente à effort égal, montée et descente), calé sur les sorties ; comparé à la VAP de Minetti
+  - [ ] 5. Trail sur GPX : import du GPX, découpage en tronçons homogènes, temps par tronçon (modèle allure-pente et facteur de fatigue tiré de la courbe allure-durée), profil et temps de passage
+  - [ ] 6. Trail sans GPX (distance, D+, type de terrain) ; ravitaillements et barrières horaires saisis sur un GPX
+  - [ ] 7. Validation trail : rejeu sur les courses trail passées (leur propre trace sert de GPX), erreur moyenne affichée
+  - [ ] 8. Comparaison avec les courses passées les plus proches (distance, D+) et effet de la forme (temps estimé avec plus ou moins de fitness le jour J)
+  - [ ] 9. Courses suivies, indépendantes du coach : liste (GPX ou distance, date facultative), prédiction enregistrée chaque semaine, graphique par course avec fourchette et objectif, vue d'ensemble sur 4 semaines
+  - [ ] 10. Après la course : activité reliée automatiquement, écart prédiction / résultat, calibration
+  - [ ] 11. Vérification ordinateur et mobile, v0.3.0
+  - Points à trancher avec Greg au fil des étapes : terrain technique et chaleur (étape 6 ou plus tard), forme projetée à la date de la course (le coach de la phase 4 la fournira ; en attendant, forme actuelle maintenue), place de l'estimateur dans le menu
 - [ ] Phase 4 — Coach
 - [ ] Phase 5 — Extensions
 
