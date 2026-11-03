@@ -9,6 +9,8 @@ PC. Les données restent chez soi, dans un dossier `data`.
 
 Course à pied uniquement (route, trail, tapis) : les autres sports sont ignorés.
 
+![Accueil : l'année en cours face aux précédentes, jour par jour](docs/screenshots/accueil.png)
+
 ## Fonctionnalités
 
 **Données**
@@ -41,6 +43,14 @@ Course à pied uniquement (route, trail, tapis) : les autres sports sont ignoré
 - **Forme** : fitness, fatigue et forme (modèle de Banister) situées dans l'historique, temps
   par zone de FC, Efficiency Factor et découplage cardiaque.
 - **Courses** : détection automatique des courses, validation en un clic, forme le jour J.
+
+| Fiche de sortie | Sorties |
+| --- | --- |
+| ![Fiche d'une sortie : chiffres clés, VAP, forme du jour, Efficiency Factor](docs/screenshots/sortie.png) | ![Liste des sorties filtrée par terrain et distance](docs/screenshots/sorties.png) |
+| **Performance** | **Forme** (thème sombre) |
+| ![Records route en fenêtre glissante, top 10 avec la FC](docs/screenshots/performance.png) | ![Fitness, fatigue et forme situées dans l'historique](docs/screenshots/forme.png) |
+
+Les noms des sorties sont masqués sur ces captures.
 
 **Admin** : connexion Garmin (MFA compris), synchro manuelle et journal, import Strava,
 réglages du D+, LTHR et FC (avec une estimation tirée des sorties), courses probables.
