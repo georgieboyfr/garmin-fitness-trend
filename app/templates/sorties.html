@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Sorties · Fitness Trend{% endblock %}
+
+{% macro url() -%}
+  {%- set p = dict(filters, page=data.page) -%}
+  {%- set _ = p.update(kwargs) -%}
+  ?{% for k, v in p.items() if v not in ("", none) %}{{ k }}={{ v | urlencode }}{% if not loop.last %}&amp;{% endif %}{% endfor %}
+{%- endmacro %}
+
+{% macro th(key, label) -%}
+  {%- set active = filters.sort == key -%}
+  {%- set next_order = "asc" if active and filters.order == "desc" else "desc" -%}
+  <th {% if active %}aria-sort="{{ 'descending' if filters.order == 'desc' else 'ascending' }}"{% endif %}>
+    <a href="{{ url(sort=key, order=next_order, page=1) }}">{{ label }}{% if active %} {{ '↓' if filters.order == 'desc' else '↑' }}{% endif %}</a>
+  </th>
+{%- endmacro %}
+
+{% block content %}
+<section class="hero hero-row">
+  <div>
+    <h1>Sorties</h1>
+    <p class="muted">{{ data.total }} sortie(s) · <span data-num="{{ data.totals.distance_km }}" data-unit="km"></span>
+      · <span data-num="{{ data.totals.gain_m }}" data-unit="m D+"></span></p>
+  </div>
+</section>
+
+<form class="filters card" method="get" action="/sorties">
+  <input type="hidden" name="sort" value="{{ filters.sort }}">
+  <input type="hidden" name="order" value="{{ filters.order }}">
+  <label class="filter"><span>Recherche</span>
+    <input type="search" name="q" value="{{ filters.q }}" placeholder="Nom ou description"></label>
+  <label class="filter"><span>Année</span>
+    <select name="year" onchange="this.form.submit()">
+      <option value="">Toutes</option>
+      {% for y in years %}<option value="{{ y }}" {% if y == filters.year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+    </select></label>
+  <label class="filter"><span>Terrain</span>
+    <select name="terrain" onchange="this.form.submit()">
+      {% for key, label in terrains.items() %}<option value="{{ key }}" {% if key == filters.terrain %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select></label>
+  <label class="filter"><span>Trier par</span>
+    <select id="sort-select" onchange="const [s, o] = this.value.split(':'); this.form.sort.value = s; this.form.order.value = o; this.form.submit()">
+      {% for value, label in [("date:desc", "Plus récentes"), ("date:asc", "Plus anciennes"), ("distance:desc", "Distance"),
+                               ("gain:desc", "D+"), ("time:desc", "Durée"), ("pace:asc", "Allure la plus rapide"),
+                               ("hrss:desc", "Charge")] %}
+        <option value="{{ value }}" {% if value == filters.sort ~ ":" ~ filters.order %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select></label>
+  <button class="btn-primary" type="submit">Filtrer</button>
+</form>
+
+<section class="card list-card">
+  {% if data.rows %}
+  <div class="table-wrap">
+    <table class="data activities">
+      <thead><tr>
+        {{ th("date", "Date") }}
+        <th class="col-name">Sortie</th>
+        {{ th("distance", "Distance") }}
+        {{ th("gain", "D+") }}
+        {{ th("time", "Temps") }}
+        {{ th("pace", "Allure") }}
+        {{ th("hr", "FC moy.") }}
+        {{ th("hrss", "Charge") }}
+      </tr></thead>
+      <tbody>
+        {% for r in data.rows %}
+        <tr>
+          <td class="col-date" data-datetime="{{ r.date }}"></td>
+          <td class="col-name">
+            <span class="act-name">{{ r.name or "Sans nom" }}</span>
+            {% if r.terrain %}<span class="badge badge-{{ r.terrain }}">{{ {"road": "route", "trail": "trail", "indoor": "tapis"}[r.terrain] }}</span>{% endif %}
+            {% if r.source == "strava" %}<span class="badge">Strava</span>{% endif %}
+            {% if r.description %}<span class="act-desc">{{ r.description }}</span>{% endif %}
+          </td>
+          <td data-label="Distance" data-num="{{ r.distance_km }}" data-unit="km" data-dec="1"></td>
+          <td data-label="D+" data-num="{{ r.gain_m }}" data-unit="m"></td>
+          <td data-label="Temps" {% if r.moving_s %}data-duration="{{ r.moving_s }}"{% endif %}>{% if not r.moving_s %}—{% endif %}</td>
+          <td data-label="Allure" {% if r.pace_s_km %}data-pace="{{ r.pace_s_km }}"{% endif %}>{% if not r.pace_s_km %}—{% endif %}</td>
+          <td data-label="FC moy.">{{ r.avg_hr or "—" }}</td>
+          <td data-label="Charge">{{ r.hrss if r.hrss is not none else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted empty">Aucune sortie ne correspond à ces filtres.</p>
+  {% endif %}
+
+  {% if data.pages > 1 %}
+  <nav class="pager" aria-label="Pages">
+    <a href="{{ url(page=data.page - 1) }}" {% if data.page == 1 %}aria-disabled="true" tabindex="-1"{% endif %}>← Précédentes</a>
+    <span class="muted">Page {{ data.page }} / {{ data.pages }}</span>
+    <a href="{{ url(page=data.page + 1) }}" {% if data.page == data.pages %}aria-disabled="true" tabindex="-1"{% endif %}>Suivantes →</a>
+  </nav>
+  {% endif %}
+</section>
+{% endblock %}

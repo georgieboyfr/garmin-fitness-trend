@@ -186,3 +186,56 @@ def volume(acts, today: date) -> dict:
         "regularity": regularity(acts, today),
         "all_time": totals(acts),
     }
+
+
+# ---------- liste des sorties ----------
+
+SORTS = {
+    "date": lambda a: a["start"],
+    "distance": lambda a: a["distance_km"],
+    "gain": lambda a: a["gain_m"],
+    "time": lambda a: a["moving_duration_s"],
+    "pace": lambda a: a["pace_s_km"],
+    "hr": lambda a: a["avg_hr"],
+    "hrss": lambda a: a["hrss"],
+}
+PER_PAGE = 25
+
+
+def pace_s_per_km(moving_s, distance_km):
+    return moving_s / distance_km if moving_s and distance_km and distance_km > 0.2 else None
+
+
+def activity_list(acts, year=None, terrain="all", sort="date", order="desc", page=1, query="") -> dict:
+    """Sorties filtrées (année, terrain, texte dans le nom ou la description), triées et paginées."""
+    rows = filter_terrain(acts, terrain)
+    if year:
+        rows = [a for a in rows if a["start"].year == year]
+    q = query.strip().lower()
+    if q:
+        rows = [a for a in rows if q in (a["name"] or "").lower() or q in (a["description"] or "").lower()]
+    for a in rows:
+        a["pace_s_km"] = pace_s_per_km(a["moving_duration_s"], a["distance_km"])
+    sort = sort if sort in SORTS else "date"
+    key = SORTS[sort]
+    # les sorties sans valeur (pas de FC, pas de distance...) restent en fin de liste
+    present = sorted((a for a in rows if key(a) is not None), key=key, reverse=(order != "asc"))
+    rows = present + [a for a in rows if key(a) is None]
+    pages = max(1, -(-len(rows) // PER_PAGE))
+    page = min(max(1, page), pages)
+    chunk = rows[(page - 1) * PER_PAGE: page * PER_PAGE]
+    return {
+        "total": len(rows),
+        "totals": totals(rows),
+        "page": page,
+        "pages": pages,
+        "rows": [{
+            "id": a["id"], "date": a["start"].isoformat(timespec="minutes"), "name": a["name"],
+            "description": a["description"], "terrain": a.get("terrain"),
+            "distance_km": round(a["distance_km"], 2), "gain_m": round(a["gain_m"]),
+            "moving_s": a["moving_duration_s"], "pace_s_km": a["pace_s_km"],
+            "avg_hr": round(a["avg_hr"]) if a["avg_hr"] else None,
+            "hrss": round(a["hrss"]) if a.get("hrss") is not None else None,
+            "source": a["source"],
+        } for a in chunk],
+    }

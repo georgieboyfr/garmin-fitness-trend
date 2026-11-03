@@ -13,6 +13,10 @@ const GFT = (() => {
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
     return h ? `${h} h ${String(m).padStart(2, "0")}` : `${m} min ${String(s % 60).padStart(2, "0")}`;
   };
+  const pace = (sPerKm) => {
+    const s = Math.round(sPerKm);
+    return `${Math.floor(s / 60)}'${String(s % 60).padStart(2, "0")}" /km`;
+  };
   const dateLong = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("fr-FR", {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
@@ -28,6 +32,12 @@ const GFT = (() => {
     });
     root.querySelectorAll("[data-duration]").forEach((el) => { el.textContent = duration(el.dataset.duration); });
     root.querySelectorAll("[data-date]").forEach((el) => { el.textContent = dateLong(el.dataset.date); });
+    root.querySelectorAll("[data-pace]").forEach((el) => { el.textContent = pace(el.dataset.pace); });
+    root.querySelectorAll("[data-datetime]").forEach((el) => {
+      const d = new Date(el.dataset.datetime);
+      el.textContent = d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+      el.title = d.toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "short" });
+    });
     root.querySelectorAll("[data-short-date]").forEach((el) => {
       el.textContent = new Date(el.dataset.shortDate + "T12:00:00").toLocaleDateString("fr-FR", {
         day: "numeric", month: "short", year: "numeric" });
@@ -133,5 +143,5 @@ const GFT = (() => {
     btn?.addEventListener("click", () => setTheme(THEMES[(THEMES.indexOf(currentTheme()) + 1) % THEMES.length]));
   });
 
-  return { num, duration, dateLong, dayLabel, isMonthStart, monthLabel, formatPage, chart, palette };
+  return { num, duration, pace, dateLong, dayLabel, isMonthStart, monthLabel, formatPage, chart, palette };
 })();

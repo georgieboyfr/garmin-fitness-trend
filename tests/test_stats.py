@@ -94,3 +94,42 @@ def test_volume_payload():
     assert v["monthly"]["distance_km"]["2025"][2] == 12
     assert v["calendar"]["2026-11-02"] == {"km": 15, "gain": 700, "names": ["Bastille"]}
     assert v["years"] == [2025, 2026]
+
+
+# ---------- liste des sorties ----------
+
+def _list_acts():
+    out = []
+    for i in range(60):
+        a = act(f"2025-{1 + i % 12:02d}-{1 + i // 12:02d}", 5 + i % 7, gain=i * 10, moving=1800 + i * 10,
+                name=f"Sortie {i}")
+        a.update(id=i, description="avec Paul" if i == 7 else None, terrain="trail" if i % 3 == 0 else "road",
+                 avg_hr=140 + i % 10 if i != 5 else None, hrss=50 + i, source="garmin")
+        out.append(a)
+    return out
+
+
+def test_activity_list_pagination_and_filters():
+    acts = _list_acts()
+    first = stats.activity_list(acts)
+    assert first["total"] == 60 and first["pages"] == 3 and len(first["rows"]) == 25
+    assert first["rows"][0]["date"] > first["rows"][1]["date"]           # récentes d'abord
+    assert stats.activity_list(acts, page=99)["page"] == 3                # page bornée
+    assert len(stats.activity_list(acts, page=3)["rows"]) == 10
+    assert stats.activity_list(acts, terrain="trail")["total"] == 20
+    assert stats.activity_list(acts, year=2024)["total"] == 0
+    found = stats.activity_list(acts, query="paul")
+    assert found["total"] == 1 and found["rows"][0]["name"] == "Sortie 7"
+
+
+def test_activity_list_sort_and_missing_values_last():
+    acts = _list_acts()
+    rows = stats.activity_list(acts, sort="distance", order="desc")["rows"]
+    assert rows[0]["distance_km"] == 11
+    hr = stats.activity_list(acts, sort="hr", order="asc", page=3)["rows"]
+    assert hr[-1]["avg_hr"] is None                                       # sans FC : en dernier
+    hr_desc = stats.activity_list(acts, sort="hr", order="desc", page=3)["rows"]
+    assert hr_desc[-1]["avg_hr"] is None
+    pace = stats.activity_list(acts, sort="pace", order="asc")["rows"]
+    assert pace[0]["pace_s_km"] <= pace[1]["pace_s_km"]                   # les plus rapides d'abord
+    assert stats.activity_list(acts, sort="nimporte")["rows"][0]["date"].startswith("2025-12")

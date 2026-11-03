@@ -34,7 +34,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 1. Socle de l'interface : templates Jinja, navigation, thèmes clair/sombre, ECharts, accès protégé, page d'accueil
   - [x] 2. Métriques par activité versionnées : temps en mouvement, TRIMP/HRSS, zones FC (LTHR), route ou trail, estimation de la LTHR
   - [x] 3. Page Volume et régularité
-  - [ ] 4. Page Sorties : liste paginée
+  - [x] 4. Page Sorties : liste paginée
   - [ ] 5. Records en fenêtre glissante, courbe allure-durée, VAM : page Performance
   - [ ] 6. Page Forme : Fitness/Fatigue/Form, Efficiency Factor, découplage, temps par zone
   - [ ] 7. Parcours similaires et comparaison des temps (page Sorties)

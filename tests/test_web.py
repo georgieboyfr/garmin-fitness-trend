@@ -70,3 +70,22 @@ def test_volume_page(client, config):
         r = client.get(f"/volume?terrain={terrain}")
         assert r.status_code == 200 and "Volume et régularité" in r.text
     assert client.get("/volume", follow_redirects=False).status_code == 200
+
+
+def test_sorties_page(client, config):
+    conn = db.connect(config.db_path)
+    with conn:
+        for i in range(30):
+            conn.execute(
+                "INSERT INTO activities (id, start_time_utc, start_time_local, activity_type, garmin_name,"
+                " distance_m, duration_s, fit_status, first_seen_at, updated_at)"
+                " VALUES (?, ?, ?, 'running', ?, 10000, 3000, 'stored', ?, ?)",
+                (100 + i, NOW, f"2026-02-{1 + i % 28:02d}T09:00:00", f"Course {i}", NOW, NOW))
+    conn.close()
+    login(client)
+    r = client.get("/sorties")
+    assert r.status_code == 200 and "30 sortie(s)" in r.text and "Page 1 / 2" in r.text
+    r = client.get("/sorties?page=2&sort=distance&order=asc&year=2026&terrain=all&q=course")
+    assert r.status_code == 200 and "Page 2 / 2" in r.text
+    r = client.get("/sorties?q=introuvable&year=1999&sort=pirate&order=x")
+    assert "Aucune sortie" in r.text

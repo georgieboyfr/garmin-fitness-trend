@@ -22,10 +22,10 @@ TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
 PAGES = [
     ("/", "Accueil", True),
     ("/volume", "Volume", True),
+    ("/sorties", "Sorties", True),
     ("/performance", "Performance", False),
     ("/forme", "Forme", False),
     ("/courses", "Courses", False),
-    ("/sorties", "Sorties", False),
 ]
 
 router = APIRouter(include_in_schema=False)
@@ -80,4 +80,21 @@ def volume(request: Request, terrain: str = "all"):
     acts = stats.filter_terrain(_activities(request), terrain)
     return render(request, "volume.html", "/volume", data=stats.volume(acts, _today(request)),
                   terrain=terrain, terrains=stats.TERRAINS)
+
+
+@router.get("/sorties")
+def sorties(request: Request, page: int = 1, year: str = "", terrain: str = "all",
+            sort: str = "date", order: str = "desc", q: str = ""):
+    if (redirect := _login_redirect(request)):
+        return redirect
+    acts = _activities(request)
+    years = sorted({a["start"].year for a in acts}, reverse=True)
+    year_value = int(year) if year.isdigit() and int(year) in years else None
+    terrain = terrain if terrain in stats.TERRAINS else "all"
+    sort = sort if sort in stats.SORTS else "date"
+    order = "asc" if order == "asc" else "desc"
+    data = stats.activity_list(acts, year_value, terrain, sort, order, page, q)
+    filters = {"year": year_value or "", "terrain": terrain, "sort": sort, "order": order, "q": q}
+    return render(request, "sorties.html", "/sorties", data=data, years=years, filters=filters,
+                  terrains=stats.TERRAINS)
 
