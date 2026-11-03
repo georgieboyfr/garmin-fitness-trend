@@ -32,7 +32,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 6. Noms et descriptions Strava, sorties sans montre importées
   - [x] 7. CI GitHub, image amd64/arm64 sur ghcr (v0.1.0 publiée le 3 novembre 2026)
   - [x] Bascule du Synology et vérification de l'admin
-- [ ] Phase 2 — Statistiques (en cours)
+- [x] Phase 2 — Statistiques (v0.2.0, en production sur le Synology le 3 novembre 2026)
   - [x] 1. Socle de l'interface : templates Jinja, navigation, thèmes clair/sombre, ECharts, accès protégé, page d'accueil
   - [x] 2. Métriques par activité versionnées : temps en mouvement, TRIMP/HRSS, zones FC (LTHR), route ou trail, estimation de la LTHR
   - [x] 3. Page Volume et régularité
@@ -49,10 +49,10 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
     - [x] d. Forme, Courses, Volume : couleur des jauges selon l'état, périmètre du découplage indiqué (sorties plates d'au moins 1 h), info-bulle « vs habituel », bouton « aujourd'hui » sur les cumuls
     - [x] e. VAP (allure ajustée à la pente, min/km) sur les sorties trail (formule de Minetti, choix de Greg)
     - [x] f. Indicateur de forme du jour sur la fiche de sortie : vitesse et FC face à l'attendu, en tenant compte des intervalles et du dénivelé (FC attendue à la vitesse, choix de Greg)
-  - [ ] 9. Vérification ordinateur et mobile, v0.2.0 (tag, CHANGELOG, image construite par la CI, mise à jour du Synology)
+  - [x] 9. Vérification ordinateur et mobile, v0.2.0 (tag, CHANGELOG, image construite par la CI, mise à jour du Synology)
     - [x] Commit et tag `v0.2.0` (3 novembre 2026), pages vérifiées en local sur ordinateur et en largeur mobile
-    - [ ] Push du tag, image construite par la CI, mise à jour du Synology et vérification sur le téléphone
-- [ ] Phase 3 — Estimateur (section 5 du brief ; terminé quand l'erreur moyenne, mesurée sur les courses passées, est affichée)
+    - [x] Push du tag, image construite par la CI, mise à jour du Synology et vérification sur le téléphone (3 novembre 2026)
+- [ ] Phase 3 — Estimateur (en cours ; section 5 du brief ; terminé quand l'erreur moyenne, mesurée sur les courses passées, est affichée)
   - [ ] 1. Forme actuelle : profil calculé sur les 6 à 12 dernières semaines (courbe allure-durée récente, VAM, allure en descente, fitness, EF), fonction pure versionnée, visible sur une page Estimateur minimale
   - [ ] 2. Route : Riegel à exposant personnel calé sur les meilleurs efforts récents, fourchette optimiste / réaliste / prudent, allure cible ; saisie d'une distance (et D+ éventuel), « si je courais maintenant »
   - [ ] 3. Validation route : estimateur rejoué sur les courses confirmées avec la forme de la veille, erreur moyenne affichée
