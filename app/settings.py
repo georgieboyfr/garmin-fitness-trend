@@ -25,7 +25,12 @@ DEFAULTS = {
     },
     # paramètres physiologiques réglés dans l'admin ; None = valeur du .env
     "physiology": {"hr_rest": None, "hr_max": None, "lthr": None, "sex": None},
+    # correction des estimations, activée par Greg dans l'admin : facteur multiplié aux temps
+    # estimés (0,96 = 4 % plus rapide), figé au moment de l'activation ; None = pas de correction
+    "estimator": {"correction_road": None, "correction_trail": None},
 }
+
+CORRECTION_LIMITS = (0.8, 1.2)
 
 PHYSIOLOGY_LIMITS = {"hr_rest": (30, 100), "hr_max": (120, 230), "lthr": (100, 220)}
 
@@ -107,8 +112,22 @@ def _validate_races(values: dict) -> dict:
     return out
 
 
+def _validate_estimator(values: dict) -> dict:
+    out = {}
+    for key, value in values.items():
+        if key not in DEFAULTS["estimator"]:
+            raise ValueError(f"réglage inconnu : {key}")
+        if value is not None:
+            low, high = CORRECTION_LIMITS
+            if isinstance(value, bool) or not isinstance(value, int | float) or not low <= value <= high:
+                raise ValueError(f"{key} doit être un facteur entre {low} et {high}, ou null")
+            value = round(float(value), 4)
+        out[key] = value
+    return out
+
+
 VALIDATORS = {"garmin_sync": _validate_garmin_sync, "elevation": _validate_elevation,
-              "races": _validate_races,
+              "races": _validate_races, "estimator": _validate_estimator,
               "physiology": _validate_physiology}
 
 

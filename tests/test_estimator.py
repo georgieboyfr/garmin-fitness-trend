@@ -306,3 +306,20 @@ def test_form_scenarios_and_nearest_races():
     assert near[0]["fitness"] is not None
     assert [r["activity_id"] for r in estimator.nearest_races(acts, {1, 2, 3}, 21097.5, 50,
                                                               before=date(2025, 6, 1))] == [1]
+
+
+def test_apply_correction_scales_every_duration():
+    r = {"realistic_s": 1000, "optimistic_s": 900, "prudent_s": 1100, "realistic_pace_s_km": 300.0,
+         "reference": {"time_s": 500}, "segments": [{"time_s": 400, "passage_s": 400, "pace_s_km": 250.0}],
+         "aid_stations": [{"arrival_s": 600, "stop_s": 60, "departure_s": 660}],
+         "chart": {"time": [0, 500, 1000]},
+         "distance_m": 3000}
+    c = estimator.apply_correction(r, 0.9)
+    assert c["realistic_s"] == 900 and c["prudent_s"] == 990 and c["realistic_pace_s_km"] == 270.0
+    assert c["reference"] == {"time_s": 500} and c["distance_m"] == 3000          # données réelles intactes
+    assert c["segments"][0] == {"time_s": 360, "passage_s": 360, "pace_s_km": 225.0}
+    assert c["aid_stations"][0]["departure_s"] == 594 and c["chart"]["time"] == [0, 450, 900]
+    assert c["correction"] == {"factor": 0.9, "pct": -10.0} and r["realistic_s"] == 1000
+    assert estimator.apply_correction(r, 1.0) is r and estimator.apply_correction(None, 0.9) is None
+    assert estimator.apply_correction({"error": "x"}, 0.9) == {"error": "x"}
+

@@ -515,3 +515,32 @@ def nearest_races(acts, race_ids, distance_m: float, gain_m: float, before: date
                      "fitness": round(f, 1) if f is not None else None, "score": score})
     rows.sort(key=lambda r: r["score"])
     return rows[:n]
+
+
+# ---------- correction (calibration activée dans l'admin) ----------
+
+TIME_KEYS = ("optimistic_s", "realistic_s", "prudent_s", "moving_s", "stops_s", "optimistic_pace_s_km",
+             "realistic_pace_s_km", "prudent_pace_s_km", "time_s", "passage_s", "pace_s_km", "leg_s",
+             "arrival_s", "arrival_optimistic_s", "arrival_prudent_s", "departure_s", "predicted_s")
+
+
+def apply_correction(result: dict | None, factor: float) -> dict | None:
+    """Estimation (route ou trail) dont toutes les durées sont multipliées par le facteur de
+    correction : temps, allures, tronçons, ravitos, temps de passage du profil. Les références
+    (efforts réels) restent telles quelles."""
+    if not result or result.get("error") or factor == 1.0:
+        return result
+
+    def scale(d: dict) -> dict:
+        return {k: (round(v * factor, 1) if k.endswith("pace_s_km") else round(v * factor))
+                if k in TIME_KEYS and isinstance(v, int | float) else v for k, v in d.items()}
+
+    out = scale(result)
+    for key in ("segments", "aid_stations"):
+        if key in out:
+            out[key] = [scale(x) for x in out[key]]
+    if "chart" in out:
+        out["chart"] = {**out["chart"], "time": [round(t * factor) for t in out["chart"]["time"]]}
+    out["correction"] = {"factor": factor, "pct": round((factor - 1) * 100, 1)}
+    return out
+

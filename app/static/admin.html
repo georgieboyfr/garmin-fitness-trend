@@ -194,6 +194,17 @@
     </section>
 
     <section class="card">
+      <h2>Calibration de l'estimateur</h2>
+      <p class="muted small">L'estimateur est rejoué sur tes courses confirmées avec la forme de la veille. Son écart
+        moyen donne une correction proposée par terrain, à partir de 3 courses. Une fois appliquée, elle est figée et
+        multiplie tous les temps estimés de ce terrain (estimations, courses suivies) jusqu'à ce que tu la mettes à jour
+        ou la retires. Les mesures de précision restent sans correction.</p>
+      <div id="calib-rows"><p class="muted small">Calcul en cours…</p></div>
+      <p class="error-text" id="calib-error" hidden></p>
+      <span class="muted small" id="calib-saved" hidden></span>
+    </section>
+
+    <section class="card">
       <h2>Physiologie</h2>
       <p class="muted small">FC repos, FC max et LTHR servent à la charge (HRSS) et aux zones de FC. Valeurs réglées
         ici, ou à défaut celles du fichier <code>.env</code>. Toute modification relance le calcul des sorties.</p>

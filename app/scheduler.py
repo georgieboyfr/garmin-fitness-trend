@@ -84,6 +84,13 @@ class DailyScheduler:
             self.sync.run(kind="garmin-auto")
         except Exception:
             pass  # déjà journalisée et enregistrée dans sync_runs
+        conn = db.connect(self.config.db_path)
+        try:
+            linked = tracked.link_races(self.config, conn, now.date())     # courses suivies courues
+        finally:
+            conn.close()
+        if linked:
+            log.info("Courses suivies : %d course(s) reliée(s) à leur sortie", linked)
         return True
 
     def weekly(self, now=None) -> int:

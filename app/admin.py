@@ -14,7 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
-from . import courses, db, elevation_job, metrics_job, settings, strava
+from . import courses, db, elevation_job, metrics_job, settings, strava, tracked
 from .auth import SESSION_COOKIE
 from .garmin_sync import SyncAlreadyRunning
 from .metrics import ZONE_BOUNDS
@@ -299,6 +299,33 @@ def physiology_update(values: dict, request: Request):
     if not request.app.state.garmin_sync.running:
         _start_background(request, kind="recalcul", local_only=True)
     return physiology(request)
+
+
+# ---------- estimateur : calibration ----------
+
+@protected.get("/estimator")
+def estimator_calibration(request: Request):
+    """Correction proposée (rejeu des courses confirmées) et correction appliquée, par terrain."""
+    cfg = request.app.state.config
+    conn = db.connect(cfg.db_path)
+    try:
+        return {"proposed": tracked.proposed_corrections(cfg, conn),
+                "applied": settings.get(conn, "estimator"),
+                "min_races": tracked.CALIBRATION_MIN}
+    finally:
+        conn.close()
+
+
+@protected.post("/estimator")
+def estimator_calibration_update(values: dict, request: Request):
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        settings.update(conn, "estimator", values)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    finally:
+        conn.close()
+    return estimator_calibration(request)
 
 
 # ---------- courses ----------

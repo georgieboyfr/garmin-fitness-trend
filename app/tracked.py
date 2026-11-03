@@ -15,7 +15,8 @@ distance et D+ : estimateur route. Une fois la date passée, plus rien n'est enr
 import math
 from datetime import UTC, date, datetime, timedelta
 
-from . import db, estimator, gpx_store, metrics_job, queries, settings, stats, trail
+from . import courses, db, detail, estimator, gpx_store, metrics_job, queries, settings, stats, trail
+from .series import read_series
 
 VERSION = f"route{estimator.ESTIMATE_VERSION}-trail{trail.TRAIL_VERSION}"
 REPLAY_WEEKS = 12
@@ -202,6 +203,177 @@ def weekly_job(cfg, today: date, dem=None) -> int:
         conn.close()
 
 
+def race_profiles(cfg, acts, confirmed, params) -> list[tuple[dict, dict | None]]:
+    """Courses trail confirmées et le profil de leur propre trace (altitude retenue pour le D+ :
+    baromètre ou MNT), qui sert de GPX pour rejouer l'estimateur trail."""
+    out = []
+    for a in acts:
+        if a["id"] not in confirmed or a.get("terrain") != "trail":
+            continue
+        profile = None
+        try:
+            table = read_series(cfg.series_dir, a["id"])
+            dist, alt = detail.retained_altitude(cfg, a["id"], table, a.get("elevation_source"))
+            profile = trail.altitude_profile(dist, alt, a.get("elevation_source") or "dem", params)
+        except (OSError, KeyError, ValueError):
+            pass
+        out.append((a, profile))
+    return out
+
+
+# ---------- après la course : sortie reliée, écart, calibration ----------
+#
+# Une course suivie dont la date est passée est reliée à la sortie de course à pied du jour
+# (± LINK_DAYS), de distance proche (± LINK_TOLERANCE) et, pour un GPX, partie à moins de
+# LINK_START_M du départ du parcours ; la plus proche en distance l'emporte. La sortie est aussi
+# confirmée comme course si Greg ne l'a pas déjà classée. Une sortie reliée ou déliée à la main
+# n'est plus touchée.
+#
+# Calibration : sur le rejeu de toutes les courses confirmées (validation route et trail, forme
+# de la veille, périodes par défaut), facteur = 1 / moyenne géométrique de (estimé / réel), proposé
+# à partir de CALIBRATION_MIN courses par terrain. Greg l'active dans l'admin : le facteur est alors
+# figé dans les réglages et multiplie tous les temps estimés de ce terrain, jusqu'à ce qu'il le
+# mette à jour ou le retire. Les mesures de précision restent sans correction.
+
+LINK_DAYS = 1
+LINK_TOLERANCE = 0.15
+LINK_START_M = 3000
+CALIBRATION_MIN = 3
+
+
+def race_distance(cfg, race: dict, params=None) -> float | None:
+    """Distance du parcours (m) : saisie, ou celle du profil du GPX."""
+    if not race["gpx_id"]:
+        return race["distance_m"]
+    if not gpx_store.exists(cfg, race["gpx_id"]):
+        return None
+    lats, lons, eles, dem_profile = gpx_store.route(cfg, race["gpx_id"])
+    profile = trail.route_profile(lats, lons, eles, dem_profile, params)
+    return float(profile["distance"][-1]) if profile else None
+
+
+def _gpx_start(cfg, gpx_id: str):
+    lats, lons, _, _ = gpx_store.route(cfg, gpx_id)
+    return (lats[0], lons[0]) if lats else None
+
+
+def _meters(a, b) -> float:
+    dy = math.radians(a[0] - b[0]) * 6_371_000
+    dx = math.radians(a[1] - b[1]) * 6_371_000 * math.cos(math.radians(a[0]))
+    return math.hypot(dx, dy)
+
+
+def find_activity(cfg, race: dict, acts, starts: dict, params=None) -> dict | None:
+    """Sortie correspondant à une course passée, ou None."""
+    if not race["race_date"]:
+        return None
+    distance = race_distance(cfg, race, params)
+    if not distance:
+        return None
+    day = date.fromisoformat(race["race_date"])
+    start = _gpx_start(cfg, race["gpx_id"]) if race["gpx_id"] else None
+    best = None
+    for a in acts:
+        if abs((a["start"].date() - day).days) > LINK_DAYS or not a.get("distance_m"):
+            continue
+        gap = abs(math.log(a["distance_m"] / distance))
+        if gap > math.log(1 + LINK_TOLERANCE):
+            continue
+        if start and a["id"] in starts and _meters(start, starts[a["id"]]) > LINK_START_M:
+            continue
+        if best is None or gap < best[0]:
+            best = (gap, a)
+    return best[1] if best else None
+
+
+def link_races(cfg, conn, today: date, data: dict | None = None) -> int:
+    """Relie les courses suivies passées à leur sortie. Retourne le nombre de courses reliées."""
+    pending = [r for r in all_races(conn) if not r["activity_id"] and not r["link_manual"]
+               and r["race_date"] and r["race_date"] <= today.isoformat()]
+    if not pending:
+        return 0
+    data = data or load_data(cfg, conn)
+    starts = queries.start_positions(conn)
+    decisions = queries.race_decisions(conn)
+    done = 0
+    for race in pending:
+        a = find_activity(cfg, race, data["acts"], starts, data["params"])
+        if a is None:
+            continue
+        set_activity(conn, race["id"], a["id"])
+        if a["id"] not in decisions:
+            courses.decide(conn, a["id"], "confirmed")
+        done += 1
+    return done
+
+
+def set_activity(conn, race_id: int, activity_id: int | None, manual: bool = False):
+    """Relie (ou délie) la sortie ; manual : choix de Greg, que la liaison automatique respecte."""
+    with conn:
+        conn.execute("UPDATE tracked_races SET activity_id=?, link_manual=? WHERE id=?",
+                     (activity_id, int(manual), race_id))
+
+
+def candidates(conn, race: dict, days: int = 3) -> list[dict]:
+    """Sorties de course à pied autour de la date de la course, pour la relier à la main."""
+    if not race["race_date"]:
+        return []
+    day = date.fromisoformat(race["race_date"])
+    lo, hi = (day - timedelta(days=days)).isoformat(), (day + timedelta(days=days + 1)).isoformat()
+    return [a for a in queries.running_activities(conn) if lo <= a["start_time_local"] < hi]
+
+
+def _activity(conn, activity_id: int) -> dict | None:
+    row = conn.execute(
+        "SELECT a.id, a.start_time_local, a.distance_m, a.duration_s, n.name,"
+        " COALESCE(m.elapsed_s, a.duration_s) AS elapsed_s FROM activities a"
+        " JOIN activity_names n ON n.activity_id = a.id"
+        " LEFT JOIN activity_metrics m ON m.activity_id = a.id WHERE a.id=?", (activity_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def result(conn, race: dict, preds: list[dict]) -> dict | None:
+    """Résultat d'une course courue face à la dernière prédiction enregistrée avant elle."""
+    if not race["activity_id"]:
+        return None
+    a = _activity(conn, race["activity_id"])
+    if a is None:
+        return None
+    day = a["start_time_local"][:10]
+    before = [p for p in preds if p["week"] <= day]
+    p = before[-1] if before else None
+    actual = a["elapsed_s"]
+    ok = bool(p and actual)
+    return {"activity_id": a["id"], "name": a["name"], "date": day, "elapsed_s": round(actual or 0),
+            "distance_km": round((a["distance_m"] or 0) / 1000, 1), "prediction": p,
+            "error_pct": round((p["realistic_s"] / actual - 1) * 100, 1) + 0.0 if ok else None,
+            "within": p["optimistic_s"] <= actual <= p["prudent_s"] if ok else None,
+            "target_gap_s": round(actual - race["target_s"]) if race["target_s"] and actual else None}
+
+
+def _proposal(rows, key) -> dict:
+    ratios = [1 + r[key] / 100 for r in rows if r.get(key) is not None]
+    if len(ratios) < CALIBRATION_MIN:
+        return {"n": len(ratios), "factor": None, "bias_pct": None}
+    mean = math.exp(sum(math.log(x) for x in ratios) / len(ratios))
+    return {"n": len(ratios), "factor": round(1 / mean, 4), "bias_pct": round((mean - 1) * 100, 1) + 0.0}
+
+
+def proposed_corrections(cfg, conn, data: dict | None = None) -> dict:
+    """Correction proposée par terrain, d'après le rejeu des courses confirmées (périodes par défaut)."""
+    data = data or load_data(cfg, conn)
+    road = estimator.validate_road(data["acts"], data["efforts"], data["confirmed"])
+    trail_v = trail.validate_trail(race_profiles(cfg, data["acts"], data["confirmed"], data["params"]),
+                                   data["acts"], data["efforts"], data["confirmed"])
+    return {"road": _proposal(road["races"], "error_pct"), "trail": _proposal(trail_v["races"], "error_pct")}
+
+
+def corrections(conn) -> dict:
+    """Facteurs de correction appliqués (réglages de l'admin), 1 par défaut."""
+    s = settings.get(conn, "estimator")
+    return {"road": s["correction_road"] or 1.0, "trail": s["correction_trail"] or 1.0}
+
+
 # ---------- affichage ----------
 
 def _route_label(cfg, race) -> str:
@@ -211,16 +383,28 @@ def _route_label(cfg, race) -> str:
     return f"{km} km" + (f", {round(race['gain_m'])} m D+" if race["gain_m"] else "")
 
 
-def summary(cfg, conn, race: dict, today: date) -> dict:
-    """Une course suivie pour la vue d'ensemble : dernière prédiction et évolution sur 4 semaines."""
-    preds = predictions(conn, race["id"])
+def corrected(preds: list[dict], factor: float) -> list[dict]:
+    """Prédictions enregistrées (brutes) avec la correction en vigueur."""
+    if factor == 1.0:
+        return preds
+    return [{**p, **{k: round(p[k] * factor) for k in ("optimistic_s", "realistic_s", "prudent_s")}}
+            for p in preds]
+
+
+def summary(cfg, conn, race: dict, today: date, factors: dict | None = None) -> dict:
+    """Une course suivie : dernière prédiction (corrigée si une correction est activée), évolution
+    sur 4 semaines, et résultat une fois courue."""
+    kind = "trail" if race["gpx_id"] else "road"
+    factor = (factors or corrections(conn))[kind]
+    preds = corrected(predictions(conn, race["id"]), factor)
     last = preds[-1] if preds else None
     before = None
     if last:
         ref = (date.fromisoformat(last["week"]) - timedelta(weeks=EVOLUTION_WEEKS)).isoformat()
         before = next((p for p in reversed(preds) if p["week"] <= ref), None)
     days = (date.fromisoformat(race["race_date"]) - today).days if race["race_date"] else None
-    return {**race, "route": _route_label(cfg, race), "kind": "trail" if race["gpx_id"] else "road",
+    return {**race, "route": _route_label(cfg, race), "kind": kind, "factor": factor,
+            "predictions": preds, "result": result(conn, race, preds),
             "days_left": days, "last": last, "before": before,
             "evolution_s": round(last["realistic_s"] - before["realistic_s"]) if last and before else None,
             "target_gap_s": (round(last["realistic_s"] - race["target_s"])
@@ -229,4 +413,6 @@ def summary(cfg, conn, race: dict, today: date) -> dict:
 
 
 def overview(cfg, conn, today: date) -> list[dict]:
-    return [summary(cfg, conn, r, today) for r in all_races(conn)]
+    link_races(cfg, conn, today)
+    factors = corrections(conn)
+    return [summary(cfg, conn, r, today, factors) for r in all_races(conn)]

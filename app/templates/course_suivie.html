@@ -16,6 +16,38 @@
   </p>
 </section>
 
+{% set res = r.result %}
+{% if res %}
+<section class="card">
+  <div class="card-head">
+    <h2>Résultat {{ tip("Ton temps réel (temps écoulé, arrêts compris) face à la dernière prédiction enregistrée avant la course. Écart positif : la prédiction était trop lente.") }}</h2>
+  </div>
+  <section class="kpis">
+    <article class="kpi">
+      <header>Temps réel</header>
+      <div class="kpi-value" data-chrono="{{ res.elapsed_s }}"></div>
+      <footer class="muted"><a href="/sorties/{{ res.activity_id }}">{{ res.name or "Sans nom" }}</a>, <span data-short-date="{{ res.date }}"></span></footer>
+    </article>
+    <article class="kpi">
+      <header>Prédiction</header>
+      <div class="kpi-value">{% if res.prediction %}<span data-chrono="{{ res.prediction.realistic_s }}"></span>{% else %}—{% endif %}</div>
+      <footer class="muted">{% if res.prediction %}semaine du <span data-short-date="{{ res.prediction.week }}"></span>{% else %}aucune avant la course{% endif %}</footer>
+    </article>
+    <article class="kpi">
+      <header>Écart</header>
+      <div class="kpi-value">{% if res.error_pct is not none %}{{ ('%+.1f' % res.error_pct) | replace('-', '−') | replace('.', ',') }}<span class="kpi-unit">%</span>{% else %}—{% endif %}</div>
+      <footer class="muted">{% if res.within is not none %}{{ "dans la fourchette" if res.within else "hors de la fourchette" }}{% endif %}</footer>
+    </article>
+    <article class="kpi">
+      <header>Objectif</header>
+      <div class="kpi-value">{% if res.target_gap_s is not none %}{{ "+" if res.target_gap_s > 0 else "−" }}<span data-chrono="{{ res.target_gap_s | abs }}"></span>{% else %}—{% endif %}</div>
+      <footer class="muted">{% if res.target_gap_s is not none %}{{ "manqué" if res.target_gap_s > 0 else "atteint" }}{% else %}pas d'objectif{% endif %}</footer>
+    </article>
+  </section>
+  <p class="small"><a href="/sorties/{{ res.activity_id }}#estime-reel">Comparer l'estimé et le réel le long du parcours</a></p>
+</section>
+{% endif %}
+
 {% if last %}
 <section class="kpis">
   <article class="kpi">
@@ -44,6 +76,7 @@
   <div class="card-head">
     <h2>Prédiction semaine après semaine {{ tip("Temps réaliste prédit chaque semaine, avec sa fourchette optimiste – prudent, et ton objectif. Les points creux sont des semaines rejouées à l'ajout de la course : calculées après coup avec les données disponibles ce dimanche-là, pas enregistrées en temps réel.") }}</h2>
   </div>
+  {% if r.factor != 1 %}<p class="small muted">Prédictions corrigées de {{ ('%+.1f' % ((r.factor - 1) * 100)) | replace('-', '−') | replace('.', ',') }} % (calibration activée dans <a href="/admin">l'admin</a>).</p>{% endif %}
   <div class="chart" id="chart-tracked" role="img" aria-label="Prédiction de la course semaine après semaine"></div>
   <div class="table-wrap">
     <table class="data">
@@ -80,17 +113,39 @@
     {{ tracked_form("/estimateur/courses/" ~ r.id, gpx_recent, r, "Enregistrer") }}
     <p class="small muted">Changer de parcours efface l'historique des prédictions et rejoue les 12 dernières semaines.</p>
   </details>
+  {% if candidates or r.activity_id %}
+  <details class="tracked-add">
+    <summary>Sortie reliée {{ tip("Une fois la date passée, la course est reliée automatiquement à ta sortie du jour (à un jour près) de distance proche, partie près du départ du GPX. Tu peux en choisir une autre ou la délier : ton choix n'est plus modifié automatiquement.") }}</summary>
+    <div class="filters">
+      <label class="filter">Sortie
+        <select class="select" id="tracked-activity">
+          <option value="">Aucune</option>
+          {% for a in candidates %}<option value="{{ a.id }}" {% if a.id == r.activity_id %}selected{% endif %}>{{ a.start_time_local[:10] }} · {{ a.name or "Sans nom" }} · {{ ('%.1f' % a.distance_km) | replace('.', ',') }} km</option>{% endfor %}
+        </select></label>
+      <button class="btn-primary" type="button" id="tracked-link" data-url="/estimateur/courses/{{ r.id }}/sortie">Enregistrer</button>
+      <span class="small muted" id="tracked-link-status" role="status"></span>
+    </div>
+  </details>
+  {% endif %}
   <p><button class="btn-ghost" type="button" data-tracked-delete="/estimateur/courses/{{ r.id }}/supprimer">Ne plus suivre cette course</button></p>
 </section>
 {% endblock %}
 
 {% block scripts %}
 <script src="/static/courses_suivies.js?v={{ version }}"></script>
-<script type="application/json" id="tracked-data">{{ {"predictions": predictions, "target": race.target_s, "race_date": race.race_date} | tojson }}</script>
+<script type="application/json" id="tracked-data">{{ {"predictions": predictions, "target": race.target_s, "race_date": race.race_date, "result": race.result} | tojson }}</script>
 <script>
   (() => {
     const data = JSON.parse(document.getElementById("tracked-data").textContent);
     const preds = data.predictions;
+    const link = document.getElementById("tracked-link");
+    link?.addEventListener("click", async () => {
+      const value = document.getElementById("tracked-activity").value;
+      const status = document.getElementById("tracked-link-status");
+      const r = await fetch(link.dataset.url, { method: "POST", headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ activity_id: value ? Number(value) : null }) });
+      if (r.ok) location.reload(); else status.textContent = (await r.json()).detail || "Refusé.";
+    });
     if (!preds.length) return;
     const ms = (iso) => new Date(iso + "T12:00:00").getTime();
     GFT.chart("chart-tracked", (t) => {
@@ -105,16 +160,21 @@
           data: preds.map((p) => ({ value: [ms(p.week), p.realistic_s],
                                     itemStyle: p.replayed ? { color: t.surface, borderColor: t.accent } : {} })) },
       ];
+      if (data.result) series.push({ name: "Résultat", type: "scatter", symbol: "diamond", symbolSize: 14,
+        itemStyle: { color: t.series[1] }, data: [[ms(data.result.date), data.result.elapsed_s]],
+        tooltip: { formatter: () => `<b>Résultat</b><br>${GFT.chrono(data.result.elapsed_s)}` } });
       const marks = [];
       if (data.target) marks.push({ yAxis: data.target, name: "Objectif" });
       if (marks.length) series[2].markLine = { symbol: "none", silent: true, data: marks,
         lineStyle: { color: t.series[2], type: "dashed" }, label: { color: t.muted, formatter: (p) =>
           `${p.name} ${GFT.chrono(p.value)}`, position: "insideEndTop" } };
-      const values = preds.flatMap((p) => [p.optimistic_s, p.prudent_s]).concat(data.target ? [data.target] : []);
+      const values = preds.flatMap((p) => [p.optimistic_s, p.prudent_s]).concat(data.target ? [data.target] : [])
+        .concat(data.result ? [data.result.elapsed_s] : []);
       const pad = (Math.max(...values) - Math.min(...values)) * 0.1 || 60;
       return {
         grid: { left: 8, right: 16, top: 16, bottom: 28, containLabel: true },
         tooltip: { ...t.tooltip, trigger: "axis", formatter: (ps) => {
+          if (ps[0].seriesName === "Résultat") return `<b>Résultat</b><br>${GFT.chrono(data.result.elapsed_s)}`;
           const p = preds[ps[0].dataIndex];
           return `<b>Semaine du ${new Date(p.week + "T12:00:00").toLocaleDateString("fr-FR")}</b>`
             + `<br>Réaliste ${GFT.chrono(p.realistic_s)}<br>Fourchette ${GFT.chrono(p.optimistic_s)} – `

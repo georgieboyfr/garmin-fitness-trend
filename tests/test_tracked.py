@@ -125,3 +125,58 @@ def test_scheduler_records_once_a_week_after_the_daily_sync(config, conn, monkey
     assert sched.weekly(monday) == 1 and calls == [date(2026, 11, 9)]
     assert sched.weekly(monday + timedelta(hours=3)) == 0                    # une fois par semaine
     assert DailyScheduler(config, FakeSync(), FakeAccount(False)).weekly(datetime(2026, 11, 17, 5)) == 1
+
+
+def add_activity(conn, i, day, km, elapsed=6000, name="Semi"):
+    with conn:
+        conn.execute("INSERT INTO activities (id, start_time_utc, start_time_local, activity_type,"
+                     " garmin_name, distance_m, duration_s, fit_status, first_seen_at, updated_at)"
+                     " VALUES (?, 'x', ?, 'running', ?, ?, ?, 'stored', 'x', 'x')",
+                     (i, day + "T09:00:00", name, km * 1000, elapsed))
+
+
+def test_link_races_after_the_race(config, conn):
+    race_id = tracked.create(conn, road(race_date="2026-10-25", target_s=6200))
+    future = tracked.create(conn, road(race_date="2026-12-01"))
+    add_activity(conn, 1, "2026-10-25", 10.0)                                # trop courte
+    add_activity(conn, 2, "2026-10-25", 21.3, elapsed=6100)
+    add_activity(conn, 3, "2026-10-28", 21.1)                                # trois jours après
+    tracked.record(config, conn, date(2026, 10, 21), replay_weeks=1, data=data())
+    assert tracked.link_races(config, conn, TODAY) == 1
+    race = tracked.get(conn, race_id)
+    assert race["activity_id"] == 2 and tracked.get(conn, future)["activity_id"] is None
+    assert db.connect(config.db_path).execute("SELECT status FROM races WHERE activity_id=2").fetchone()[0] \
+        == "confirmed"
+    res = tracked.result(conn, race, tracked.predictions(conn, race_id))
+    p = res["prediction"]
+    assert p["week"] == "2026-10-19" and res["elapsed_s"] == 6100 and res["target_gap_s"] == -100
+    assert res["error_pct"] == round((p["realistic_s"] / 6100 - 1) * 100, 1)
+    assert [a["id"] for a in tracked.candidates(conn, race)] == [1, 2, 3]
+    tracked.set_activity(conn, race_id, None, manual=True)                  # délié à la main
+    assert tracked.link_races(config, conn, TODAY) == 0
+    assert tracked.summary(config, conn, tracked.get(conn, race_id), TODAY)["result"] is None
+
+
+def test_proposed_correction_needs_three_races():
+    rows = [{"error_pct": 10.0}, {"error_pct": -5.0}, {"error_pct": None}]
+    assert tracked._proposal(rows, "error_pct") == {"n": 2, "factor": None, "bias_pct": None}
+    rows.append({"error_pct": 4.0})
+    mean = (1.10 * 0.95 * 1.04) ** (1 / 3)
+    assert tracked._proposal(rows, "error_pct") == {"n": 3, "factor": round(1 / mean, 4),
+                                                    "bias_pct": round((mean - 1) * 100, 1)}
+
+
+def test_corrections_settings_and_display(config, conn):
+    assert tracked.corrections(conn) == {"road": 1.0, "trail": 1.0}
+    settings.update(conn, "estimator", {"correction_road": 0.96})
+    assert tracked.corrections(conn) == {"road": 0.96, "trail": 1.0}
+    for bad in ({"correction_road": 1.5}, {"correction_trail": "0.9"}, {"autre": 1},
+                {"correction_road": True}):
+        with pytest.raises(ValueError):
+            settings.update(conn, "estimator", bad)
+    race_id = tracked.create(conn, road())
+    tracked.record(config, conn, TODAY, data=data())
+    raw = tracked.predictions(conn, race_id)[-1]
+    s = tracked.summary(config, conn, tracked.get(conn, race_id), TODAY)
+    assert s["factor"] == 0.96 and s["last"]["realistic_s"] == round(raw["realistic_s"] * 0.96)
+

@@ -31,7 +31,6 @@ from . import (
     trail,
 )
 from .auth import SESSION_COOKIE
-from .series import read_series
 from .track_parser import parse_route
 
 TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -234,6 +233,7 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
         lthr = metrics_job.params_of(cfg, conn)["lthr"]
         confirmed = {i for i, status in queries.race_decisions(conn).items() if status == "confirmed"}
         elevation_params = settings.get(conn, "elevation")
+        factors = tracked.corrections(conn)
     finally:
         conn.close()
     today = _today(request)
@@ -253,6 +253,8 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
                                           estimator.MODEL_PERIODS[months_value],
                                           dem_profile, elevation_params,
                                           gpx_meta["aid_stations"], confirmed)
+    estimate = estimator.apply_correction(estimate, factors["road"])
+    trail_result = estimator.apply_correction(trail_result, factors["trail"])
     profile = estimator.current_form(acts, efforts, today, lthr, window)
     slope = estimator.fitness_slope(acts, efforts, today, window)
     fitness = profile["load"]["fitness"] if profile["load"] else None
@@ -270,10 +272,13 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
                       road_context=context(estimate, (km or 0) * 1000, gain_m),
                       trail_context=context(trail_result, trail_result.get("distance_m"),
                                             trail_result.get("gain_m")) if trail_result else None,
-                      table=estimator.road_table(efforts, today, window), estimate=estimate,
+                      table=[estimator.apply_correction(r, factors["road"])
+                             for r in estimator.road_table(efforts, today, window)],
+                      estimate=estimate, factors=factors,
                       validation=estimator.validate_road(acts, efforts, confirmed, window),
                       trail_validation=trail.validate_trail(
-                          _race_profiles(cfg, acts, confirmed, elevation_params), acts, efforts, confirmed,
+                          tracked.race_profiles(cfg, acts, confirmed, elevation_params), acts, efforts,
+                          confirmed,
                           window, estimator.MODEL_PERIODS[months_value]),
                       weeks=weeks_value, months=months_value, form_weeks=estimator.FORM_WEEKS,
                       personal_exponent=estimator.personal_exponent(efforts, today),
@@ -376,8 +381,10 @@ def tracked_page(request: Request, race_id: int):
                 version=__version__, nav=[(path, label) for path, label, ready in PAGES if ready], active=""),
                 status_code=404)
         data = tracked.load_data(cfg, conn)
+        if tracked.link_races(cfg, conn, today, data):
+            race = tracked.get(conn, race_id)
         info = tracked.summary(cfg, conn, race, today)
-        preds = tracked.predictions(conn, race_id)
+        candidates = tracked.candidates(conn, race) if info["past"] or info["activity_id"] else []
     finally:
         conn.close()
     context = None
@@ -396,26 +403,31 @@ def tracked_page(request: Request, race_id: int):
                                                       before=before),
                    "scenarios": estimator.form_scenarios(last["realistic_s"], last["fitness"], slope),
                    "slope": slope, "fitness": last["fitness"]}
-    return render(request, "course_suivie.html", "/estimateur", race=info, predictions=preds,
-                  estimate_context=context, gpx_recent=gpx_store.recent(cfg))
+    return render(request, "course_suivie.html", "/estimateur", race=info, predictions=info["predictions"],
+                  estimate_context=context, gpx_recent=gpx_store.recent(cfg), candidates=candidates)
 
 
-def _race_profiles(cfg, acts, confirmed, params) -> list[tuple[dict, dict | None]]:
-    """Courses trail confirmées et le profil de leur propre trace (altitude retenue pour le D+ :
-    baromètre ou MNT), qui sert de GPX pour rejouer l'estimateur trail."""
-    out = []
-    for a in acts:
-        if a["id"] not in confirmed or a.get("terrain") != "trail":
-            continue
-        profile = None
-        try:
-            table = read_series(cfg.series_dir, a["id"])
-            dist, alt = detail.retained_altitude(cfg, a["id"], table, a.get("elevation_source"))
-            profile = trail.altitude_profile(dist, alt, a.get("elevation_source") or "dem", params)
-        except (OSError, KeyError, ValueError):
-            pass
-        out.append((a, profile))
-    return out
+@router.post("/estimateur/courses/{race_id}/sortie")
+async def tracked_link(request: Request, race_id: int):
+    """Relie à la main la course suivie à une sortie (ou la délie avec null)."""
+    if (error := _session_error(request)):
+        return error
+    try:
+        activity_id = (await request.json()).get("activity_id")
+        activity_id = None if activity_id is None else int(activity_id)
+    except (ValueError, TypeError, AttributeError):
+        return JSONResponse({"detail": "Sortie invalide."}, status_code=400)
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        race = tracked.get(conn, race_id)
+        if race is None:
+            return JSONResponse({"detail": "Course inconnue."}, status_code=404)
+        if activity_id is not None and activity_id not in {a["id"] for a in tracked.candidates(conn, race)}:
+            return JSONResponse({"detail": "Sortie hors des jours de la course."}, status_code=400)
+        tracked.set_activity(conn, race_id, activity_id, manual=True)
+    finally:
+        conn.close()
+    return {"id": race_id, "activity_id": activity_id}
 
 
 # ---------- GPX des courses à estimer ----------

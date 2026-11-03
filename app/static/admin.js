@@ -50,6 +50,7 @@ async function init() {
     refreshElevation(true);
     refreshPhysiology();
     refreshRaces();
+    refreshCalibration();
     refreshStrava();
   }
 }
@@ -503,6 +504,60 @@ $("phy-form").addEventListener("submit", (e) => {
 $("phy-use-estimate").addEventListener("click", () => { $("phy-lthr").value = phyEstimate; });
 $("phy-reset").addEventListener("click", (e) =>
   busy(e.currentTarget, () => savePhysiology({ lthr: null, hr_max: null, hr_rest: null })));
+
+// ---------- calibration de l'estimateur ----------
+
+const CALIB_TERRAINS = { road: "Route", trail: "Trail" };
+const pct = (factor) => {
+  const v = (factor - 1) * 100;
+  return `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(1).replace(".", ",")} %`;
+};
+
+function renderCalibration(st) {
+  const rows = Object.entries(CALIB_TERRAINS).map(([key, label]) => {
+    const p = st.proposed[key], applied = st.applied[`correction_${key}`];
+    const div = document.createElement("div");
+    div.className = "row";
+    const text = document.createElement("p");
+    text.className = "small";
+    const measured = p.factor
+      ? `estimation ${p.bias_pct > 0 ? "trop lente" : "trop rapide"} de ${Math.abs(p.bias_pct).toFixed(1).replace(".", ",")} %`
+        + ` sur ${p.n} courses : correction proposée ${pct(p.factor)}`
+      : `${p.n} course${p.n > 1 ? "s" : ""} rejouée${p.n > 1 ? "s" : ""}, il en faut ${st.min_races} pour proposer une correction`;
+    text.innerHTML = `<b>${label}</b> : `;
+    text.append(measured + ". " + (applied ? `Appliquée : ${pct(applied)}.` : "Aucune correction appliquée."));
+    div.append(text);
+    if (p.factor && p.factor !== applied) {
+      const btn = document.createElement("button");
+      btn.className = "btn primary"; btn.type = "button";
+      btn.textContent = applied ? "Mettre à jour" : "Appliquer la correction proposée";
+      btn.addEventListener("click", () => busy(btn, () => saveCalibration({ [`correction_${key}`]: p.factor })));
+      div.append(btn);
+    }
+    if (applied) {
+      const btn = document.createElement("button");
+      btn.className = "btn ghost"; btn.type = "button"; btn.textContent = "Retirer";
+      btn.addEventListener("click", () => busy(btn, () => saveCalibration({ [`correction_${key}`]: null })));
+      div.append(btn);
+    }
+    return div;
+  });
+  $("calib-rows").replaceChildren(...rows);
+}
+
+async function refreshCalibration() {
+  try { renderCalibration(await api("/estimator")); } catch (err) { /* session gérée ailleurs */ }
+}
+
+async function saveCalibration(values) {
+  try {
+    renderCalibration(await api("/estimator", values));
+    showError("calib-error", null);
+    flash("calib-saved", "Enregistré.");
+  } catch (err) {
+    showError("calib-error", err);
+  }
+}
 
 // ---------- Strava ----------
 

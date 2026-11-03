@@ -39,7 +39,7 @@
   {% if tracked %}
   <div class="table-wrap">
     <table class="data">
-      <thead><tr><th>Course</th><th>Date</th><th>Parcours</th><th>Prédiction</th><th>Fourchette</th><th>Sur 4 semaines</th><th>Objectif</th></tr></thead>
+      <thead><tr><th>Course</th><th>Date</th><th>Parcours</th><th>Prédiction</th><th>Fourchette</th><th>Sur 4 semaines</th><th>Objectif</th><th>Résultat</th></tr></thead>
       <tbody>
         {% for r in tracked %}
         <tr {% if r.past %}class="muted"{% endif %}>
@@ -54,6 +54,7 @@
           <td colspan="3" class="muted">pas encore de prédiction</td>
           {% endif %}
           <td>{% if r.target_s %}<span data-chrono="{{ r.target_s }}"></span>{% if r.target_gap_s is not none %} <span class="small delta {{ 'down' if r.target_gap_s > 0 else 'up' }}">{{ "+" if r.target_gap_s > 0 else "−" }}<span data-chrono="{{ r.target_gap_s | abs }}"></span></span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>{% if r.result %}<a href="/sorties/{{ r.result.activity_id }}" data-chrono="{{ r.result.elapsed_s }}"></a>{% if r.result.error_pct is not none %} <span class="small muted">(prédit {{ ('%+.1f' % r.result.error_pct) | replace('-', '−') | replace('.', ',') }} %)</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -101,6 +102,7 @@
     {% if e.gain_m %} avec <span data-num="{{ e.gain_m }}" data-unit="m"></span> de D+, soit <span data-num="{{ e.equivalent_m / 1000 }}" data-dec="1" data-unit="km"></span> sur le plat {{ tip("Chaque mètre de D+ compte comme environ 6 m de plat en plus (coût énergétique de Minetti pour une montée à 5 %) ; la descente est comptée comme du plat. Approximation grossière en attendant ton modèle allure-pente personnel.") }}{% endif %}
     · calé sur ton meilleur {{ e.reference.label }} récent ({% if e.reference.kind == "distance" %}<span data-chrono="{{ e.reference.time_s }}"></span>{% else %}<span data-num="{{ e.reference.distance_m / 1000 }}" data-dec="2" data-unit="km"></span>{% endif %}, {{ effort_link(e.reference) }})
     {% if e.fallback %}· aucun effort route en {{ weeks }} semaines : références des 6 derniers mois{% endif %}
+    {% if e.correction %}· corrigé de {{ ('%+.1f' % e.correction.pct) | replace('-', '−') | replace('.', ',') }} % (calibration activée dans <a href="/admin">l'admin</a>){% endif %}
   </p>
   {{ race_context(road_context) }}
   {% elif query.distance %}
@@ -174,7 +176,7 @@
     {% if t.fatigue_applies %}· exposant de fatigue {{ "%.2f" | format(t.fatigue.value) | replace(".", ",") }}{% if t.fatigue.personal %} (ta courbe au-delà de 2 h{% if t.fatigue.fitted != t.fatigue.value %}, borné{% endif %}){% else %} (valeur par défaut, pas assez de sorties longues){% endif %}{% endif %}
     {% if t.fallback %}· aucun effort route en {{ weeks }} semaines : références des 6 derniers mois{% endif %}
     {% if t.stops_source == "ravitos" %}· temps total, dont <span data-duration="{{ t.stops_s }}"></span> d'arrêts saisis aux ravitos{% elif t.stops_source == "history" %}· temps total, dont <span data-duration="{{ t.stops_s }}"></span> d'arrêts ({{ t.stop_share_pct | string | replace(".", ",") }} % du temps{% if t.stop_rate.personal %}, d'après tes {{ t.stop_rate.points | length }} courses trail passées{% else %}, valeur par défaut faute de course trail passée{% endif %} ; tes arrêts saisis aux ravitos la remplacent) {{ tip("Part du temps passée à l'arrêt en course, qui croît avec le carré de la durée (les ravitos s'allongent sur les longues courses), calée sur tes courses trail confirmées : temps écoulé comparé au temps en mouvement. Les pauses de tes sorties d'entraînement ne comptent pas. Si tu saisis une durée d'arrêt à au moins un ravito, seuls tes arrêts saisis comptent.") }}{% else %}· temps en mouvement, sans arrêt{% endif %}
-    · <span data-chrono="{{ t.moving_s }}"></span> en mouvement, allures en mouvement.
+    · <span data-chrono="{{ t.moving_s }}"></span> en mouvement, allures en mouvement{% if t.correction %} · corrigé de {{ ('%+.1f' % t.correction.pct) | replace('-', '−') | replace('.', ',') }} % (calibration activée dans <a href="/admin">l'admin</a>){% endif %}.
   </p>
   <div class="chart" id="chart-trail" role="img" aria-label="Profil du parcours avec les temps de passage"></div>
   <div class="table-wrap">
@@ -237,6 +239,7 @@
   <div class="card-head">
     <h2>Précision sur tes courses passées</h2>
   </div>
+  <p class="small muted">Mesurée sans correction.{% if factors.road != 1 or factors.trail != 1 %} Correction en vigueur : route {{ ('%+.1f' % ((factors.road - 1) * 100)) | replace('-', '−') | replace('.', ',') }} %, trail {{ ('%+.1f' % ((factors.trail - 1) * 100)) | replace('-', '−') | replace('.', ',') }} %.{% endif %} La correction proposée se règle dans <a href="/admin">l'admin</a>.</p>
   <h3>Route {{ tip("L'estimateur route est rejoué sur chacune de tes courses route confirmées, avec uniquement les sorties jusqu'à la veille (forme de la veille), puis comparé à ton temps réel (temps écoulé). Écart positif : estimation trop lente. L'erreur moyenne est la moyenne des écarts en valeur absolue ; le biais, leur moyenne signée. La colonne « Exposant personnel » montre ce qu'aurait donné l'exposant calé sur tes meilleurs efforts route des 2 années précédant la course.") }}</h3>
   {% if v.used %}
   <section class="kpis">

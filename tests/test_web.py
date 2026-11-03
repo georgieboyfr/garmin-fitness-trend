@@ -250,3 +250,35 @@ def test_tracked_races_pages(client):
     assert client.get("/estimateur/courses/999").status_code == 404
     assert client.post(f"/estimateur/courses/{race_id}/supprimer").status_code == 200
     assert client.get(f"/estimateur/courses/{race_id}").status_code == 404
+
+
+def test_tracked_race_manual_link_and_calibration_admin(client, config):
+    login(client)
+    race_id = client.post("/estimateur/courses", json={"name": "Semi", "distance_km": 21.1,
+                                                       "race_date": "2026-02-28"}).json()["id"]
+    conn = db.connect(config.db_path)
+    with conn:
+        conn.execute(
+            "INSERT INTO activities (id, start_time_utc, start_time_local, activity_type, garmin_name,"
+            " distance_m, duration_s, fit_status, first_seen_at, updated_at)"
+            " VALUES (88, ?, '2026-03-01T09:00:00', 'running', 'Semi de Paris', 30000, 9000, 'stored', ?, ?)",
+            (NOW, NOW, NOW))
+    conn.close()
+    page = client.get(f"/estimateur/courses/{race_id}").text            # 30 km : pas reliée d'office
+    assert "Semi de Paris" in page and "Temps réel" not in page
+    url = f"/estimateur/courses/{race_id}/sortie"
+    assert client.post(url, json={"activity_id": 999}).status_code == 400
+    assert client.post(url, json={"activity_id": "abc"}).status_code == 400
+    assert client.post(url, json={"activity_id": 88}).status_code == 200
+    page = client.get(f"/estimateur/courses/{race_id}").text
+    assert "Temps réel" in page and "Comparer l'estimé et le réel" in page
+    assert client.post(url, json={"activity_id": None}).status_code == 200
+    ui = {"X-Requested-With": "admin-ui"}
+    st = client.get("/admin/api/estimator").json()
+    assert st["applied"] == {"correction_road": None, "correction_trail": None}
+    assert st["proposed"]["road"]["factor"] is None
+    assert client.post("/admin/api/estimator", headers=ui, json={"correction_road": 3}).status_code == 400
+    st = client.post("/admin/api/estimator", headers=ui, json={"correction_road": 0.97}).json()
+    assert st["applied"]["correction_road"] == 0.97
+    assert "Correction en vigueur" in client.get("/estimateur").text
+
