@@ -63,6 +63,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [ ] 8. Comparaison avec les courses passées les plus proches (distance, D+) et effet de la forme (temps estimé avec plus ou moins de fitness le jour J)
   - [ ] 9. Courses suivies, indépendantes du coach : liste (GPX ou distance, date facultative), prédiction enregistrée chaque semaine, graphique par course avec fourchette et objectif, vue d'ensemble sur 4 semaines
   - [ ] 10. Après la course : activité reliée automatiquement, écart prédiction / résultat, calibration
+  - [ ] 10 bis. Fiche d'une course réalisée : bouton qui lance l'estimation sur la trace de la sortie (forme de la veille et forme d'aujourd'hui), graphique superposant estimé et réel (format à définir avec Greg) (demande de Greg du 3 novembre 2026)
   - [ ] 11. Vérification ordinateur et mobile, v0.3.0
   - Points à trancher avec Greg au fil des étapes : terrain technique et chaleur (étape 6 ou plus tard), forme projetée à la date de la course (le coach de la phase 4 la fournira ; en attendant, forme actuelle maintenue)
   - Tranché : l'estimateur a son propre onglet dans le menu (3 novembre 2026)
