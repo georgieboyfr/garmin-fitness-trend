@@ -44,6 +44,10 @@ class Config:
         return self.data_dir / "strava"
 
     @property
+    def gpx_dir(self) -> Path:
+        return self.data_dir / "gpx"
+
+    @property
     def garmin_tokens_dir(self) -> Path:
         return self.data_dir / "garmin_tokens"
 

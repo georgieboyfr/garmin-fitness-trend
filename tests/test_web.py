@@ -175,3 +175,20 @@ def test_estimateur_periods_are_remembered(client):
     assert '<option value="24" selected>2 ans' in r.text
     r = client.get("/estimateur?weeks=5&months=7")                     # valeurs refusées : dernier choix
     assert '<option value="6" selected>6 semaines' in r.text
+
+
+def test_estimateur_gpx_upload(client, config):
+    pts = "".join(f'<trkpt lat="{45 + i * 20 / 111195}" lon="5"><ele>{i * 2}</ele></trkpt>'
+                  for i in range(200))
+    data = f'<gpx><trk><trkseg>{pts}</trkseg></trk></gpx>'.encode()
+    assert client.post("/estimateur/gpx", content=data).status_code == 401
+    login(client)
+    assert client.post("/estimateur/gpx", content=b"pas un gpx").status_code == 400
+    r = client.post("/estimateur/gpx", content=data, headers={"X-Filename": "Trail%20du%20Vercors.gpx"})
+    assert r.status_code == 200
+    gpx_id = r.json()["id"]
+    assert (config.gpx_dir / f"{gpx_id}.gpx").read_bytes() == data
+    page = client.get(f"/estimateur?gpx={gpx_id}")
+    assert page.status_code == 200 and "Trail du Vercors" in page.text
+    assert "modèle allure-pente" in page.text                     # base vide : message d'erreur affiché
+    assert client.get("/estimateur?gpx=../../etc").status_code == 200

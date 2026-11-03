@@ -4,18 +4,22 @@ Pages de statistiques (templates Jinja + ECharts), protégées par la session de
 Les données de chaque page sont calculées côté serveur et insérées dans la page en JSON :
 pas d'appel d'API supplémentaire, et rien à mettre en cache côté navigateur.
 """
+import hashlib
+import json
 import math
-from datetime import datetime
+import re
+from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from . import __version__, courses, db, detail, estimator, metrics_job, queries, stats
+from . import __version__, courses, db, detail, estimator, metrics_job, queries, stats, trail
 from .auth import SESSION_COOKIE
+from .track_parser import parse_route
 
 TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
@@ -205,7 +209,8 @@ def _choice(value: str, cookie: str, allowed, default: int) -> tuple[int, bool]:
 
 
 @router.get("/estimateur")
-def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str = "", months: str = ""):
+def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str = "", months: str = "",
+               gpx: str = ""):
     if (redirect := _login_redirect(request)):
         return redirect
     cfg = request.app.state.config
@@ -226,6 +231,12 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
     km, gain_m = _number(distance), _number(gain) or 0.0
     model = estimator.grade_pace_model(acts, today, estimator.MODEL_PERIODS[months_value])
     estimate = estimator.predict_road(efforts, today, km * 1000, gain_m, window_days=window) if km else None
+    trail_result, gpx_meta = None, None
+    if GPX_ID.fullmatch(gpx) and (cfg.gpx_dir / f"{gpx}.gpx").exists():
+        gpx_meta = _gpx_meta(cfg, gpx)
+        lats, lons, eles = parse_route((cfg.gpx_dir / f"{gpx}.gpx").read_bytes())
+        trail_result = trail.estimate_gpx(lats, lons, eles, acts, efforts, today, window,
+                                          estimator.MODEL_PERIODS[months_value])
     response = render(request, "estimateur.html", "/estimateur",
                       profile=estimator.current_form(acts, efforts, today, lthr, window),
                       table=estimator.road_table(efforts, today, window), estimate=estimate,
@@ -233,8 +244,57 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
                       weeks=weeks_value, months=months_value, form_weeks=estimator.FORM_WEEKS,
                       personal_exponent=estimator.personal_exponent(efforts, today),
                       model=model, model_table=estimator.model_table(model) if model else [],
-                      query={"distance": distance, "gain": gain})
+                      trail=trail_result, gpx=gpx_meta, gpx_recent=_gpx_recent(cfg),
+                      query={"distance": distance, "gain": gain, "gpx": gpx_meta["id"] if gpx_meta else ""})
     if weeks_chosen or months_chosen:
         response.set_cookie(ESTIMATOR_COOKIE, f"{weeks_value}-{months_value}", max_age=365 * 86400,
                             httponly=True, samesite="lax")
     return response
+
+
+# ---------- GPX des courses à estimer ----------
+
+GPX_ID = re.compile(r"[0-9a-f]{16}")
+GPX_MAX_BYTES = 20 * 1024 * 1024
+GPX_RECENT = 8
+
+
+def _gpx_meta(cfg, gpx_id: str) -> dict:
+    path = cfg.gpx_dir / f"{gpx_id}.json"
+    meta = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    return {"id": gpx_id, "name": meta.get("name") or "Parcours", "uploaded_at": meta.get("uploaded_at")}
+
+
+def _gpx_recent(cfg) -> list[dict]:
+    """Derniers GPX importés, du plus récent au plus ancien."""
+    if not cfg.gpx_dir.exists():
+        return []
+    files = sorted(cfg.gpx_dir.glob("*.gpx"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return [_gpx_meta(cfg, p.stem) for p in files[:GPX_RECENT] if GPX_ID.fullmatch(p.stem)]
+
+
+@router.post("/estimateur/gpx")
+async def upload_gpx(request: Request):
+    """GPX envoyé tel quel par la page (corps de la requête) : vérifié, puis rangé dans data/gpx
+    sous l'empreinte de son contenu (le même fichier importé deux fois n'est stocké qu'une fois)."""
+    if not request.app.state.auth.check_session(request.cookies.get(SESSION_COOKIE)):
+        return JSONResponse({"detail": "Session expirée : reconnecte-toi."}, status_code=401)
+    data = await request.body()
+    if not data or len(data) > GPX_MAX_BYTES:
+        return JSONResponse({"detail": "Fichier vide ou trop gros (20 Mo au plus)."}, status_code=400)
+    try:
+        lats, lons, eles = parse_route(data)
+    except Exception:
+        return JSONResponse({"detail": "Ce fichier n'est pas un GPX lisible."}, status_code=400)
+    if trail.route_profile(lats, lons, eles) is None:
+        return JSONResponse({"detail": "Trace inutilisable : moins de 1 km, ou sans altitude."},
+                            status_code=400)
+    cfg = request.app.state.config
+    gpx_id = hashlib.sha256(data).hexdigest()[:16]
+    cfg.gpx_dir.mkdir(parents=True, exist_ok=True)
+    (cfg.gpx_dir / f"{gpx_id}.gpx").write_bytes(data)
+    name = unquote(request.headers.get("x-filename", "")).rsplit(".", 1)[0][:120] or "Parcours"
+    (cfg.gpx_dir / f"{gpx_id}.json").write_text(json.dumps(
+        {"name": name, "uploaded_at": datetime.now(UTC).replace(microsecond=0).isoformat()},
+        ensure_ascii=False), encoding="utf-8")
+    return {"id": gpx_id}

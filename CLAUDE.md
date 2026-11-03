@@ -57,7 +57,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 2. Route : Riegel à exposant personnel calé sur les meilleurs efforts récents, fourchette optimiste / réaliste / prudent, allure cible ; saisie d'une distance (et D+ éventuel), « si je courais maintenant » (3 novembre 2026 ; choix à valider par Greg, section 10 du brief)
   - [x] 3. Validation route : estimateur rejoué sur les courses confirmées avec la forme de la veille, erreur moyenne affichée (3 novembre 2026 : exposant standard 1,06 retenu par Greg, 4,4 % d'erreur sur 3 courses, estimation encore trop lente, biais non corrigé)
   - [x] 4. Modèle allure-pente personnel (allure selon la pente à effort égal, montée et descente), calé sur les sorties ; comparé à la VAP de Minetti (3 novembre 2026 ; choix à valider par Greg, section 10 du brief)
-  - [ ] 5. Trail sur GPX : import du GPX, découpage en tronçons homogènes, temps par tronçon (modèle allure-pente et facteur de fatigue tiré de la courbe allure-durée), profil et temps de passage
+  - [x] 5. Trail sur GPX : import du GPX, découpage en tronçons homogènes, temps par tronçon (modèle allure-pente et facteur de fatigue tiré de la courbe allure-durée), profil et temps de passage (3 novembre 2026 ; choix à valider par Greg, section 10 du brief)
   - [ ] 6. Trail sans GPX (distance, D+, type de terrain) ; ravitaillements et barrières horaires saisis sur un GPX
   - [ ] 7. Validation trail : rejeu sur les courses trail passées (leur propre trace sert de GPX), erreur moyenne affichée
   - [ ] 8. Comparaison avec les courses passées les plus proches (distance, D+) et effet de la forme (temps estimé avec plus ou moins de fitness le jour J)
@@ -84,4 +84,4 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 
 ## Données locales (poste de dev)
 
-`data/trend.db`, `data/fit/`, `data/series/`, `data/dem/`, `data/strava/`, `data/garmin_tokens/`. L'ancienne application (supprimée en 0.1.0, voir l'historique Git) utilisait `data/fitness.db` et `data/garth_tokens/`.
+`data/trend.db`, `data/fit/`, `data/series/`, `data/dem/`, `data/strava/`, `data/garmin_tokens/`, `data/gpx/` (parcours importés dans l'estimateur). L'ancienne application (supprimée en 0.1.0, voir l'historique Git) utilisait `data/fitness.db` et `data/garth_tokens/`.

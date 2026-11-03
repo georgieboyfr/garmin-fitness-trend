@@ -77,3 +77,20 @@ def parse_track(path) -> FitData:
                 data = f.read()
         return parse_gpx(data)
     raise ValueError(f"format de trace non pris en charge : {path}")
+
+
+def parse_route(data: bytes) -> tuple[list[float], list[float], list[float | None]]:
+    """Points d'un parcours GPX (trace ou itinéraire, sans horodatage, comme un GPX de course) :
+    latitudes, longitudes et altitudes (None si absente)."""
+    lats, lons, eles = [], [], []
+    for _, elem in ET.iterparse(io.BytesIO(data)):
+        if _local(elem.tag) not in ("trkpt", "rtept"):
+            continue
+        lat, lon = _float(elem.get("lat")), _float(elem.get("lon"))
+        if lat is not None and lon is not None:
+            ele = next((_float(c.text) for c in elem if _local(c.tag) == "ele"), None)
+            lats.append(lat)
+            lons.append(lon)
+            eles.append(ele)
+        elem.clear()
+    return lats, lons, eles
