@@ -7,12 +7,44 @@
   ?{% for k, v in p.items() if v not in ("", none) %}{{ k }}={{ v | urlencode }}{% if not loop.last %}&amp;{% endif %}{% endfor %}
 {%- endmacro %}
 
-{% macro th(key, label) -%}
+{% macro th(key, label, cls="") -%}
   {%- set active = filters.sort == key -%}
   {%- set next_order = "asc" if active and filters.order == "desc" else "desc" -%}
-  <th {% if active %}aria-sort="{{ 'descending' if filters.order == 'desc' else 'ascending' }}"{% endif %}>
+  <th {% if cls %}class="{{ cls }}"{% endif %} {% if active %}aria-sort="{{ 'descending' if filters.order == 'desc' else 'ascending' }}"{% endif %}>
     <a href="{{ url(sort=key, order=next_order, page=1) }}">{{ label }}{% if active %} {{ '↓' if filters.order == 'desc' else '↑' }}{% endif %}</a>
   </th>
+{%- endmacro %}
+
+{% macro range_filter(name, label, low_key, high_key, max, unit, step) -%}
+  <div class="filter range-filter" data-range data-max="{{ max }}" data-step="{{ step }}" data-unit="{{ unit }}">
+    <span>{{ label }} <output class="range-value"></output></span>
+    <div class="dual-range">
+      <input type="range" min="0" max="1000" step="1" aria-label="{{ label }} minimum" data-end="low">
+      <input type="range" min="0" max="1000" step="1" aria-label="{{ label }} maximum" data-end="high">
+    </div>
+    <input type="hidden" name="{{ low_key }}" value="{{ filters[low_key] }}">
+    <input type="hidden" name="{{ high_key }}" value="{{ filters[high_key] }}">
+  </div>
+{%- endmacro %}
+
+{% macro pager(where) -%}
+  <nav class="pager pager-{{ where }}" aria-label="Pages">
+    <span class="pager-pos">
+      {%- if data.total %}<strong>{{ data.first }}–{{ data.last }}</strong> sur {{ data.total }}{% else %}0 sortie{% endif -%}
+    </span>
+    <label class="pager-size muted">
+      <select onchange="location.href = this.value" aria-label="Sorties par page">
+        {% for n in page_sizes %}<option value="{{ url(page=1, per_page=n) }}" {% if n == data.per_page %}selected{% endif %}>{{ n }} par page</option>{% endfor %}
+      </select>
+    </label>
+    {% if data.pages > 1 %}
+    <span class="pager-nav">
+      <a href="{{ url(page=data.page - 1) }}" {% if data.page == 1 %}aria-disabled="true" tabindex="-1"{% endif %} aria-label="Page précédente">←</a>
+      <span class="muted">page {{ data.page }} / {{ data.pages }}</span>
+      <a href="{{ url(page=data.page + 1) }}" {% if data.page == data.pages %}aria-disabled="true" tabindex="-1"{% endif %} aria-label="Page suivante">→</a>
+    </span>
+    {% endif %}
+  </nav>
 {%- endmacro %}
 
 {% block content %}
@@ -24,7 +56,7 @@
   </div>
 </section>
 
-<form class="filters card" method="get" action="/sorties">
+<form class="filters card" method="get" action="/sorties" id="filters">
   <input type="hidden" name="sort" value="{{ filters.sort }}">
   <input type="hidden" name="order" value="{{ filters.order }}">
   <label class="filter"><span>Recherche</span>
@@ -42,16 +74,24 @@
     <select id="sort-select" onchange="const [s, o] = this.value.split(':'); this.form.sort.value = s; this.form.order.value = o; this.form.submit()">
       {% for value, label in [("date:desc", "Plus récentes"), ("date:asc", "Plus anciennes"), ("distance:desc", "Distance"),
                                ("gain:desc", "D+"), ("time:desc", "Durée"), ("pace:asc", "Allure la plus rapide"),
-                               ("route:asc", "Meilleur écart à son parcours"),
                                ("hrss:desc", "Charge")] %}
         <option value="{{ value }}" {% if value == filters.sort ~ ":" ~ filters.order %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select></label>
-  <button class="btn-primary" type="submit">Filtrer</button>
+  <div class="filters-break"></div>
+  {{ range_filter("distance", "Distance", "dmin", "dmax", bounds.distance_km, "km", 1) }}
+  {{ range_filter("gain", "D+", "gmin", "gmax", bounds.gain_m, "m", 10) }}
+  <div class="filter-actions">
+    {% if filters.dmin or filters.dmax or filters.gmin or filters.gmax or filters.q or filters.year or filters.terrain != "all" %}
+      <a class="reset" href="/sorties">Tout afficher</a>
+    {% endif %}
+    <button class="btn-primary" type="submit">Filtrer</button>
+  </div>
 </form>
 
 <section class="card list-card">
   {% if data.rows %}
+  {{ pager("top") }}
   <div class="table-wrap">
     <table class="data activities">
       <thead><tr>
@@ -59,49 +99,43 @@
         <th class="col-name">Sortie</th>
         {{ th("distance", "Distance") }}
         {{ th("gain", "D+") }}
-        {{ th("time", "En mouvement") }}
-        {{ th("elapsed", "Écoulé") }}
+        {{ th("time", "Temps") }}
         {{ th("pace", "Allure") }}
-        {{ th("hr", "FC moy.") }}
-        {{ th("hrss", "Charge") }}
-        {{ th("route", "Vs parcours") }}
+        {{ th("hr", "FC moy.", "col-minor") }}
+        {{ th("hrss", "Charge", "col-minor") }}
       </tr></thead>
       <tbody>
         {% for r in data.rows %}
-        <tr>
-          <td class="col-date" data-datetime="{{ r.date }}"></td>
+        <tr data-href="/sorties/{{ r.id }}">
+          <td class="col-date"><span data-day="{{ r.date }}"></span></td>
           <td class="col-name">
             <a class="act-name" href="/sorties/{{ r.id }}">{{ r.name or "Sans nom" }}</a>
             {% if r.terrain %}<span class="badge badge-{{ r.terrain }}">{{ {"road": "route", "trail": "trail", "indoor": "tapis"}[r.terrain] }}</span>{% endif %}
             {% if r.source == "strava" %}<span class="badge">Strava</span>{% endif %}
-            {% if r.description %}<span class="act-desc">{{ r.description }}</span>{% endif %}
+            {% if r.description %}<span class="act-desc" title="{{ r.description }}">{{ r.description }}</span>{% endif %}
           </td>
-          <td data-label="Distance" data-num="{{ r.distance_km }}" data-unit="km" data-dec="1"></td>
+          <td class="col-strong" data-label="Distance" data-num="{{ r.distance_km }}" data-unit="km" data-dec="1"></td>
           <td data-label="D+" data-num="{{ r.gain_m }}" data-unit="m"></td>
-          <td data-label="En mouvement" {% if r.moving_s %}data-duration="{{ r.moving_s }}"{% endif %}>{% if not r.moving_s %}—{% endif %}</td>
-          <td data-label="Écoulé" {% if r.elapsed_s %}data-duration="{{ r.elapsed_s }}"{% endif %}>{% if not r.elapsed_s %}—{% endif %}</td>
-          <td data-label="Allure" {% if r.pace_s_km %}data-pace="{{ r.pace_s_km }}"{% endif %}>{% if not r.pace_s_km %}—{% endif %}</td>
-          <td data-label="FC moy.">{{ r.avg_hr or "—" }}</td>
-          <td data-label="Charge">{{ r.hrss if r.hrss is not none else "—" }}</td>
-          <td data-label="Vs parcours">{% if r.route %}
-            <span class="delta {{ 'up' if r.route.diff_s < 0 else 'down' }}" title="Écart à la moyenne des {{ r.route.n - 1 }} autres passages sur ce parcours (temps en mouvement)">{{ '−' if r.route.diff_s < 0 else '+' }}<span data-duration="{{ r.route.diff_s | abs }}"></span> ({{ ('%+.0f' % r.route.diff_pct) | replace('-', '−') }} %)</span>
-            <span class="muted small">{{ r.route.rank }}e/{{ r.route.n }}</span>
-          {% else %}<span class="muted">—</span>{% endif %}</td>
+          <td data-label="Temps">
+            {%- if r.moving_s %}<span data-duration="{{ r.moving_s }}"></span>
+              {%- if r.elapsed_s and r.elapsed_s - r.moving_s >= 60 %}<span class="sub" title="Temps écoulé, arrêts compris">écoulé <span data-duration="{{ r.elapsed_s }}"></span></span>{% endif %}
+            {%- else %}—{% endif -%}
+          </td>
+          <td class="col-strong" data-label="Allure" {% if r.pace_s_km %}data-pace="{{ r.pace_s_km }}"{% endif %}>{% if not r.pace_s_km %}—{% endif %}</td>
+          <td class="col-minor" data-label="FC moy.">{{ r.avg_hr or "—" }}</td>
+          <td class="col-minor" data-label="Charge">{{ r.hrss if r.hrss is not none else "—" }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+  {{ pager("bottom") }}
   {% else %}
-  <p class="muted empty">Aucune sortie ne correspond à ces filtres.</p>
-  {% endif %}
-
-  {% if data.pages > 1 %}
-  <nav class="pager" aria-label="Pages">
-    <a href="{{ url(page=data.page - 1) }}" {% if data.page == 1 %}aria-disabled="true" tabindex="-1"{% endif %}>← Précédentes</a>
-    <span class="muted">Page {{ data.page }} / {{ data.pages }}</span>
-    <a href="{{ url(page=data.page + 1) }}" {% if data.page == data.pages %}aria-disabled="true" tabindex="-1"{% endif %}>Suivantes →</a>
-  </nav>
+  <p class="muted empty">Aucune sortie ne correspond à ces filtres. <a href="/sorties">Tout afficher</a></p>
   {% endif %}
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/sorties.js?v={{ version }}"></script>
 {% endblock %}

@@ -84,9 +84,18 @@ def test_sorties_page(client, config):
     conn.close()
     login(client)
     r = client.get("/sorties")
-    assert r.status_code == 200 and "30 sortie(s)" in r.text and "Page 1 / 2" in r.text
+    assert r.status_code == 200 and "30 sortie(s)" in r.text and "<strong>1–30</strong> sur 30" in r.text
+    # nombre par page choisi, puis mémorisé dans un cookie
+    r = client.get("/sorties?per_page=25")
+    assert "page 1 / 2" in r.text and r.cookies.get("per_page") == "25"
     r = client.get("/sorties?page=2&sort=distance&order=asc&year=2026&terrain=all&q=course")
-    assert r.status_code == 200 and "Page 2 / 2" in r.text
+    assert r.status_code == 200 and "page 2 / 2" in r.text and "<strong>26–30</strong> sur 30" in r.text
+    r = client.get("/sorties?per_page=7")                              # taille inconnue : dernier choix gardé
+    assert "page 1 / 2" in r.text
+    r = client.get("/sorties?dmin=5&dmax=12,5&gmin=abc&gmax=-3")
+    assert "30 sortie(s)" in r.text and 'name="dmax" value="12.5"' in r.text
+    assert 'name="gmin" value=""' in r.text and 'name="gmax" value=""' in r.text
+    assert "0 sortie(s)" in client.get("/sorties?dmin=11").text
     r = client.get("/sorties?q=introuvable&year=1999&sort=pirate&order=x")
     assert "Aucune sortie" in r.text
 

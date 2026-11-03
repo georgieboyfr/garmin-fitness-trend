@@ -112,23 +112,38 @@ def _list_acts():
 def test_activity_list_pagination_and_filters():
     acts = _list_acts()
     first = stats.activity_list(acts)
-    assert first["total"] == 60 and first["pages"] == 3 and len(first["rows"]) == 25
+    assert first["total"] == 60 and first["pages"] == 2 and len(first["rows"]) == 50   # 50 par défaut
+    assert (first["first"], first["last"]) == (1, 50)
     assert first["rows"][0]["date"] > first["rows"][1]["date"]           # récentes d'abord
-    assert stats.activity_list(acts, page=99)["page"] == 3                # page bornée
-    assert len(stats.activity_list(acts, page=3)["rows"]) == 10
+    small = stats.activity_list(acts, per_page=25, page=99)
+    assert small["page"] == 3 and len(small["rows"]) == 10                # page bornée
+    assert (small["first"], small["last"]) == (51, 60)
+    assert stats.activity_list(acts, per_page=33)["per_page"] == 50       # taille inconnue : défaut
     assert stats.activity_list(acts, terrain="trail")["total"] == 20
     assert stats.activity_list(acts, year=2024)["total"] == 0
     found = stats.activity_list(acts, query="paul")
     assert found["total"] == 1 and found["rows"][0]["name"] == "Sortie 7"
 
 
+def test_activity_list_distance_and_gain_ranges():
+    acts = _list_acts()                    # distances de 5 à 11 km, D+ de 0 à 590 m
+    assert stats.activity_list(acts, distance=(10, None))["total"] == 16
+    assert stats.activity_list(acts, distance=(None, 5))["total"] == 9
+    assert stats.activity_list(acts, distance=(6, 7), gain=(100, 300))["total"] == 6
+    assert stats.activity_list(acts, gain=(1000, None))["total"] == 0
+    empty = stats.activity_list(acts, gain=(1000, None))
+    assert (empty["first"], empty["last"]) == (0, 0)
+    assert stats.list_bounds(acts) == {"distance_km": 11, "gain_m": 590}
+    assert stats.list_bounds([]) == {"distance_km": 1, "gain_m": 10}
+
+
 def test_activity_list_sort_and_missing_values_last():
     acts = _list_acts()
     rows = stats.activity_list(acts, sort="distance", order="desc")["rows"]
     assert rows[0]["distance_km"] == 11
-    hr = stats.activity_list(acts, sort="hr", order="asc", page=3)["rows"]
+    hr = stats.activity_list(acts, sort="hr", order="asc", page=2)["rows"]
     assert hr[-1]["avg_hr"] is None                                       # sans FC : en dernier
-    hr_desc = stats.activity_list(acts, sort="hr", order="desc", page=3)["rows"]
+    hr_desc = stats.activity_list(acts, sort="hr", order="desc", page=2)["rows"]
     assert hr_desc[-1]["avg_hr"] is None
     pace = stats.activity_list(acts, sort="pace", order="asc")["rows"]
     assert pace[0]["pace_s_km"] <= pace[1]["pace_s_km"]                   # les plus rapides d'abord

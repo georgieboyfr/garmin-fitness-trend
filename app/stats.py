@@ -214,12 +214,12 @@ SORTS = {
     "gain": lambda a: a["gain_m"],
     "time": lambda a: a["moving_duration_s"],
     "elapsed": lambda a: a.get("elapsed_s"),
-    "route": lambda a: a["route_cmp"]["diff_pct"] if a.get("route_cmp") else None,
     "pace": lambda a: a["pace_s_km"],
     "hr": lambda a: a["avg_hr"],
     "hrss": lambda a: a["hrss"],
 }
-PER_PAGE = 25
+PAGE_SIZES = (25, 50, 100, 200)
+PER_PAGE = 50
 
 
 def pace_s_per_km(moving_s, distance_km):
@@ -250,37 +250,53 @@ def route_comparison(acts) -> dict[int, dict]:
     return out
 
 
-def activity_list(acts, year=None, terrain="all", sort="date", order="desc", page=1, query="") -> dict:
-    """Sorties filtrées (année, terrain, texte dans le nom ou la description), triées et paginées."""
+def list_bounds(acts) -> dict:
+    """Bornes des curseurs de distance et de D+ : de 0 au maximum de l'historique, arrondi au-dessus."""
+    max_km = max((a["distance_km"] or 0 for a in acts), default=0)
+    max_gain = max((a["gain_m"] or 0 for a in acts), default=0)
+    return {"distance_km": max(1, math.ceil(max_km)), "gain_m": max(10, math.ceil(max_gain / 10) * 10)}
+
+
+def _in_range(value, low, high) -> bool:
+    value = value or 0
+    return (low is None or value >= low) and (high is None or value <= high)
+
+
+def activity_list(acts, year=None, terrain="all", sort="date", order="desc", page=1, query="",
+                  distance=(None, None), gain=(None, None), per_page=PER_PAGE) -> dict:
+    """Sorties filtrées (année, terrain, texte dans le nom ou la description, plages de distance en km
+    et de D+ en m), triées et paginées."""
     rows = filter_terrain(acts, terrain)
     if year:
         rows = [a for a in rows if a["start"].year == year]
     q = query.strip().lower()
     if q:
         rows = [a for a in rows if q in (a["name"] or "").lower() or q in (a["description"] or "").lower()]
-    comparisons = route_comparison(acts)
+    rows = [a for a in rows if _in_range(a["distance_km"], *distance) and _in_range(a["gain_m"], *gain)]
     for a in rows:
         a["pace_s_km"] = pace_s_per_km(a["moving_duration_s"], a["distance_km"])
-        a["route_cmp"] = comparisons.get(a["id"])
     sort = sort if sort in SORTS else "date"
     key = SORTS[sort]
     # les sorties sans valeur (pas de FC, pas de distance...) restent en fin de liste
     present = sorted((a for a in rows if key(a) is not None), key=key, reverse=(order != "asc"))
     rows = present + [a for a in rows if key(a) is None]
-    pages = max(1, -(-len(rows) // PER_PAGE))
+    per_page = per_page if per_page in PAGE_SIZES else PER_PAGE
+    pages = max(1, -(-len(rows) // per_page))
     page = min(max(1, page), pages)
-    chunk = rows[(page - 1) * PER_PAGE: page * PER_PAGE]
+    chunk = rows[(page - 1) * per_page: page * per_page]
     return {
         "total": len(rows),
         "totals": totals(rows),
         "page": page,
         "pages": pages,
+        "per_page": per_page,
+        "first": (page - 1) * per_page + 1 if chunk else 0,
+        "last": (page - 1) * per_page + len(chunk),
         "rows": [{
             "id": a["id"], "date": a["start"].isoformat(timespec="minutes"), "name": a["name"],
             "description": a["description"], "terrain": a.get("terrain"),
             "distance_km": round(a["distance_km"], 2), "gain_m": round(a["gain_m"]),
             "moving_s": a["moving_duration_s"], "elapsed_s": a.get("elapsed_s"), "pace_s_km": a["pace_s_km"],
-            "route": a["route_cmp"],
             "avg_hr": round(a["avg_hr"]) if a["avg_hr"] else None,
             "hrss": round(a["hrss"]) if a.get("hrss") is not None else None,
             "source": a["source"],

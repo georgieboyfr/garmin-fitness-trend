@@ -4,6 +4,7 @@ Pages de statistiques (templates Jinja + ECharts), protégées par la session de
 Les données de chaque page sont calculées côté serveur et insérées dans la page en JSON :
 pas d'appel d'API supplémentaire, et rien à mettre en cache côté navigateur.
 """
+import math
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
@@ -82,9 +83,22 @@ def volume(request: Request, terrain: str = "all"):
                   terrain=terrain, terrains=stats.TERRAINS)
 
 
+PER_PAGE_COOKIE = "per_page"
+
+
+def _number(value: str):
+    """Borne d'un curseur : nombre positif, ou None (curseur en bout de course, pas de filtre)."""
+    try:
+        v = float(value.replace(",", "."))
+    except ValueError:
+        return None
+    return v if v >= 0 and math.isfinite(v) else None
+
+
 @router.get("/sorties")
 def sorties(request: Request, page: int = 1, year: str = "", terrain: str = "all",
-            sort: str = "date", order: str = "desc", q: str = ""):
+            sort: str = "date", order: str = "desc", q: str = "",
+            dmin: str = "", dmax: str = "", gmin: str = "", gmax: str = "", per_page: str = ""):
     if (redirect := _login_redirect(request)):
         return redirect
     acts = _activities(request)
@@ -93,10 +107,21 @@ def sorties(request: Request, page: int = 1, year: str = "", terrain: str = "all
     terrain = terrain if terrain in stats.TERRAINS else "all"
     sort = sort if sort in stats.SORTS else "date"
     order = "asc" if order == "asc" else "desc"
-    data = stats.activity_list(acts, year_value, terrain, sort, order, page, q)
-    filters = {"year": year_value or "", "terrain": terrain, "sort": sort, "order": order, "q": q}
-    return render(request, "sorties.html", "/sorties", data=data, years=years, filters=filters,
-                  terrains=stats.TERRAINS)
+    # nombre de sorties par page : choisi dans la page, sinon le dernier choix (cookie)
+    chosen = per_page.isdigit() and int(per_page) in stats.PAGE_SIZES
+    size = int(per_page) if chosen else int(request.cookies.get(PER_PAGE_COOKIE, "0") or 0)
+    size = size if size in stats.PAGE_SIZES else stats.PER_PAGE
+    distance = (_number(dmin), _number(dmax))
+    gain = (_number(gmin), _number(gmax))
+    data = stats.activity_list(acts, year_value, terrain, sort, order, page, q, distance, gain, size)
+    keys = ("dmin", "dmax", "gmin", "gmax")
+    bound = {k: "" if v is None else f"{v:g}" for k, v in zip(keys, distance + gain, strict=True)}
+    filters = {"year": year_value or "", "terrain": terrain, "sort": sort, "order": order, "q": q, **bound}
+    response = render(request, "sorties.html", "/sorties", data=data, years=years, filters=filters,
+                      terrains=stats.TERRAINS, bounds=stats.list_bounds(acts), page_sizes=stats.PAGE_SIZES)
+    if chosen:
+        response.set_cookie(PER_PAGE_COOKIE, str(size), max_age=365 * 86400, httponly=True, samesite="lax")
+    return response
 
 
 @router.get("/performance")
