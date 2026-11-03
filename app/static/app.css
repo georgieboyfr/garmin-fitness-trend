@@ -353,11 +353,68 @@ table.top-table .col-name { text-align: left; white-space: normal; min-width: 20
   .record-where { grid-column: 2 / -1; white-space: normal; }
   .record-none { grid-column: 3 / -1; }
 }
-.record-single summary { display: block; }
 .year-link, .time-link { color: inherit; text-decoration: none; }
 .year-link:hover, .time-link:hover { color: var(--accent); text-decoration: underline; }
 table.data tr.is-selected td { background: var(--accent-soft); }
 
+/* ---------- forme ---------- */
+.chart-tall { height: 440px; }
+@media (max-width: 640px) { .chart-tall { height: 380px; } }
+.form-fresh .kpi-value, .form-transition .kpi-value { color: var(--up); }
+.form-overload .kpi-value { color: var(--down); }
+.form-optimal .kpi-value { color: var(--series-2); }
+.ramp-warn .kpi-value { color: var(--series-5); }
+.ramp-high .kpi-value { color: var(--down); }
+a.act-name { color: inherit; text-decoration: none; }
+a.act-name:hover { color: var(--accent); text-decoration: underline; }
+
+/* ---------- fiche d'une sortie ---------- */
+.efficiency { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 28px; }
+@media (max-width: 720px) { .efficiency { grid-template-columns: 1fr; } }
+.eff-item h3 { font-size: 14px; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 6px; }
+.eff-item p { margin: 4px 0 0; }
+.eff-value { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.map { position: relative; }
+.map-hint {
+  position: absolute; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.35); color: #fff; font-weight: 600; font-size: 16px;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.map-hint.show { opacity: 1; }
+.back { margin: 0 0 6px; font-size: 14px; }
+.back a { color: var(--muted); text-decoration: none; }
+.back a:hover { color: var(--accent); }
+.description { white-space: pre-line; max-width: 72ch; margin: 10px 0 0; }
+.kpis-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 1000px) { .kpis-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .kpis-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.kpis-6 .kpi-value { font-size: 22px; }
+.map-card { padding: 0; overflow: hidden; }
+.map { height: 420px; width: 100%; z-index: 0; }
+@media (max-width: 640px) { .map { height: 320px; } }
+.chart-zones { height: 170px; }
+.subhead { margin-top: 14px; }
+.leaflet-container { font: inherit; background: var(--surface-2); }
+
+/* ---------- repères historiques (page Forme) ---------- */
+.kpis-context .kpi { display: flex; flex-direction: column; }
+.kpi-zone { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.gauge { position: relative; height: 8px; border-radius: 99px; background: var(--surface-2); margin: 8px 0 2px; }
+.gauge-band { position: absolute; top: 0; bottom: 0; background: var(--border); border-radius: 99px; }
+.gauge-mark { position: absolute; top: -4px; width: 4px; height: 16px; margin-left: -2px; border-radius: 2px;
+              background: var(--accent); box-shadow: 0 0 0 2px var(--surface); }
+.gauge-ends { display: flex; justify-content: space-between; font-size: 11px; }
+.kpi-context { list-style: none; padding: 0; margin: 8px 0 0; font-size: 12.5px; display: grid; gap: 3px; }
+.kpi-context b { color: var(--text); }
+.trends { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 6px; font-size: 13px; }
+.trend { font-weight: 600; }
+.trend.up { color: var(--up); }
+.trend.down { color: var(--down); }
+
+/* ---------- courses ---------- */
+.badge-race { color: var(--accent); border-color: currentColor; }
+.link-btn { font: inherit; font-size: 13px; color: var(--accent); background: none; border: 0; cursor: pointer;
+            padding: 0; margin-left: 10px; text-decoration: underline; }
 .notice-line { font-size: 14px; margin: 0 0 14px; }
 .notice-line a { color: var(--accent); font-weight: 600; }
 
