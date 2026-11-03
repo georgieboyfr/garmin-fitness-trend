@@ -15,9 +15,9 @@ DEFAULTS = {
     },
     "elevation": {
         "step_m": 10.0,                   # pas de rééchantillonnage du profil
-        "window": 5,                      # fenêtre du filtre médian (points, impair)
-        "threshold_barometer": 2.5,       # seuil d'hystérésis, altitude du baromètre (m)
-        "threshold_dem": 4.0,             # seuil d'hystérésis, MNT le long de la trace GPS (m)
+        "window": 3,                      # fenêtre du filtre médian (points, impair)
+        "threshold_barometer": 1.0,       # seuil d'hystérésis, altitude du baromètre (m)
+        "threshold_dem": 3.5,             # seuil d'hystérésis, MNT le long de la trace GPS (m)
     },
 }
 

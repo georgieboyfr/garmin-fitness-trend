@@ -149,7 +149,7 @@ def test_elevation_status_settings_and_recompute(client):
     login(client)
     st = client.get("/admin/api/elevation").json()
     assert st["pending"] == 0 and st["by_source"] == []
-    assert st["settings"]["threshold_dem"] == 4.0
+    assert st["settings"]["threshold_dem"] == 3.5
     assert {d["model"]: d["has_barometer"] for d in st["devices"]}["Forerunner 255"] == 1
     r = client.post("/admin/api/elevation/settings", headers=UI, json={"threshold_dem": 5})
     assert r.json()["threshold_dem"] == 5.0
