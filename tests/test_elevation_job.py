@@ -107,3 +107,37 @@ def test_elevation_settings_validation(conn):
     for bad in [{"window": 4}, {"step_m": 1}, {"threshold_dem": -1}, {"threshold_barometer": "2"}]:
         with pytest.raises(ValueError):
             settings.update(conn, "elevation", bad)
+
+
+class AbroadDem(FakeDem):
+    def elevations(self, lats, lons):
+        z, _ = super().elevations(lats, lons)
+        return z, "copernicus"
+
+
+def test_strava_gain_preferred_abroad(conn, config):
+    add(conn, config, 2, climb(), product=3076)
+    processing.parse_pending(config, conn, workers=1)
+    elevation_job.compute_pending(config, conn, AbroadDem())
+    assert results(conn)[2]["source"] == "dem"
+    # l'export Strava arrive ensuite : le D+ de Strava remplace celui de Copernicus
+    conn.execute("INSERT INTO strava_activities (strava_id, start_time_utc, name, elevation_gain_m,"
+                 " activity_id, updated_at) VALUES (9, ?, 'Rome', 42.0, 2, ?)", (NOW, NOW))
+    conn.commit()
+    assert elevation_job.pending_elevation(conn) == [2]
+    dem = AbroadDem()
+    elevation_job.compute_pending(config, conn, dem)
+    r = results(conn)[2]
+    assert (r["source"], r["gain_m"], r["loss_m"]) == ("strava", 42.0, None)
+    assert dem.calls == 0                                   # profil MNT en cache
+    assert elevation_job.pending_elevation(conn) == []
+
+
+def test_strava_gain_ignored_in_france(conn, config):
+    add(conn, config, 2, climb(), product=3076)
+    conn.execute("INSERT INTO strava_activities (strava_id, start_time_utc, name, elevation_gain_m,"
+                 " activity_id, updated_at) VALUES (9, ?, 'Bastille', 42.0, 2, ?)", (NOW, NOW))
+    conn.commit()
+    processing.parse_pending(config, conn, workers=1)
+    elevation_job.compute_pending(config, conn, FakeDem())
+    assert results(conn)[2]["source"] == "dem"              # en France, l'IGN fait foi

@@ -159,12 +159,28 @@
 
     <section class="card">
       <h2>Physiologie</h2>
-      <p class="muted small">Valeurs de référence du fichier <code>.env</code> (FC repos, FC max, LTHR, sexe) :
-        elles servent à la charge (HRSS) et aux zones. L'estimation ci-dessous n'est jamais appliquée
-        automatiquement : pour l'adopter, modifie <code>LTHR</code> dans <code>.env</code> et redémarre le conteneur.</p>
+      <p class="muted small">FC repos, FC max et LTHR servent à la charge (HRSS) et aux zones de FC. Valeurs réglées
+        ici, ou à défaut celles du fichier <code>.env</code>. Toute modification relance le calcul des sorties.</p>
       <div class="stats" id="phy-stats"></div>
-      <p class="muted small" id="phy-zones"></p>
       <p class="muted small" id="phy-note"></p>
+      <form id="phy-form" class="settings">
+        <div class="row">
+          <label class="field inline"><span>LTHR</span>
+            <input type="number" id="phy-lthr" min="100" max="220" step="1" required></label>
+          <label class="field inline"><span>FC max</span>
+            <input type="number" id="phy-hrmax" min="120" max="230" step="1" required></label>
+          <label class="field inline"><span>FC repos</span>
+            <input type="number" id="phy-hrrest" min="30" max="100" step="1" required></label>
+        </div>
+        <p class="error-text" id="phy-error" hidden></p>
+        <div class="row">
+          <button class="btn primary" type="submit">Enregistrer</button>
+          <button class="btn" type="button" id="phy-use-estimate" hidden></button>
+          <button class="btn ghost" type="button" id="phy-reset">Revenir aux valeurs du .env</button>
+          <span class="muted small" id="phy-saved" hidden></span>
+        </div>
+      </form>
+      <p class="muted small" id="phy-zones"></p>
     </section>
 
     <section class="card">

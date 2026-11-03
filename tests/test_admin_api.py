@@ -164,9 +164,18 @@ def test_elevation_status_settings_and_recompute(client):
 def test_physiology(client):
     login(client)
     st = client.get("/admin/api/physiology").json()
-    assert st["settings"]["lthr"] == 170.0
+    assert st["settings"]["lthr"] == 170.0 and st["env"]["lthr"] == 170.0
     assert st["zones"] == [144, 153, 162, 170]
     assert st["last_12_months"]["best_60min"] is None
+    st = client.post("/admin/api/physiology", headers=UI, json={"lthr": 178}).json()
+    assert st["settings"]["lthr"] == 178 and st["env"]["lthr"] == 170
+    assert st["zones"][3] == 178
+    wait_idle(client)
+    assert client.get("/admin/api/sync").json()["runs"][0]["kind"] == "recalcul"
+    r = client.post("/admin/api/physiology", headers=UI, json={"lthr": 200})   # > FC max
+    assert r.status_code == 400 and "LTHR" in r.json()["detail"]
+    st = client.post("/admin/api/physiology", headers=UI, json={"lthr": None}).json()
+    assert st["settings"]["lthr"] == 170
 
 
 def test_strava_upload_and_status(client):

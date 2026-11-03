@@ -19,7 +19,30 @@ DEFAULTS = {
         "threshold_barometer": 1.0,       # seuil d'hystérésis, altitude du baromètre (m)
         "threshold_dem": 3.5,             # seuil d'hystérésis, MNT le long de la trace GPS (m)
     },
+    # paramètres physiologiques réglés dans l'admin ; None = valeur du .env
+    "physiology": {"hr_rest": None, "hr_max": None, "lthr": None, "sex": None},
 }
+
+PHYSIOLOGY_LIMITS = {"hr_rest": (30, 100), "hr_max": (120, 230), "lthr": (100, 220)}
+
+
+def _validate_physiology(values: dict) -> dict:
+    out = {}
+    for key, value in values.items():
+        if value is None:
+            out[key] = None                # retour à la valeur du .env
+        elif key in PHYSIOLOGY_LIMITS:
+            lo, hi = PHYSIOLOGY_LIMITS[key]
+            if isinstance(value, bool) or not isinstance(value, int | float) or not lo <= value <= hi:
+                raise ValueError(f"{key} doit être un nombre entre {lo} et {hi}")
+            out[key] = float(value)
+        elif key == "sex":
+            if value not in ("m", "f"):
+                raise ValueError("sex doit valoir m ou f")
+            out[key] = value
+        else:
+            raise ValueError(f"réglage inconnu : {key}")
+    return out
 
 
 def _validate_elevation(values: dict) -> dict:
@@ -63,7 +86,8 @@ def _validate_garmin_sync(values: dict) -> dict:
     return out
 
 
-VALIDATORS = {"garmin_sync": _validate_garmin_sync, "elevation": _validate_elevation}
+VALIDATORS = {"garmin_sync": _validate_garmin_sync, "elevation": _validate_elevation,
+              "physiology": _validate_physiology}
 
 
 def get(conn, group: str) -> dict:

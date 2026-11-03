@@ -7,6 +7,10 @@ Source d'altitude, décidée par le modèle de montre (table devices) :
   dem/profiles/<id>.parquet : une activité n'est interrogée qu'une fois) ;
 - sans GPS (tapis, indoor) : D+ = 0.
 
+Hors de France, le MNT Copernicus est un modèle de surface (bâtiments compris) qui
+surestime le D+ en ville : si l'activité est appariée à Strava, le D+ de Strava est
+retenu à la place (source « strava »), et sert aussi quand il arrive après le calcul.
+
 Chaque résultat est enregistré avec la version de l'algorithme et les réglages
 utilisés : changer l'un ou l'autre fait tout recalculer, sans réinterroger le MNT.
 """
@@ -51,7 +55,10 @@ def pending_elevation(conn) -> list[int]:
         " JOIN activity_series s ON s.activity_id = a.id AND s.status = 'ok'"
         " LEFT JOIN activity_elevation e ON e.activity_id = a.id"
         f" WHERE a.deleted_in_garmin = 0 AND a.activity_type IN ({','.join('?' * len(types))})"
-        " AND (e.activity_id IS NULL OR e.algo_version < ? OR e.params != ?)"
+        " AND (e.activity_id IS NULL OR e.algo_version < ? OR e.params != ?"
+        "      OR (e.source = 'dem' AND e.dem_provider LIKE '%copernicus%' AND EXISTS ("
+        "          SELECT 1 FROM strava_activities st WHERE st.activity_id = a.id"
+        "          AND st.elevation_gain_m IS NOT NULL)))"
         " ORDER BY a.start_time_utc",
         (*types, ALGO_VERSION, key),
     )]
@@ -91,7 +98,8 @@ def dem_profile(config, dem, activity_id, table):
 
 # ---------- calcul ----------
 
-def compute_activity(config, dem, activity_id, has_barometer: bool, params: dict) -> dict:
+def compute_activity(config, dem, activity_id, has_barometer: bool, params: dict,
+                     strava_gain: float | None = None) -> dict:
     table = read_series(config.series_dir, activity_id, ["distance_m", "lat", "lon", "altitude_m"])
     has_gps = table.column("lat").null_count < table.num_rows
     has_alt = table.column("altitude_m").null_count < table.num_rows
@@ -102,6 +110,8 @@ def compute_activity(config, dem, activity_id, has_barometer: bool, params: dict
         return {"source": "barometer", "dem_provider": None, "gain_m": gain, "loss_m": loss}
     if has_gps:
         dist, alt, provider = dem_profile(config, dem, activity_id, table)
+        if "copernicus" in provider and strava_gain is not None:
+            return {"source": "strava", "dem_provider": provider, "gain_m": strava_gain, "loss_m": None}
         if alt.size >= MIN_DEM_POINTS:
             gain, loss = gain_loss(dist, alt, *common, params["threshold_dem"])
             return {"source": "dem", "dem_provider": provider, "gain_m": gain, "loss_m": loss}
@@ -119,12 +129,16 @@ def compute_pending(config, conn, dem, progress=None) -> Counter:
         "SELECT a.id, COALESCE(d.has_barometer, 0) FROM activities a"
         " LEFT JOIN devices d ON d.garmin_product = a.garmin_product"
     )}
+    strava_gains = dict(conn.execute(
+        "SELECT activity_id, elevation_gain_m FROM strava_activities"
+        " WHERE activity_id IS NOT NULL AND elevation_gain_m IS NOT NULL").fetchall())
     log.info("Calcul du D+ de %d activité(s)", len(ids))
     for index, activity_id in enumerate(ids, 1):
         if progress:
             progress("calcul du D+", index, len(ids), str(activity_id))
         try:
-            r = compute_activity(config, dem, activity_id, barometer.get(activity_id, False), params)
+            r = compute_activity(config, dem, activity_id, barometer.get(activity_id, False), params,
+                                 strava_gains.get(activity_id))
         except DemUnavailable as e:
             # le réseau reviendra : l'activité reste en attente pour la prochaine synchro
             log.warning("D+ de %s reporté : %s", activity_id, e)
@@ -139,7 +153,7 @@ def compute_pending(config, conn, dem, progress=None) -> Counter:
                 " algo_version=excluded.algo_version, params=excluded.params,"
                 " computed_at=excluded.computed_at",
                 (activity_id, r["source"], r["dem_provider"], round(r["gain_m"], 1),
-                 round(r["loss_m"], 1), ALGO_VERSION, key, _now_iso()),
+                 None if r["loss_m"] is None else round(r["loss_m"], 1), ALGO_VERSION, key, _now_iso()),
             )
         counts["elevation"] += 1
     log.info("D+ calculé pour %d activité(s), %d reportée(s)",

@@ -287,7 +287,7 @@ async function startSync(fullHistory) {
 
 // ---------- dénivelé ----------
 
-const SOURCES = { barometer: "Baromètre", dem: "MNT", none: "Sans GPS (D+ = 0)" };
+const SOURCES = { barometer: "Baromètre", dem: "MNT", strava: "Strava (hors de France)", none: "Sans GPS (D+ = 0)" };
 const PROVIDERS = { ign: "IGN", copernicus: "Copernicus", "ign+copernicus": "IGN + Copernicus" };
 const fmtM = (v) => v == null ? "—" : `${Math.round(v).toLocaleString("fr-FR")} m`;
 
@@ -297,7 +297,8 @@ function renderElevation(st, fillSettings) {
   pill.className = "pill " + (st.pending ? "warn" : "ok");
   $("elev-sources").replaceChildren(...st.by_source.map((r) => {
     const tr = document.createElement("tr");
-    const label = SOURCES[r.source] + (r.dem_provider ? ` (${PROVIDERS[r.dem_provider] || r.dem_provider})` : "");
+    const label = SOURCES[r.source]
+      + (r.dem_provider && r.source === "dem" ? ` (${PROVIDERS[r.dem_provider] || r.dem_provider})` : "");
     [label, r.n, fmtM(r.gain_m), fmtM(r.garmin_gain_m)].forEach((text, i) => {
       const td = document.createElement("td"); td.textContent = text;
       if (i) td.className = "num";
@@ -353,28 +354,60 @@ $("ev-recompute").addEventListener("click", (e) => {
 
 // ---------- physiologie ----------
 
-async function refreshPhysiology() {
-  let st;
-  try { st = await api("/physiology"); } catch (err) { return; }
-  const s = st.settings, y = st.last_12_months, all = st.all_time;
+let phyEstimate = null;
+
+function renderPhysiology(st) {
+  const s = st.settings, env = st.env, y = st.last_12_months, all = st.all_time;
   const fmtDay = (d) => new Date(d + "T12:00:00").toLocaleDateString("fr-FR", { dateStyle: "medium" });
+  const origin = (k) => (s[k] === env[k] ? ".env" : "admin");
   $("phy-stats").replaceChildren(
-    stat(`${s.lthr}`, "LTHR réglée (.env)"),
+    stat(`${s.lthr}`, `LTHR en vigueur (${origin("lthr")})`),
     stat(y.best_60min ? `${y.best_60min.hr}` : "—", "LTHR estimée (12 mois)"),
-    stat(`${s.hr_max}`, "FC max réglée (.env)"),
+    stat(`${s.hr_max}`, `FC max en vigueur (${origin("hr_max")})`),
     stat(all.max_hr ? `${all.max_hr}` : "—", "FC max observée"),
-    stat(`${s.hr_rest}`, "FC repos (.env)"),
   );
-  const z = st.zones;
-  $("phy-zones").textContent = `Zones (Friel, sur la LTHR réglée) : Z1 < ${z[0]}, Z2 ${z[0]}–${z[1] - 1}, `
-    + `Z3 ${z[1]}–${z[2] - 1}, Z4 ${z[2]}–${z[3] - 1}, Z5 ≥ ${z[3]}.`;
   $("phy-note").textContent = y.best_60min
     ? `Estimation : meilleure FC moyenne tenue une heure sur les 12 derniers mois (${y.best_60min.hr}, le `
       + `${fmtDay(y.best_60min.date)}) ; sur 30 min : ${y.best_30min ? y.best_30min.hr : "—"}. Un effort d'une heure `
-      + `à fond se court au seuil. FC max observée sur 12 mois : ${y.max_hr ?? "—"} ; la plus haute de tout `
-      + `l'historique peut venir d'un artefact du capteur.`
+      + `à fond se court au seuil. FC max observée sur 12 mois : ${y.max_hr ?? "—"} (la plus haute de tout `
+      + `l'historique peut venir d'un artefact du capteur).`
     : "Pas encore de sortie d'une heure avec FC sur les 12 derniers mois.";
+  $("phy-lthr").value = s.lthr;
+  $("phy-hrmax").value = s.hr_max;
+  $("phy-hrrest").value = s.hr_rest;
+  phyEstimate = y.best_60min ? y.best_60min.hr : null;
+  $("phy-use-estimate").hidden = !phyEstimate || phyEstimate === s.lthr;
+  $("phy-use-estimate").textContent = `Utiliser l'estimation (${phyEstimate})`;
+  $("phy-reset").hidden = ["lthr", "hr_max", "hr_rest"].every((k) => s[k] === env[k]);
+  const z = st.zones;
+  $("phy-zones").textContent = `Zones (Friel, sur la LTHR en vigueur) : Z1 < ${z[0]}, Z2 ${z[0]}–${z[1] - 1}, `
+    + `Z3 ${z[1]}–${z[2] - 1}, Z4 ${z[2]}–${z[3] - 1}, Z5 ≥ ${z[3]}.`;
 }
+
+async function refreshPhysiology() {
+  try { renderPhysiology(await api("/physiology")); } catch (err) { /* session gérée ailleurs */ }
+}
+
+async function savePhysiology(values) {
+  try {
+    renderPhysiology(await api("/physiology", values));
+    showError("phy-error", null);
+    flash("phy-saved", "Enregistré : les sorties sont en cours de recalcul.");
+    refreshSync(false);
+  } catch (err) {
+    showError("phy-error", err);
+  }
+}
+
+$("phy-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  busy(e.submitter, () => savePhysiology({
+    lthr: Number($("phy-lthr").value), hr_max: Number($("phy-hrmax").value), hr_rest: Number($("phy-hrrest").value),
+  }));
+});
+$("phy-use-estimate").addEventListener("click", () => { $("phy-lthr").value = phyEstimate; });
+$("phy-reset").addEventListener("click", (e) =>
+  busy(e.currentTarget, () => savePhysiology({ lthr: null, hr_max: null, hr_rest: null })));
 
 // ---------- Strava ----------
 

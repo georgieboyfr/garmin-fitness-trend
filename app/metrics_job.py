@@ -2,8 +2,9 @@
 Calcul et stockage des métriques des sorties de course à pied (voir metrics.py).
 
 Une sortie est (re)calculée si elle n'a pas encore de métriques, si METRICS_VERSION a
-changé, ou si les paramètres physiologiques du .env (FC repos, FC max, LTHR, sexe) ne
-sont plus ceux utilisés. Le D+ doit être calculé avant (classement route ou trail).
+changé, ou si les paramètres physiologiques (FC repos, FC max, LTHR, sexe : réglés dans
+l'admin, sinon ceux du .env) ne sont plus ceux utilisés. Le D+ doit être calculé avant
+(classement route ou trail).
 
 Les meilleurs efforts (bests.py) sont calculés dans la même passe, sauf sur tapis (distance
 de l'accéléromètre, peu fiable) ; la VAM utilise l'altitude retenue pour le D+ (baromètre
@@ -17,6 +18,7 @@ from datetime import UTC, date, datetime, timedelta
 import numpy as np
 import pyarrow.parquet as pq
 
+from . import settings
 from .bests import activity_bests
 from .elevation import median_filter, resample, series_distance
 from .elevation_job import dem_profile_path
@@ -33,8 +35,23 @@ def _now_iso() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def params_of(config) -> dict:
-    return {"hr_rest": config.hr_rest, "hr_max": config.hr_max, "lthr": config.lthr, "sex": config.sex}
+def params_of(config, conn=None) -> dict:
+    """Paramètres physiologiques en vigueur : ceux réglés dans l'admin, sinon ceux du .env."""
+    p = {"hr_rest": config.hr_rest, "hr_max": config.hr_max, "lthr": config.lthr, "sex": config.sex}
+    if conn is not None:
+        p.update({k: v for k, v in settings.get(conn, "physiology").items() if v is not None})
+    return p
+
+
+def set_params(config, conn, values: dict) -> dict:
+    """Enregistre les paramètres réglés dans l'admin, après contrôle de cohérence."""
+    stored = settings.get(conn, "physiology")
+    candidate = {**stored, **settings.VALIDATORS["physiology"](values)}
+    merged = {**params_of(config), **{k: v for k, v in candidate.items() if v is not None}}
+    if not merged["hr_rest"] < merged["lthr"] < merged["hr_max"]:
+        raise ValueError("Il faut FC repos < LTHR < FC max")
+    settings.update(conn, "physiology", values)
+    return params_of(config, conn)
 
 
 def _key(params) -> str:
@@ -49,9 +66,10 @@ def pending_metrics(conn, config) -> list[int]:
         " JOIN activity_elevation e ON e.activity_id = a.id"
         " LEFT JOIN activity_metrics m ON m.activity_id = a.id"
         f" WHERE a.deleted_in_garmin = 0 AND a.activity_type IN ({','.join('?' * len(types))})"
-        " AND (m.activity_id IS NULL OR m.version < ? OR m.params != ?)"
+        " AND (m.activity_id IS NULL OR m.version < ? OR m.params != ?"
+        "      OR e.computed_at > m.computed_at)"     # D+ recalculé depuis : terrain à revoir
         " ORDER BY a.start_time_utc",
-        (*types, METRICS_VERSION, _key(params_of(config))),
+        (*types, METRICS_VERSION, _key(params_of(config, conn))),
     )]
 
 
@@ -60,7 +78,7 @@ def compute_pending(config, conn, progress=None) -> Counter:
     counts = Counter()
     if not ids:
         return counts
-    p = params_of(config)
+    p = params_of(config, conn)
     key = _key(p)
     gains = dict(conn.execute("SELECT activity_id, gain_m FROM activity_elevation").fetchall())
     sources = dict(conn.execute("SELECT activity_id, source FROM activity_elevation").fetchall())

@@ -273,14 +273,32 @@ def physiology(request: Request):
     conn = db.connect(cfg.db_path)
     try:
         today = datetime.now().date()
+        current = metrics_job.params_of(cfg, conn)
         return {
-            "settings": metrics_job.params_of(cfg),
-            "zones": [round(b * cfg.lthr) for b in ZONE_BOUNDS],
+            "settings": current,
+            "env": metrics_job.params_of(cfg),
+            "zones": [round(b * current["lthr"]) for b in ZONE_BOUNDS],
             "last_12_months": metrics_job.lthr_estimate(conn, today),
             "all_time": metrics_job.lthr_estimate(conn, today, days=100 * 365),
         }
     finally:
         conn.close()
+
+
+@protected.post("/physiology")
+def physiology_update(values: dict, request: Request):
+    """Règle LTHR, FC max, FC repos ou sexe (None = valeur du .env), puis recalcule les sorties."""
+    cfg = request.app.state.config
+    conn = db.connect(cfg.db_path)
+    try:
+        metrics_job.set_params(cfg, conn, values)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    finally:
+        conn.close()
+    if not request.app.state.garmin_sync.running:
+        _start_background(request, kind="recalcul", local_only=True)
+    return physiology(request)
 
 
 # ---------- Strava ----------
