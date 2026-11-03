@@ -39,6 +39,7 @@ def create_app(config: Config | None = None, garmin_class=None, sync_options=Non
             env_email=cfg.garmin_email, env_password=cfg.garmin_password, garmin_class=garmin_class,
         )
         dem = dem_factory() if dem_factory else Dem(IgnDem(), CopernicusDem(cfg.dem_dir / "copernicus"))
+        app.state.dem = dem
         app.state.garmin_sync = GarminSync(
             cfg, app.state.garmin_account,
             after_sync=lambda conn, progress: processing.run_all(cfg, conn, dem, progress),

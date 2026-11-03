@@ -129,7 +129,8 @@
   </div>
   <p class="small muted">
     <span data-num="{{ t.distance_m / 1000 }}" data-dec="1" data-unit="km"></span>,
-    <span data-num="{{ t.gain_m }}" data-unit="m"></span> de D+ et <span data-num="{{ t.loss_m }}" data-unit="m"></span> de D−,
+    <span data-num="{{ t.gain_m }}" data-unit="m"></span> de D+ et <span data-num="{{ t.loss_m }}" data-unit="m"></span> de D−
+    ({{ {"ign": "altitude du MNT IGN", "copernicus": "altitude du MNT Copernicus", "ign+copernicus": "altitude des MNT IGN et Copernicus"}.get(t.elevation_source, "altitude du GPX, faute de MNT") }}),
     soit <span data-num="{{ t.equivalent_m / 1000 }}" data-dec="1" data-unit="km"></span> équivalents plat
     · calé sur ton meilleur {{ t.reference.label }} récent ({{ effort_link(t.reference) }})
     {% if t.fatigue_applies %}· exposant de fatigue {{ "%.2f" | format(t.fatigue.value) | replace(".", ",") }}{% if t.fatigue.personal %} (ta courbe au-delà de 2 h{% if t.fatigue.fitted != t.fatigue.value %}, borné{% endif %}){% else %} (valeur par défaut, pas assez de sorties longues){% endif %}{% endif %}

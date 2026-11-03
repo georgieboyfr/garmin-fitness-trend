@@ -8,6 +8,14 @@ from app.auth import hash_password
 from app.main import create_app
 
 PASSWORD = "mot-de-passe-admin"
+
+
+class NoDem:
+    """MNT injoignable : les GPX gardent leur propre altitude."""
+
+    def elevations(self, lats, lons):
+        from app.dem import DemUnavailable
+        raise DemUnavailable("hors ligne")
 NOW = "2026-03-01T08:00:00Z"
 
 
@@ -19,7 +27,7 @@ def admin_hash():
 @pytest.fixture
 def client(config, admin_hash):
     cfg = dataclasses.replace(config, admin_user="greg", admin_password_hash=admin_hash)
-    with TestClient(create_app(cfg, start_scheduler=False)) as c:
+    with TestClient(create_app(cfg, start_scheduler=False, dem_factory=NoDem)) as c:
         yield c
 
 

@@ -124,3 +124,28 @@ def test_estimate_gpx_errors():
     lats, lons, eles = parse_route(gpx(line(5)))
     assert "error" in trail.estimate_gpx(lats, lons, [None] * len(eles), [], [], DAY)
     assert "error" in trail.estimate_gpx(lats, lons, eles, [], [], DAY)       # pas de modèle
+
+
+class FakeDem:
+    def __init__(self, alt=lambda lat: (lat - 45) * 111195 * 0.1, fail=False, holes=0.0):
+        self.alt, self.fail, self.holes = alt, fail, holes
+
+    def elevations(self, lats, lons):
+        if self.fail:
+            raise RuntimeError("MNT injoignable")
+        z = self.alt(np.asarray(lats))
+        z[: int(len(z) * self.holes)] = np.nan
+        return z, "ign"
+
+
+def test_dem_altitudes_replace_noisy_gpx_elevation():
+    rng = np.random.default_rng(1)
+    pts = [(la, lo, 0.0 + rng.normal(0, 4)) for la, lo, _ in line(5)]       # GPX plat mais bruité
+    lats, lons, eles = parse_route(gpx(pts))
+    noisy = trail.route_profile(lats, lons, eles)
+    assert noisy["source"] == "gpx" and noisy["gain_m"] < 100               # bruit filtré par le seuil
+    dem = trail.dem_altitudes(FakeDem(), lats, lons)
+    p = trail.route_profile(lats, lons, eles, dem)
+    assert p["source"] == "ign" and p["gain_m"] == pytest.approx(500, abs=10)
+    assert trail.dem_altitudes(FakeDem(fail=True), lats, lons) is None
+    assert trail.dem_altitudes(FakeDem(holes=0.2), lats, lons) is None      # MNT trop incomplet

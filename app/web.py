@@ -13,11 +13,14 @@ from pathlib import Path
 from urllib.parse import quote, unquote
 from zoneinfo import ZoneInfo
 
+import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from . import __version__, courses, db, detail, estimator, metrics_job, queries, stats, trail
+from . import __version__, courses, db, detail, estimator, metrics_job, queries, settings, stats, trail
 from .auth import SESSION_COOKIE
 from .track_parser import parse_route
 
@@ -220,6 +223,7 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
         efforts = queries.best_efforts(conn)
         lthr = metrics_job.params_of(cfg, conn)["lthr"]
         confirmed = {i for i, status in queries.race_decisions(conn).items() if status == "confirmed"}
+        elevation_params = settings.get(conn, "elevation")
     finally:
         conn.close()
     today = _today(request)
@@ -236,7 +240,8 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
         gpx_meta = _gpx_meta(cfg, gpx)
         lats, lons, eles = parse_route((cfg.gpx_dir / f"{gpx}.gpx").read_bytes())
         trail_result = trail.estimate_gpx(lats, lons, eles, acts, efforts, today, window,
-                                          estimator.MODEL_PERIODS[months_value])
+                                          estimator.MODEL_PERIODS[months_value],
+                                          _gpx_dem(request, gpx, lats, lons), elevation_params)
     response = render(request, "estimateur.html", "/estimateur",
                       profile=estimator.current_form(acts, efforts, today, lthr, window),
                       table=estimator.road_table(efforts, today, window), estimate=estimate,
@@ -263,6 +268,23 @@ def _gpx_meta(cfg, gpx_id: str) -> dict:
     path = cfg.gpx_dir / f"{gpx_id}.json"
     meta = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     return {"id": gpx_id, "name": meta.get("name") or "Parcours", "uploaded_at": meta.get("uploaded_at")}
+
+
+def _gpx_dem(request: Request, gpx_id: str, lats, lons) -> dict | None:
+    """Altitudes du MNT le long du parcours, mises en cache à côté du GPX (data/gpx/<id>.dem.parquet) :
+    le MNT n'est interrogé qu'une fois par parcours."""
+    path = request.app.state.config.gpx_dir / f"{gpx_id}.dem.parquet"
+    if path.exists():
+        t = pq.read_table(path)
+        return {"distance": t["distance_m"].to_numpy(), "altitude": t["altitude_m"].to_numpy().astype(float),
+                "source": (t.schema.metadata or {}).get(b"provider", b"").decode()}
+    dem = getattr(request.app.state, "dem", None)
+    profile = trail.dem_altitudes(dem, lats, lons) if dem is not None else None
+    if profile is not None:
+        table = pa.table({"distance_m": profile["distance"],
+                          "altitude_m": profile["altitude"].astype(np.float32)})
+        pq.write_table(table.replace_schema_metadata({"provider": profile["source"]}), path)
+    return profile
 
 
 def _gpx_recent(cfg) -> list[dict]:
@@ -297,4 +319,5 @@ async def upload_gpx(request: Request):
     (cfg.gpx_dir / f"{gpx_id}.json").write_text(json.dumps(
         {"name": name, "uploaded_at": datetime.now(UTC).replace(microsecond=0).isoformat()},
         ensure_ascii=False), encoding="utf-8")
+    _gpx_dem(request, gpx_id, lats, lons)          # altitude du MNT, interrogé une fois
     return {"id": gpx_id}

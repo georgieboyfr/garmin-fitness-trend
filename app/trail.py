@@ -1,8 +1,10 @@
 """
 Estimateur trail sur un GPX (phase 3, fonctions pures, versionnées).
 
-1. Profil : la trace est rééchantillonnée tous les 10 m, l'altitude du GPX filtrée (médiane sur
-   3 points), la pente lissée sur 50 m comme pour les sorties.
+1. Profil : la trace est rééchantillonnée tous les 10 m ; l'altitude vient du MNT (IGN en France,
+   Copernicus ailleurs) le long de la trace, comme pour les sorties sans baromètre, et à défaut de
+   celle du GPX (souvent bruitée). Elle est filtrée avec les réglages de D+ de l'admin (médiane,
+   seuil d'hystérésis du MNT) ; la pente est lissée sur 50 m comme pour les sorties.
 2. Distance équivalente plat : chaque pas de 10 m compte pour 10 m × le facteur de ton modèle
    allure-pente personnel à cette pente (estimator.grade_pace_model).
 3. Temps total : Riegel avec l'exposant standard 1,06 depuis ton meilleur effort route récent
@@ -24,14 +26,15 @@ from datetime import date
 
 import numpy as np
 
-from . import estimator, grade
+from . import estimator, grade, settings
 from .bests import turning_points
-from .elevation import cumulative_distance, median_filter, resample
+from .elevation import cumulative_distance, hysteresis_gain_loss, median_filter, resample, resample_positions
 
 TRAIL_VERSION = 1
 STEP_M = 10.0
 MIN_DISTANCE_M = 1000.0
 MIN_ELEVATION_SHARE = 0.5      # au moins la moitié des points avec une altitude
+MIN_DEM_SHARE = 0.9            # le MNT doit couvrir 90 % du parcours pour être retenu
 SEGMENT_DIP_M = 25.0
 FLAT_GRADE_PCT = 3.0           # tronçon « plat » sous 3 % de pente moyenne
 FATIGUE_START_S = 7200.0       # au-delà de 2 h, l'exposant de fatigue prend le relais de Riegel
@@ -43,18 +46,48 @@ FATIGUE_SPREAD = 0.05          # fourchette : +5 % par facteur e au-delà des 2 
 CHART_STEP_M = 100.0
 
 
-def route_profile(lats, lons, eles) -> dict | None:
-    """Profil du parcours tous les 10 m (distance, altitude filtrée), ou None si la trace est trop
-    courte ou sans altitude."""
+def dem_altitudes(dem, lats, lons) -> dict | None:
+    """Altitude brute du MNT tous les 10 m le long de la trace, ou None (MNT injoignable ou
+    couvrant moins de 90 % du parcours)."""
     lat = np.asarray(lats, dtype=float)
     lon = np.asarray(lons, dtype=float)
-    ele = np.array([np.nan if e is None else e for e in eles], dtype=float)
-    if lat.size < 2 or np.isfinite(ele).mean() < MIN_ELEVATION_SHARE:
+    if lat.size < 2:
         return None
-    dist, alt = resample(cumulative_distance(lat, lon), ele, STEP_M)
+    dist, la, lo = resample_positions(cumulative_distance(lat, lon), lat, lon, STEP_M)
+    if dist.size < 2:
+        return None
+    try:
+        alt, provider = dem.elevations(la, lo)
+    except Exception:
+        return None
+    ok = np.isfinite(alt)
+    if ok.mean() < MIN_DEM_SHARE:
+        return None
+    return {"distance": dist[ok], "altitude": np.asarray(alt, dtype=float)[ok], "source": provider}
+
+
+def route_profile(lats, lons, eles, dem_profile: dict | None = None,
+                  params: dict | None = None) -> dict | None:
+    """Profil du parcours tous les 10 m (distance, altitude filtrée, D+ et D−, source de l'altitude),
+    ou None si la trace est trop courte ou sans altitude. dem_profile : altitudes du MNT
+    (dem_altitudes), prioritaires sur celles du GPX."""
+    params = params or settings.DEFAULTS["elevation"]
+    if dem_profile is not None:
+        dist, alt, source = dem_profile["distance"], dem_profile["altitude"], dem_profile["source"]
+    else:
+        lat = np.asarray(lats, dtype=float)
+        lon = np.asarray(lons, dtype=float)
+        ele = np.array([np.nan if e is None else e for e in eles], dtype=float)
+        if lat.size < 2 or np.isfinite(ele).mean() < MIN_ELEVATION_SHARE:
+            return None
+        dist, alt = resample(cumulative_distance(lat, lon), ele, STEP_M)
+        source = "gpx"
     if dist.size < 2 or dist[-1] - dist[0] < MIN_DISTANCE_M:
         return None
-    return {"distance": dist - dist[0], "altitude": median_filter(alt, 3)}
+    alt = median_filter(alt, int(params["window"]))
+    gain, loss = hysteresis_gain_loss(alt, params["threshold_dem"])
+    return {"distance": dist - dist[0], "altitude": alt, "source": source, "gain_m": gain, "loss_m": loss,
+            "threshold_m": params["threshold_dem"]}
 
 
 def equivalent_steps(profile, model) -> np.ndarray:
@@ -140,20 +173,22 @@ def passage_times(eq_cum, total_s: float, k_fatigue: float) -> np.ndarray:
 
 
 def segments(profile, times) -> list[dict]:
-    """Tronçons homogènes : montées et descentes entre sommets et creux successifs."""
+    """Tronçons homogènes : montées et descentes entre sommets et creux successifs (D+ et D− de
+    chaque tronçon avec le même seuil d'hystérésis que le total)."""
     d, alt = profile["distance"], profile["altitude"]
+    threshold = profile.get("threshold_m", 0.0)
     cuts = sorted({0, len(d) - 1, *turning_points(alt, SEGMENT_DIP_M)})
     out = []
     for i, j in zip(cuts, cuts[1:], strict=False):
         if j <= i:
             continue
-        diffs = np.diff(alt[i:j + 1])
+        gain, loss = hysteresis_gain_loss(alt[i:j + 1], threshold)
         length = d[j] - d[i]
         slope = (alt[j] - alt[i]) / length * 100 if length else 0.0
         seconds = times[j] - times[i]
         out.append({"start_km": round(d[i] / 1000, 2), "end_km": round(d[j] / 1000, 2),
-                    "length_m": round(length), "gain_m": round(float(diffs[diffs > 0].sum())),
-                    "loss_m": round(float(-diffs[diffs < 0].sum())), "grade_pct": round(slope, 1),
+                    "length_m": round(length), "gain_m": round(gain), "loss_m": round(loss),
+                    "grade_pct": round(slope, 1),
                     "kind": "flat" if abs(slope) < FLAT_GRADE_PCT else ("up" if slope > 0 else "down"),
                     "time_s": round(seconds), "passage_s": round(times[j]),
                     "pace_s_km": round(seconds / length * 1000, 1) if length else None,
@@ -181,7 +216,6 @@ def predict_trail(profile, model, efforts, day: date, window_days: int = estimat
         spread += FATIGUE_SPREAD * math.log(eq_m / d0)
     times = passage_times(eq_cum, total, fatigue["value"])
     d, alt = profile["distance"], profile["altitude"]
-    diffs = np.diff(alt)
     distance_m = float(d[-1])
     estimates = {"optimistic": total * math.exp(-spread), "realistic": total,
                  "prudent": total * math.exp(spread)}
@@ -189,8 +223,9 @@ def predict_trail(profile, model, efforts, day: date, window_days: int = estimat
     idx = np.unique(np.concatenate([np.arange(0, d.size, every), [d.size - 1]]))
     return {
         "version": TRAIL_VERSION,
-        "distance_m": round(distance_m), "gain_m": round(float(diffs[diffs > 0].sum())),
-        "loss_m": round(float(-diffs[diffs < 0].sum())), "equivalent_m": round(eq_m),
+        "distance_m": round(distance_m), "gain_m": round(profile.get("gain_m", 0.0)),
+        "loss_m": round(profile.get("loss_m", 0.0)), "equivalent_m": round(eq_m),
+        "elevation_source": profile.get("source", "gpx"),
         **{f"{k}_s": round(v) for k, v in estimates.items()},
         **{f"{k}_pace_s_km": round(v / distance_m * 1000, 1) for k, v in estimates.items()},
         "spread_pct": round(spread * 100, 1),
@@ -204,9 +239,9 @@ def predict_trail(profile, model, efforts, day: date, window_days: int = estimat
 
 
 def estimate_gpx(lats, lons, eles, acts, efforts, day: date, window_days=estimator.WINDOW_DAYS,
-                 model_days=estimator.MODEL_DAYS) -> dict:
+                 model_days=estimator.MODEL_DAYS, dem_profile=None, params=None) -> dict:
     """Chaîne complète pour un GPX : profil, modèle allure-pente et fatigue au soir de `day`."""
-    profile = route_profile(lats, lons, eles)
+    profile = route_profile(lats, lons, eles, dem_profile, params)
     if profile is None:
         return {"error": "Trace inutilisable : moins de 1 km, ou sans altitude sur plus de la moitié"
                          " des points."}
