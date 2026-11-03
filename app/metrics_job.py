@@ -28,7 +28,7 @@ from .sports import RUNNING_TYPES
 
 log = logging.getLogger("metrics")
 
-METRICS_VERSION = 2   # 2 : meilleurs efforts (bests.py)
+METRICS_VERSION = 3   # 2 : meilleurs efforts (bests.py) ; 3 : EF et découplage
 
 
 def _now_iso() -> str:
@@ -101,19 +101,20 @@ def compute_pending(config, conn, progress=None) -> Counter:
             conn.execute(
                 "INSERT INTO activity_metrics (activity_id, elapsed_s, moving_s, avg_hr, max_hr, trimp, hrss,"
                 " zone1_s, zone2_s, zone3_s, zone4_s, zone5_s, hr_best_20min, hr_best_30min, hr_best_60min,"
-                " terrain, version, params, computed_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                " terrain, ef, decoupling_pct, version, params, computed_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT(activity_id) DO UPDATE SET elapsed_s=excluded.elapsed_s,"
                 " moving_s=excluded.moving_s, avg_hr=excluded.avg_hr, max_hr=excluded.max_hr,"
                 " trimp=excluded.trimp, hrss=excluded.hrss, zone1_s=excluded.zone1_s,"
                 " zone2_s=excluded.zone2_s, zone3_s=excluded.zone3_s, zone4_s=excluded.zone4_s,"
                 " zone5_s=excluded.zone5_s, hr_best_20min=excluded.hr_best_20min,"
                 " hr_best_30min=excluded.hr_best_30min, hr_best_60min=excluded.hr_best_60min,"
-                " terrain=excluded.terrain, version=excluded.version, params=excluded.params,"
+                " terrain=excluded.terrain, ef=excluded.ef, decoupling_pct=excluded.decoupling_pct,"
+                " version=excluded.version, params=excluded.params,"
                 " computed_at=excluded.computed_at",
                 (activity_id, m["elapsed_s"], m["moving_s"], m["avg_hr"], m["max_hr"], m["trimp"], m["hrss"],
                  *m["zones_s"], m["hr_best_20min"], m["hr_best_30min"], m["hr_best_60min"], m["terrain"],
-                 METRICS_VERSION, key, _now_iso()),
+                 m["ef"], m["decoupling_pct"], METRICS_VERSION, key, _now_iso()),
             )
             conn.execute("DELETE FROM activity_bests WHERE activity_id=?", (activity_id,))
             conn.executemany(

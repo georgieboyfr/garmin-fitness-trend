@@ -8,6 +8,10 @@ Métriques d'une sortie, calculées à partir de sa série de points (fonctions 
   Z1 < 85 %, Z2 85–89 %, Z3 90–94 %, Z4 95–99 %, Z5 ≥ 100 % de la LTHR.
 - Meilleures FC moyennes tenues 20, 30 et 60 min : servent à estimer la LTHR.
 - Terrain : trail au-delà de 20 m de D+ par km, sinon route ; « indoor » sans GPS.
+- Efficiency Factor (Friel) : vitesse en mouvement (m/min) / FC moyenne. S'il monte sur des
+  sorties faciles et plates, tu cours plus vite pour le même effort cardiaque.
+- Découplage cardiaque : baisse de l'EF entre la 1re et la 2e moitié du temps en mouvement,
+  sur les sorties d'au moins 1 h. Sous 5 %, la base d'endurance tient sur cette durée.
 """
 import math
 
@@ -19,6 +23,7 @@ MAX_HR_GAP_S = 300          # TRIMP : pas d'intégration au-delà de 5 min sans 
 ZONE_BOUNDS = (0.85, 0.90, 0.95, 1.00)
 TRAIL_GAIN_PER_KM = 20.0
 HR_WINDOWS_S = {"hr_best_20min": 1200, "hr_best_30min": 1800, "hr_best_60min": 3600}
+DECOUPLING_MIN_S = 3600
 
 
 def _seconds(timestamps) -> np.ndarray:
@@ -117,6 +122,43 @@ def best_average_hr(t, hr, window_s: int, max_gap=30) -> float | None:
     return float((sums[clean] / w).max())
 
 
+def _moving_hr_segments(t, distance, hr):
+    """Segments en mouvement avec FC aux deux bouts : (durée s, distance m, FC moyenne)."""
+    t = np.asarray(t, dtype=float)
+    d = np.asarray(distance, dtype=float)
+    hr = np.asarray(hr, dtype=float)
+    ok = np.isfinite(d) & np.isfinite(hr) & (hr > 0)
+    t, d, hr = t[ok], d[ok], hr[ok]
+    if t.size < 2:
+        return np.zeros(0), np.zeros(0), np.zeros(0)
+    dt, dd = np.diff(t), np.diff(d)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        moving = (dt > 0) & (dt <= MAX_SEGMENT_S) & (dd / dt >= MOVING_SPEED_MPS)
+    return dt[moving], dd[moving], ((hr[:-1] + hr[1:]) / 2)[moving]
+
+
+def _ef(dt, dd, hr):
+    if dt.sum() <= 0:
+        return None
+    speed_m_min = dd.sum() / dt.sum() * 60
+    avg_hr = np.sum(dt * hr) / dt.sum()
+    return float(speed_m_min / avg_hr) if avg_hr > 0 else None
+
+
+def efficiency_factor(t, distance, hr) -> float | None:
+    return _ef(*_moving_hr_segments(t, distance, hr))
+
+
+def decoupling(t, distance, hr) -> float | None:
+    """Découplage (%) : (EF 1re moitié − EF 2e moitié) / EF 1re moitié, en temps de mouvement."""
+    dt, dd, mid = _moving_hr_segments(t, distance, hr)
+    if dt.sum() < DECOUPLING_MIN_S:
+        return None
+    first = np.cumsum(dt) <= dt.sum() / 2
+    ef1, ef2 = _ef(dt[first], dd[first], mid[first]), _ef(dt[~first], dd[~first], mid[~first])
+    return float((ef1 - ef2) / ef1 * 100) if ef1 and ef2 else None
+
+
 def terrain(has_gps: bool, distance_km: float, gain_m: float) -> str:
     if not has_gps:
         return "indoor"
@@ -147,6 +189,8 @@ def activity_metrics(table, gain_m, hr_rest, hr_max, lthr, sex="m") -> dict:
         "hrss": hrss(tr, hr_rest, hr_max, lthr, sex) if has_hr else None,
         "zones_s": zone_times(t, hr, lthr),
         "terrain": terrain(has_gps, distance_km, gain_m or 0.0),
+        "ef": efficiency_factor(t, dist, hr) if has_hr else None,
+        "decoupling_pct": decoupling(t, dist, hr) if has_hr else None,
     }
     for key, window in HR_WINDOWS_S.items():
         out[key] = best_average_hr(t, hr, window) if has_hr else None

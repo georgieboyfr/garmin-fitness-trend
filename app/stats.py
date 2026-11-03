@@ -4,6 +4,7 @@ Calculs des pages de statistiques, à partir de la liste des sorties (queries.py
 Fonctions pures : elles reçoivent les sorties et la date du jour, pour être testables
 et ne jamais dépendre de l'horloge.
 """
+import math
 from datetime import date, timedelta
 
 
@@ -301,4 +302,127 @@ def performance(efforts, terrain: str = "road", year: int | None = None) -> dict
         "vam_by_year": [{"year": y, **vam_years[y]} for y in sorted(vam_years)],
         "top_climbs": [{"vam": round(e["value"]), "gain": round(e["extra"] or 0), "date": e["date"],
                         "name": e["name"]} for e in top_climbs],
+    }
+
+
+# ---------- forme ----------
+
+TAU_FITNESS = 42.0
+TAU_FATIGUE = 7.0
+# zones de forme (TSB), du plus frais au plus chargé
+FORM_ZONES = [
+    (25, "transition", "Très frais : la forme se perd"),
+    (5, "fresh", "Frais : prêt pour une course"),
+    (-10, "neutral", "Neutre : entretien"),
+    (-30, "optimal", "Entraînement productif"),
+    (float("-inf"), "overload", "Surcharge : risque de fatigue excessive"),
+]
+EASY_MAX_LTHR = 0.90        # sortie facile : FC moyenne sous la zone 3
+FLAT_MAX_GAIN_PER_KM = 10.0
+EF_MIN_MOVING_S = 1800
+
+
+def form_zone(form: float) -> tuple[str, str]:
+    for bound, key, label in FORM_ZONES:
+        if form > bound:
+            return key, label
+    return FORM_ZONES[-1][1], FORM_ZONES[-1][2]
+
+
+def banister(daily: dict, start: date, end: date) -> list[dict]:
+    """Fitness (charge chronique, 42 j), fatigue (charge aiguë, 7 j) et forme (fitness − fatigue
+    de la veille) jour par jour, à partir de la charge quotidienne (HRSS)."""
+    k_fit = 1 - math.exp(-1 / TAU_FITNESS)
+    k_fat = 1 - math.exp(-1 / TAU_FATIGUE)
+    fitness = fatigue = 0.0
+    out = []
+    d = start
+    while d <= end:
+        stress = daily.get(d, 0.0)
+        form = fitness - fatigue
+        fitness += (stress - fitness) * k_fit
+        fatigue += (stress - fatigue) * k_fat
+        out.append({"date": d, "stress": stress, "fitness": fitness, "fatigue": fatigue, "form": form})
+        d += timedelta(days=1)
+    return out
+
+
+def _median(values):
+    v = sorted(values)
+    n = len(v)
+    return None if not n else (v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2)
+
+
+def is_easy_flat(a, lthr) -> bool:
+    return (a.get("terrain") == "road" and (a["moving_duration_s"] or 0) >= EF_MIN_MOVING_S
+            and a["distance_km"] > 0 and a["gain_m"] / a["distance_km"] < FLAT_MAX_GAIN_PER_KM
+            and a["avg_hr"] is not None and a["avg_hr"] < EASY_MAX_LTHR * lthr and a.get("ef") is not None)
+
+
+def forme(acts, today: date, lthr: float) -> dict:
+    daily = {}
+    for a in acts:
+        if a.get("hrss"):
+            daily[a["start"].date()] = daily.get(a["start"].date(), 0.0) + a["hrss"]
+    start = min(daily) if daily else today
+    series = banister(daily, start, today)
+    cur = series[-1]
+    week_ago = series[-8] if len(series) >= 8 else series[0]
+    zone, zone_label = form_zone(cur["form"])
+
+    peaks = {}
+    for p in series:
+        y = p["date"].year
+        if y not in peaks or p["fitness"] > peaks[y]["fitness"]:
+            peaks[y] = {"year": y, "fitness": round(p["fitness"], 1), "date": p["date"].isoformat()}
+
+    # Efficiency Factor des sorties faciles et plates, et sa médiane par mois
+    ef_points = [{"date": a["start"].date().isoformat(), "ef": round(a["ef"], 3), "name": a["name"]}
+                 for a in acts if is_easy_flat(a, lthr)]
+    by_month = {}
+    for p in ef_points:
+        by_month.setdefault(p["date"][:7], []).append(p["ef"])
+    # tous les mois entre le premier et le dernier, vides compris : la courbe s'interrompt sur les trous
+    ef_monthly = []
+    if by_month:
+        y, m = map(int, min(by_month).split("-"))
+        last = max(by_month)
+        while f"{y:04d}-{m:02d}" <= last:
+            v = by_month.get(f"{y:04d}-{m:02d}", [])
+            ef_monthly.append({"month": f"{y:04d}-{m:02d}", "ef": round(_median(v), 3) if v else None,
+                               "n": len(v)})
+            y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+
+    # découplage des sorties d'au moins une heure, sur le plat (sinon la pente fausse l'allure)
+    decoupling = [{"date": a["start"].date().isoformat(), "pct": round(a["decoupling_pct"], 1),
+                   "name": a["name"], "hours": round((a["moving_duration_s"] or 0) / 3600, 1)}
+                  for a in acts if a.get("decoupling_pct") is not None and a.get("terrain") == "road"
+                  and a["distance_km"] > 0 and a["gain_m"] / a["distance_km"] < FLAT_MAX_GAIN_PER_KM]
+
+    zones = {}
+    for a in acts:
+        z = zones.setdefault(a["start"].year, [0.0] * 5)
+        for i in range(5):
+            z[i] += a.get(f"zone{i + 1}_s") or 0.0
+    zone_years = []
+    for y in sorted(zones):
+        total = sum(zones[y])
+        if total > 0:
+            zone_years.append({"year": y, "pct": [round(v / total * 100, 1) for v in zones[y]],
+                               "hours": round(total / 3600)})
+
+    return {
+        "today": {"fitness": round(cur["fitness"], 1), "fatigue": round(cur["fatigue"], 1),
+                  "form": round(cur["form"], 1), "zone": zone, "zone_label": zone_label,
+                  "ramp": round(cur["fitness"] - week_ago["fitness"], 1)},
+        "series": {"dates": [p["date"].isoformat() for p in series],
+                   "fitness": [round(p["fitness"], 1) for p in series],
+                   "fatigue": [round(p["fatigue"], 1) for p in series],
+                   "form": [round(p["form"], 1) for p in series],
+                   "stress": [round(p["stress"]) for p in series]},
+        "peaks": [peaks[y] for y in sorted(peaks)],
+        "ef_points": ef_points, "ef_monthly": ef_monthly,
+        "decoupling": decoupling,
+        "zones": zone_years,
+        "lthr": lthr,
     }

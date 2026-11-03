@@ -36,7 +36,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 3. Page Volume et régularité
   - [x] 4. Page Sorties : liste paginée
   - [x] 5. Records en fenêtre glissante, courbe allure-durée, VAM : page Performance
-  - [ ] 6. Page Forme : Fitness/Fatigue/Form, Efficiency Factor, découplage, temps par zone
+  - [x] 6. Page Forme : Fitness/Fatigue/Form, Efficiency Factor, découplage, temps par zone
   - [ ] 7. Parcours similaires et comparaison des temps (page Sorties)
   - [ ] 8. Détection des courses, validation dans l'admin, page Courses
   - [ ] 9. Vérification ordinateur et mobile, v0.2.0

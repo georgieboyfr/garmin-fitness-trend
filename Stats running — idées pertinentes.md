@@ -549,4 +549,5 @@ Audit de l'existant et plan module par module, validés avant la phase 1.
   - records : temps écoulé dans la fenêtre (arrêts compris), segments à plus de 7 m/s ignorés (pics GPS), tapis exclus ;
   - VAM : meilleure montée de plus de 200 m de D+ (descentes de moins de 20 m ignorées), route et trail confondus, à partir de l'altitude retenue pour le D+ ;
   - Copernicus est un modèle de surface (bâtiments compris) qui surestimait le D+ des 4 sorties en ville à l'étranger (Marathon de Madrid : 797 m). **Décision de Greg** : hors de France, le D+ de Strava est préféré quand l'activité est appariée (Madrid : 356 m) ; pas de VAM sur ces sorties.
+- **Page Forme** (3 novembre 2026) : Efficiency Factor sur les sorties faciles et plates = route, moins de 10 m de D+ par km, au moins 30 min en mouvement, FC moyenne sous 90 % de la LTHR ; découplage = baisse de l'EF entre les deux moitiés du temps en mouvement, sorties d'au moins 1 h sur le plat ; zones de forme (TSB) : > +25 très frais, +5 à +25 frais, −10 à +5 neutre, −30 à −10 entraînement productif, < −30 surcharge.
 

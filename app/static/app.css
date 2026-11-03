@@ -293,3 +293,12 @@ table.activities td.col-date { color: var(--muted); }
 .record-single summary { display: block; }
 .record-single summary::before { content: "▸ "; color: var(--muted); }
 .record-single[open] summary::before { content: "▾ "; }
+
+/* ---------- forme ---------- */
+.chart-tall { height: 440px; }
+@media (max-width: 640px) { .chart-tall { height: 380px; } }
+.form-fresh .kpi-value, .form-transition .kpi-value { color: var(--up); }
+.form-overload .kpi-value { color: var(--down); }
+.form-optimal .kpi-value { color: var(--series-2); }
+.ramp-warn .kpi-value { color: var(--series-5); }
+.ramp-high .kpi-value { color: var(--down); }

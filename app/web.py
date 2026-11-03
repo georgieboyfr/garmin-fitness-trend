@@ -13,7 +13,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from . import __version__, db, queries, stats
+from . import __version__, db, metrics_job, queries, stats
 from .auth import SESSION_COOKIE
 
 TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -24,7 +24,7 @@ PAGES = [
     ("/volume", "Volume", True),
     ("/sorties", "Sorties", True),
     ("/performance", "Performance", True),
-    ("/forme", "Forme", False),
+    ("/forme", "Forme", True),
     ("/courses", "Courses", False),
 ]
 
@@ -113,4 +113,18 @@ def performance(request: Request, terrain: str = "road", year: str = ""):
     year_value = int(year) if year.isdigit() and int(year) in years else None
     return render(request, "performance.html", "/performance",
                   data=stats.performance(efforts, terrain, year_value), years=years)
+
+
+@router.get("/forme")
+def forme(request: Request):
+    if (redirect := _login_redirect(request)):
+        return redirect
+    cfg = request.app.state.config
+    conn = db.connect(cfg.db_path)
+    try:
+        acts = queries.running_activities(conn)
+        lthr = metrics_job.params_of(cfg, conn)["lthr"]
+    finally:
+        conn.close()
+    return render(request, "forme.html", "/forme", data=stats.forme(acts, _today(request), lthr))
 

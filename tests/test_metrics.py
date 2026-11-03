@@ -124,3 +124,16 @@ def test_metrics_job_and_lthr_estimate(conn, config):
     import dataclasses
     other = dataclasses.replace(config, lthr=175)
     assert metrics_job.pending_metrics(conn, other) == [1]
+
+
+def test_efficiency_factor_and_decoupling():
+    t = np.arange(0, 3601, 1.0)
+    d = t * 3.0                                         # 180 m/min
+    hr = np.full(t.size, 150.0)
+    assert metrics.efficiency_factor(t, d, hr) == pytest.approx(180 / 150)
+    assert metrics.decoupling(t, d, hr) == pytest.approx(0, abs=0.01)
+    # même allure, FC qui monte de 150 à 165 en 2e moitié : 10 % d'EF perdu -> ~9 % de découplage
+    drift = np.where(t < 1800, 150.0, 165.0)
+    assert metrics.decoupling(t, d, drift) == pytest.approx((1 - 150 / 165) * 100, abs=0.2)
+    assert metrics.decoupling(t[:1800], d[:1800], hr[:1800]) is None    # moins d'une heure
+    assert metrics.efficiency_factor(t, d, np.full(t.size, np.nan)) is None

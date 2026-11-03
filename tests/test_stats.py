@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -157,3 +157,42 @@ def test_performance():
     assert [v["vam"] for v in p["vam_by_year"]] == [900, 800]       # VAM : route et trail confondus
     assert stats.performance(efforts, "road", year=2025)["records"][2]["top"][0]["time_s"] == 1300
     assert stats.performance(efforts, "trail")["records"][2]["top"][0]["time_s"] == 1200
+
+
+# ---------- forme ----------
+
+def test_banister_one_hour_at_lthr_every_day_converges_to_100():
+    start = date(2026, 1, 1)
+    daily = {start + timedelta(days=i): 100.0 for i in range(400)}
+    s = stats.banister(daily, start, start + timedelta(days=399))
+    assert s[-1]["fitness"] == pytest.approx(100, abs=0.1)
+    assert s[-1]["fatigue"] == pytest.approx(100, abs=0.01)
+    assert s[0]["form"] == 0 and s[1]["form"] < 0           # la fatigue monte plus vite que la fitness
+
+
+def test_form_zones():
+    assert stats.form_zone(30)[0] == "transition"
+    assert stats.form_zone(10)[0] == "fresh"
+    assert stats.form_zone(0)[0] == "neutral"
+    assert stats.form_zone(-20)[0] == "optimal"
+    assert stats.form_zone(-40)[0] == "overload"
+
+
+def test_forme_payload():
+    acts = []
+    for i in range(60):
+        a = act((date(2026, 9, 1) + timedelta(days=i)).isoformat(), 10, gain=20, moving=3600)
+        a.update(hrss=80.0, terrain="road", avg_hr=140, ef=1.4 + i / 1000, decoupling_pct=3.0 + i / 100,
+                 zone1_s=1000, zone2_s=2000, zone3_s=500, zone4_s=100, zone5_s=0)
+        acts.append(a)
+    acts[0]["avg_hr"] = 165                                   # pas une sortie facile
+    f = stats.forme(acts, date(2026, 11, 3), lthr=170)
+    assert f["today"]["fitness"] > 0 and f["today"]["zone"] in ("neutral", "fresh")
+    assert len(f["ef_points"]) == 59
+    assert [m["month"] for m in f["ef_monthly"]] == ["2026-09", "2026-10"]
+    gap = stats.forme([acts[1], dict(acts[2], start=datetime(2026, 12, 5, 12))], date(2026, 12, 31), 170)
+    assert [m["ef"] is None for m in gap["ef_monthly"]] == [False, True, True, False]   # sept. -> déc.
+    assert len(f["decoupling"]) == 60
+    assert f["zones"][0]["year"] == 2026 and sum(f["zones"][0]["pct"]) == pytest.approx(100, abs=0.2)
+    assert f["peaks"][-1]["year"] == 2026
+    assert len(f["series"]["dates"]) == len(f["series"]["fitness"]) == 64

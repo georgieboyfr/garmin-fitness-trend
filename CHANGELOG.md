@@ -12,6 +12,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Page Sorties : liste paginée (25 par page) avec nom, description Strava, terrain, distance, D+, temps en mouvement, allure, FC moyenne et charge ; recherche dans le nom et la description, filtres par année et terrain, tri par colonne ; une carte par sortie sur mobile.
 - Page Performance : records en fenêtre glissante sur 1, 3, 5, 10 km, semi et marathon (route et trail séparés, top 10, filtre par année, pics GPS filtrés), meilleur temps par année, courbe allure-durée par année (1 min à 2 h), VAM sur les montées de plus de 200 m (meilleure par année, top 10).
 - Admin : LTHR, FC max et FC repos modifiables (bouton « Utiliser l'estimation », retour aux valeurs du `.env`), avec recalcul automatique des sorties.
+- Page Forme : fitness, fatigue et forme (Banister, sur la charge HRSS) avec la zone de forme et la montée sur 7 jours, pic de fitness par année, temps par zone de FC par année (repère 80/20), Efficiency Factor des sorties faciles et plates (médiane mensuelle), découplage cardiaque des sorties de plus d'une heure sur le plat (repère 5 %).
 
 ### Modifié
 - Hors de France, le D+ de Strava remplace celui du MNT Copernicus (qui compte les bâtiments) quand l'activité est appariée.

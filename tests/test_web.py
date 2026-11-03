@@ -96,3 +96,9 @@ def test_performance_page(client):
     for q in ("", "?terrain=trail", "?terrain=road&year=2026", "?terrain=x&year=abc"):
         r = client.get("/performance" + q)
         assert r.status_code == 200 and "Courbe allure-durée" in r.text
+
+
+def test_forme_page(client):
+    login(client)
+    r = client.get("/forme")
+    assert r.status_code == 200 and "Efficiency Factor" in r.text

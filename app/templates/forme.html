@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Forme · Fitness Trend{% endblock %}
+
+{% macro tip(text) -%}
+  <button class="tip" type="button" aria-label="Explication" data-tip="{{ text }}">i</button>
+{%- endmacro %}
+
+{% block content %}
+{% set t = data.today %}
+<section class="hero">
+  <h1>Forme</h1>
+  <p class="muted">Charge d'entraînement (HRSS) et progression aérobie, sans avoir besoin de courses.</p>
+</section>
+
+<section class="kpis">
+  <article class="kpi">
+    <header>Fitness {{ tip("Charge chronique : moyenne de ta charge quotidienne (HRSS) sur environ 6 semaines (constante de 42 jours). Elle monte lentement quand tu t'entraînes régulièrement.") }}</header>
+    <div class="kpi-value" data-num="{{ t.fitness }}"></div>
+    <footer class="muted">{% if data.peaks %}pic <span data-num="{{ data.peaks[-1].fitness }}" data-dec="1"></span> en {{ data.peaks[-1].year }}{% endif %}</footer>
+  </article>
+  <article class="kpi">
+    <header>Fatigue {{ tip("Charge aiguë : moyenne de ta charge sur environ une semaine (constante de 7 jours). Elle monte vite après une grosse semaine et redescend vite au repos.") }}</header>
+    <div class="kpi-value" data-num="{{ t.fatigue }}"></div>
+    <footer class="muted">charge de la dernière semaine</footer>
+  </article>
+  <article class="kpi form-{{ t.zone }}">
+    <header>Forme {{ tip("Fitness − fatigue de la veille. Négative : tu accumules de la charge (normal à l'entraînement). Positive : tu es frais, c'est le moment de courir vite.") }}</header>
+    <div class="kpi-value">{{ '+' if t.form > 0 }}<span data-num="{{ t.form }}"></span></div>
+    <footer>{{ t.zone_label }}</footer>
+  </article>
+  <article class="kpi {{ 'ramp-high' if t.ramp > 8 else ('ramp-warn' if t.ramp > 5 else '') }}">
+    <header>Montée sur 7 jours {{ tip("Variation de la fitness sur la dernière semaine. Au-delà de +5 à +8 points par semaine, le risque de blessure augmente.") }}</header>
+    <div class="kpi-value">{{ '+' if t.ramp > 0 }}<span data-num="{{ t.ramp }}" data-dec="1"></span></div>
+    <footer class="muted">{% if t.ramp > 8 %}trop rapide{% elif t.ramp > 5 %}soutenue, attention{% else %}raisonnable{% endif %}</footer>
+  </article>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Fitness, fatigue et forme {{ tip("Modèle de Banister à partir de la charge HRSS de chaque sortie. Les barres grises sont la charge de chaque jour. Fais glisser la réglette du bas pour remonter dans le temps.") }}</h2>
+  </div>
+  <div class="chart chart-tall" id="chart-fff" role="img" aria-label="Fitness, fatigue et forme jour par jour"></div>
+</section>
+
+<section class="grid-2">
+  <article class="card">
+    <h2>Pic de fitness par année {{ tip("La plus haute fitness atteinte chaque année, et sa date : le niveau de charge maximal que tu as tenu.") }}</h2>
+    <div class="chart chart-small" id="chart-peaks" role="img" aria-label="Pic de fitness de chaque année"></div>
+  </article>
+  <article class="card">
+    <h2>Temps par zone de FC {{ tip("Répartition du temps de course par zone de fréquence cardiaque, calées sur la LTHR. En 80/20, environ 80 % du temps est en zones 1 et 2 (endurance fondamentale) ; si tout se fait en zone 3, c'est du « tempo » permanent.") }}</h2>
+    <div class="chart chart-small" id="chart-zones" role="img" aria-label="Répartition du temps par zone de FC, par année"></div>
+  </article>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Efficiency Factor {{ tip("Vitesse (m/min) divisée par la FC moyenne, sur les sorties faciles et plates : route, moins de 10 m de D+ par km, au moins 30 min, FC moyenne sous la zone 3. S'il monte, tu cours plus vite pour le même effort cardiaque.") }}</h2>
+    <span class="muted small">{{ data.ef_points | length }} sorties retenues</span>
+  </div>
+  <div class="chart" id="chart-ef" role="img" aria-label="Efficiency Factor des sorties faciles et plates"></div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Découplage cardiaque {{ tip("Sur les sorties de plus d'une heure sur le plat : perte d'efficacité entre la première et la seconde moitié (la FC dérive pour la même vitesse). Sous 5 %, ta base d'endurance tient sur cette durée.") }}</h2>
+    <span class="muted small">{{ data.decoupling | length }} sorties de plus d'une heure</span>
+  </div>
+  <div class="chart" id="chart-decoupling" role="img" aria-label="Découplage cardiaque des sorties de plus d'une heure"></div>
+</section>
+
+<script type="application/json" id="page-data">{{ {"series": data.series, "peaks": data.peaks, "ef_points": data.ef_points, "ef_monthly": data.ef_monthly, "decoupling": data.decoupling, "zones": data.zones} | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/forme.js?v={{ version }}"></script>
+{% endblock %}
