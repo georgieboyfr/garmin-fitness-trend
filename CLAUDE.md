@@ -58,7 +58,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 3. Validation route : estimateur rejoué sur les courses confirmées avec la forme de la veille, erreur moyenne affichée (3 novembre 2026 : exposant standard 1,06 retenu par Greg, 4,4 % d'erreur sur 3 courses, estimation encore trop lente, biais non corrigé)
   - [x] 4. Modèle allure-pente personnel (allure selon la pente à effort égal, montée et descente), calé sur les sorties ; comparé à la VAP de Minetti (3 novembre 2026 ; choix à valider par Greg, section 10 du brief)
   - [x] 5. Trail sur GPX : import du GPX, découpage en tronçons homogènes, temps par tronçon (modèle allure-pente et facteur de fatigue tiré de la courbe allure-durée), profil et temps de passage (3 novembre 2026 ; choix à valider par Greg, section 10 du brief)
-  - [ ] 6. Trail sans GPX (distance, D+, type de terrain) ; ravitaillements et barrières horaires saisis sur un GPX
+  - [x] 6. Ravitaillements saisis sur un GPX (proposés d'après ses waypoints), arrêts comptés dans les temps de passage (3 novembre 2026 ; trail sans GPX abandonné et barrières horaires reportées par Greg, choix à valider, section 10 du brief)
   - [ ] 7. Validation trail : rejeu sur les courses trail passées (leur propre trace sert de GPX), erreur moyenne affichée
   - [ ] 8. Comparaison avec les courses passées les plus proches (distance, D+) et effet de la forme (temps estimé avec plus ou moins de fitness le jour J)
   - [ ] 9. Courses suivies, indépendantes du coach : liste (GPX ou distance, date facultative), prédiction enregistrée chaque semaine, graphique par course avec fourchette et objectif, vue d'ensemble sur 4 semaines

@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 
 from . import __version__, courses, db, detail, estimator, metrics_job, queries, settings, stats, trail
 from .auth import SESSION_COOKIE
-from .track_parser import parse_route
+from .track_parser import parse_route, parse_waypoints
 
 TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
@@ -237,11 +237,12 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
     estimate = estimator.predict_road(efforts, today, km * 1000, gain_m, window_days=window) if km else None
     trail_result, gpx_meta = None, None
     if GPX_ID.fullmatch(gpx) and (cfg.gpx_dir / f"{gpx}.gpx").exists():
-        gpx_meta = _gpx_meta(cfg, gpx)
+        gpx_meta = _gpx_meta(cfg, gpx, stations=True)
         lats, lons, eles = parse_route((cfg.gpx_dir / f"{gpx}.gpx").read_bytes())
         trail_result = trail.estimate_gpx(lats, lons, eles, acts, efforts, today, window,
                                           estimator.MODEL_PERIODS[months_value],
-                                          _gpx_dem(request, gpx, lats, lons), elevation_params)
+                                          _gpx_dem(request, gpx, lats, lons), elevation_params,
+                                          gpx_meta["aid_stations"])
     response = render(request, "estimateur.html", "/estimateur",
                       profile=estimator.current_form(acts, efforts, today, lthr, window),
                       table=estimator.road_table(efforts, today, window), estimate=estimate,
@@ -264,10 +265,21 @@ GPX_MAX_BYTES = 20 * 1024 * 1024
 GPX_RECENT = 8
 
 
-def _gpx_meta(cfg, gpx_id: str) -> dict:
+def _gpx_meta(cfg, gpx_id: str, stations: bool = False) -> dict:
+    """Nom et date d'import d'un parcours ; avec stations, ses ravitos (enregistrés, sinon proposés
+    d'après les waypoints du GPX)."""
     path = cfg.gpx_dir / f"{gpx_id}.json"
     meta = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    return {"id": gpx_id, "name": meta.get("name") or "Parcours", "uploaded_at": meta.get("uploaded_at")}
+    out = {"id": gpx_id, "name": meta.get("name") or "Parcours", "uploaded_at": meta.get("uploaded_at")}
+    if stations:
+        if "aid_stations" in meta:
+            out["aid_stations"], out["aid_saved"] = meta["aid_stations"], True
+        else:
+            data = (cfg.gpx_dir / f"{gpx_id}.gpx").read_bytes()
+            lats, lons, _ = parse_route(data)
+            out["aid_stations"] = trail.waypoint_stations(lats, lons, parse_waypoints(data))
+            out["aid_saved"] = False
+    return out
 
 
 def _gpx_dem(request: Request, gpx_id: str, lats, lons) -> dict | None:
@@ -321,3 +333,22 @@ async def upload_gpx(request: Request):
         ensure_ascii=False), encoding="utf-8")
     _gpx_dem(request, gpx_id, lats, lons)          # altitude du MNT, interrogé une fois
     return {"id": gpx_id}
+
+
+@router.post("/estimateur/gpx/{gpx_id}/ravitos")
+async def save_aid_stations(request: Request, gpx_id: str):
+    """Ravitos d'un parcours (km, nom, arrêt en minutes), enregistrés avec son nom."""
+    if not request.app.state.auth.check_session(request.cookies.get(SESSION_COOKIE)):
+        return JSONResponse({"detail": "Session expirée : reconnecte-toi."}, status_code=401)
+    cfg = request.app.state.config
+    if not GPX_ID.fullmatch(gpx_id) or not (cfg.gpx_dir / f"{gpx_id}.gpx").exists():
+        return JSONResponse({"detail": "Parcours inconnu."}, status_code=404)
+    try:
+        stations = trail.clean_stations(await request.json())
+    except ValueError as e:
+        return JSONResponse({"detail": str(e) if str(e).strip() else "Saisie invalide."}, status_code=400)
+    path = cfg.gpx_dir / f"{gpx_id}.json"
+    meta = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    meta["aid_stations"] = stations
+    path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    return {"aid_stations": stations}

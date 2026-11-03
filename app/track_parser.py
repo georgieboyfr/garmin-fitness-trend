@@ -94,3 +94,17 @@ def parse_route(data: bytes) -> tuple[list[float], list[float], list[float | Non
             eles.append(ele)
         elem.clear()
     return lats, lons, eles
+
+
+def parse_waypoints(data: bytes) -> list[tuple[float, float, str]]:
+    """Points nommés d'un GPX (wpt : ravitaillements, sommets…) : latitude, longitude et nom."""
+    out = []
+    for _, elem in ET.iterparse(io.BytesIO(data)):
+        if _local(elem.tag) != "wpt":
+            continue
+        lat, lon = _float(elem.get("lat")), _float(elem.get("lon"))
+        name = next(((c.text or "").strip() for c in elem if _local(c.tag) == "name"), "")
+        if lat is not None and lon is not None:
+            out.append((lat, lon, name))
+        elem.clear()
+    return out

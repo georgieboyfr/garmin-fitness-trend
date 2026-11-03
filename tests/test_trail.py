@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from app import estimator, trail
-from app.track_parser import parse_route
+from app.track_parser import parse_route, parse_waypoints
 
 DAY = date(2026, 11, 3)
 FLAT_MODEL = {"bins": [{"grade": -41, "factor": 1.0}, {"grade": 41, "factor": 1.0}]}
@@ -176,3 +176,55 @@ def test_dem_altitudes_replace_noisy_gpx_elevation():
     assert p["source"] == "ign" and p["gain_m"] == pytest.approx(500, abs=10)
     assert trail.dem_altitudes(FakeDem(fail=True), lats, lons) is None
     assert trail.dem_altitudes(FakeDem(holes=0.2), lats, lons) is None      # MNT trop incomplet
+
+
+def test_waypoints_become_aid_stations_near_the_track():
+    pts = line(10)
+    wpts = "".join(f'<wpt lat="{la}" lon="{lo}"><name>{n}</name></wpt>' for la, lo, n in [
+        (45 + 4000 / 111195, 5.0005, "Ravito 1"),          # à 40 m de la trace, km 4
+        (45 + 7000 / 111195, 5.0, "Col"),                  # sur la trace, km 7
+        (45 + 2000 / 111195, 5.01, "Parking"),             # à 790 m : ignoré
+        (45, 5.0, "Départ")])                              # au départ : ignoré
+    data = gpx(pts).replace(b"<trk>", wpts.encode() + b"<trk>")
+    assert parse_waypoints(data)[0] == (pytest.approx(45 + 4000 / 111195), 5.0005, "Ravito 1")
+    lats, lons, _ = parse_route(data)
+    st = trail.waypoint_stations(lats, lons, parse_waypoints(data))
+    assert [(a["name"], a["km"], a["stop_min"]) for a in st] == [
+        ("Ravito 1", pytest.approx(4.0, abs=0.03), 0.0), ("Col", pytest.approx(7.0, abs=0.03), 0.0)]
+    assert trail.waypoint_stations(lats, lons, []) == []
+
+
+def test_clean_stations_sorts_and_rejects_bad_input():
+    st = trail.clean_stations([{"km": "8.5", "name": " Col ", "stop_min": 3},
+                               {"km": 4, "name": "", "stop_min": None}])
+    assert st == [{"km": 4.0, "name": "Ravito", "stop_min": 0.0}, {"km": 8.5, "name": "Col", "stop_min": 3.0}]
+    for bad in ([{"km": -1}], [{"km": "x"}], [{"name": "sans km"}], [{"km": 3, "stop_min": 500}], {"km": 3},
+                [3], [{"km": 1}] * (trail.AID_MAX + 1)):
+        with pytest.raises(ValueError):
+            trail.clean_stations(bad)
+
+
+def test_predict_trail_adds_stops_after_each_aid_station():
+    lats, lons, eles = parse_route(gpx(line(12, lambda d: 300 - abs(d - 6000) * 0.05)))
+    profile = trail.route_profile(lats, lons, eles)
+    efforts = [eff("distance", 10000, 3000, "2026-10-01")]
+    base = trail.predict_trail(profile, SLOPE_MODEL, efforts, DAY)
+    stations = [{"km": 6.0, "name": "Sommet", "stop_min": 5.0}, {"km": 9.0, "name": "Ferme", "stop_min": 2.0},
+                {"km": 30.0, "name": "Hors parcours", "stop_min": 10.0}]
+    r = trail.predict_trail(profile, SLOPE_MODEL, efforts, DAY, aid_stations=stations)
+    assert r["moving_s"] == base["realistic_s"] and r["stops_s"] == 420
+    assert r["realistic_s"] == base["realistic_s"] + 420
+    assert r["optimistic_s"] == base["optimistic_s"] + 420 and r["prudent_s"] == base["prudent_s"] + 420
+    assert r["realistic_pace_s_km"] == base["realistic_pace_s_km"]           # allure en mouvement
+    sommet, ferme, finish = r["aid_stations"]
+    assert [a["name"] for a in r["aid_stations"]] == ["Sommet", "Ferme", "Arrivée"] and finish["finish"]
+    assert sommet["departure_s"] == sommet["arrival_s"] + 300 and sommet["leg_m"] == 6000
+    assert sommet["leg_gain_m"] == pytest.approx(300, abs=5) and sommet["leg_loss_m"] == 0
+    assert sommet["arrival_optimistic_s"] < sommet["arrival_s"] < sommet["arrival_prudent_s"]
+    assert ferme["arrival_s"] == pytest.approx(sommet["departure_s"] + ferme["leg_s"], abs=1)
+    assert finish["arrival_s"] == pytest.approx(r["realistic_s"], abs=1)
+    assert sum(a["leg_s"] for a in r["aid_stations"]) == pytest.approx(r["moving_s"], abs=2)
+    assert r["segments"][-1]["passage_s"] == r["realistic_s"]
+    assert sum(s["time_s"] for s in r["segments"]) == pytest.approx(r["moving_s"], abs=len(r["segments"]))
+    assert r["chart"]["time"][-1] == r["realistic_s"] and len(r["chart"]["aid"]) == 2
+    assert [a["name"] for a in base["aid_stations"]] == ["Arrivée"]

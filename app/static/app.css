@@ -466,3 +466,10 @@ table.intervals tr.iv-other td { color: var(--muted); }
 .estimate-time { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .estimate-range { display: flex; flex-direction: column; gap: 4px; font-size: 15px; padding-bottom: 6px; }
 .estimate-range b { font-variant-numeric: tabular-nums; }
+
+/* ravitos (estimateur trail) */
+.aid-form { margin-top: 12px; }
+.aid-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 8px; }
+.aid-row .filter { flex: 1 1 90px; }
+.aid-row .filter:nth-child(2) { flex: 3 1 160px; }
+.aid-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

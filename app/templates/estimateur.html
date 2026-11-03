@@ -135,7 +135,7 @@
     · calé sur ton meilleur {{ t.reference.label }} récent ({{ effort_link(t.reference) }})
     {% if t.fatigue_applies %}· exposant de fatigue {{ "%.2f" | format(t.fatigue.value) | replace(".", ",") }}{% if t.fatigue.personal %} (ta courbe au-delà de 2 h{% if t.fatigue.fitted != t.fatigue.value %}, borné{% endif %}){% else %} (valeur par défaut, pas assez de sorties longues){% endif %}{% endif %}
     {% if t.fallback %}· aucun effort route en {{ weeks }} semaines : références des 6 derniers mois{% endif %}
-    · temps en mouvement, sans les arrêts aux ravitaillements.
+    {% if t.stops_s %}· dont <span data-duration="{{ t.stops_s }}"></span> d'arrêts aux ravitos (<span data-chrono="{{ t.moving_s }}"></span> en mouvement, allures en mouvement){% else %}· temps en mouvement, sans arrêt aux ravitos{% endif %}.
   </p>
   <div class="chart" id="chart-trail" role="img" aria-label="Profil du parcours avec les temps de passage"></div>
   <div class="table-wrap">
@@ -158,6 +158,37 @@
       </tbody>
     </table>
   </div>
+
+  <h3 id="ravitos">Ravitaillements {{ tip("Passage estimé à chaque ravito : temps en mouvement depuis le point précédent, heure d'arrivée depuis le départ (fourchette optimiste – prudent entre parenthèses), arrêt prévu et départ. Chaque arrêt s'ajoute aux passages suivants et au temps final. Les ravitos sont proposés d'après les points nommés du GPX proches de la trace ; corrige-les, complète-les et enregistre.") }}</h3>
+  {% if t.aid_stations | length > 1 %}
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Point</th><th>Km</th><th>Depuis le précédent</th><th>D+ / D−</th><th>Temps</th><th>Arrivée</th><th>Arrêt</th><th>Départ</th></tr></thead>
+      <tbody>
+        {% for a in t.aid_stations %}
+        <tr {% if a.finish %}class="is-best"{% endif %}>
+          <td>{{ a.name }}</td>
+          <td class="muted">{{ "%.1f" | format(a.km) | replace(".", ",") }}</td>
+          <td data-num="{{ a.leg_m / 1000 }}" data-dec="1" data-unit="km"></td>
+          <td class="muted">+{{ a.leg_gain_m }} / −{{ a.leg_loss_m }}</td>
+          <td data-chrono="{{ a.leg_s }}"></td>
+          <td><b data-chrono="{{ a.arrival_s }}"></b> <span class="small muted">(<span data-chrono="{{ a.arrival_optimistic_s }}"></span> – <span data-chrono="{{ a.arrival_prudent_s }}"></span>)</span></td>
+          <td class="muted">{% if a.stop_s %}<span data-duration="{{ a.stop_s }}"></span>{% elif not a.finish %}—{% endif %}</td>
+          <td>{% if not a.finish %}<span data-chrono="{{ a.departure_s }}"></span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  <form id="aid-form" class="aid-form" data-gpx="{{ gpx.id }}">
+    <div id="aid-rows"></div>
+    <div class="aid-actions">
+      <button class="btn-ghost" type="button" id="aid-add">Ajouter un ravito</button>
+      <button class="btn-primary" type="submit">Enregistrer</button>
+      <span class="small muted" id="aid-status" role="status">{% if not gpx.aid_saved and gpx.aid_stations %}Proposés d'après les points du GPX : vérifie-les et enregistre.{% endif %}</span>
+    </div>
+  </form>
   {% else %}
   <p class="small muted">Choisis le GPX d'une course : il est gardé sur le serveur pour pouvoir y revenir.</p>
   {% endif %}
@@ -342,6 +373,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script type="application/json" id="aid-data">{{ (gpx.aid_stations if gpx and gpx.aid_stations else []) | tojson }}</script>
 <script type="application/json" id="trail-data">{{ (trail.chart if trail and not trail.error else none) | tojson }}</script>
 <script>
   (() => {
@@ -361,6 +393,42 @@
       } catch (e) { status.textContent = "Envoi impossible."; }
     });
 
+    // ravitos : une ligne par point (km, nom, arrêt en minutes), enregistrés avec le parcours
+    const form = document.getElementById("aid-form");
+    if (form) {
+      const rows = document.getElementById("aid-rows"), aidStatus = document.getElementById("aid-status");
+      const addRow = (a = {}) => {
+        const row = document.createElement("div");
+        row.className = "aid-row";
+        row.innerHTML = `<label class="filter">Km <input name="km" inputmode="decimal" required></label>`
+          + `<label class="filter">Nom <input name="name" maxlength="60" placeholder="Ravito"></label>`
+          + `<label class="filter">Arrêt (min) <input name="stop_min" inputmode="decimal" placeholder="0"></label>`
+          + `<button class="btn-ghost" type="button" aria-label="Retirer ce ravito">✕</button>`;
+        row.querySelector("[name=km]").value = a.km != null ? String(a.km).replace(".", ",") : "";
+        row.querySelector("[name=name]").value = a.name || "";
+        row.querySelector("[name=stop_min]").value = a.stop_min ? String(a.stop_min).replace(".", ",") : "";
+        row.querySelector("button").addEventListener("click", () => row.remove());
+        rows.appendChild(row);
+      };
+      JSON.parse(document.getElementById("aid-data").textContent).forEach(addRow);
+      document.getElementById("aid-add").addEventListener("click", () => addRow());
+      form.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const num = (v) => Number(v.trim().replace(",", ".") || 0);
+        const list = [...rows.children].map((r) => ({ km: num(r.querySelector("[name=km]").value),
+          name: r.querySelector("[name=name]").value, stop_min: num(r.querySelector("[name=stop_min]").value) }));
+        aidStatus.textContent = "Enregistrement…";
+        try {
+          const r = await fetch(`/estimateur/gpx/${form.dataset.gpx}/ravitos`, { method: "POST",
+            headers: { "Content-Type": "application/json" }, body: JSON.stringify(list) });
+          const j = await r.json();
+          if (!r.ok) { aidStatus.textContent = j.detail || "Saisie refusée."; return; }
+          location.hash = "ravitos";
+          location.reload();
+        } catch (e) { aidStatus.textContent = "Enregistrement impossible."; }
+      });
+    }
+
     const data = JSON.parse(document.getElementById("trail-data").textContent);
     if (!data) return;
     GFT.chart("chart-trail", (t) => ({
@@ -373,7 +441,11 @@
                axisLabel: { ...t.axis.axisLabel, formatter: "{value} km", showMaxLabel: false } },
       yAxis: { type: "value", scale: true, ...t.axis, axisLabel: { ...t.axis.axisLabel, formatter: "{value} m" } },
       series: [{ type: "line", symbol: "none", data: data.km.map((k, i) => [k, data.altitude[i]]),
-                 lineStyle: { color: t.accent, width: 2 }, areaStyle: { color: t.accentSoft } }],
+                 lineStyle: { color: t.accent, width: 2 }, areaStyle: { color: t.accentSoft },
+                 markLine: data.aid.length ? { symbol: "none", silent: true,
+                   lineStyle: { color: t.muted, type: "dashed", width: 1 },
+                   label: { color: t.muted, formatter: (p) => p.name, position: "insideEndTop" },
+                   data: data.aid.map((a) => ({ xAxis: a.km, name: a.name })) } : undefined }],
     }));
   })();
 </script>

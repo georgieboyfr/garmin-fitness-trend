@@ -1,4 +1,5 @@
 import dataclasses
+import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -200,3 +201,30 @@ def test_estimateur_gpx_upload(client, config):
     assert page.status_code == 200 and "Trail du Vercors" in page.text
     assert "modèle allure-pente" in page.text                     # base vide : message d'erreur affiché
     assert client.get("/estimateur?gpx=../../etc").status_code == 200
+
+
+def test_estimateur_aid_stations(client, config):
+    pts = "".join(f'<trkpt lat="{45 + i * 20 / 111195}" lon="5"><ele>{i * 2}</ele></trkpt>'
+                  for i in range(200))
+    wpt = f'<wpt lat="{45 + 2000 / 111195}" lon="5"><name>Ravito du col</name></wpt>'
+    login(client)
+    data = f"<gpx>{wpt}<trk><trkseg>{pts}</trkseg></trk></gpx>".encode()
+    gpx_id = client.post("/estimateur/gpx", content=data).json()["id"]
+    gpx_page = client.get(f"/estimateur?gpx={gpx_id}")
+    assert gpx_page.status_code == 200
+    assert gpx_page.text.count("Ravito du col") == 1             # proposé d'après le waypoint (éditeur)
+    url = f"/estimateur/gpx/{gpx_id}/ravitos"
+    assert client.post(url, json=[{"km": -2}]).status_code == 400
+    assert client.post(url, content=b"{pas du json").status_code == 400
+    assert client.post("/estimateur/gpx/0123456789abcdef/ravitos", json=[]).status_code == 404
+    r = client.post(url, json=[{"km": 3.2, "name": "Buvette", "stop_min": 4}])
+    assert r.status_code == 200
+    assert r.json()["aid_stations"] == [{"km": 3.2, "name": "Buvette", "stop_min": 4.0}]
+    meta = json.loads((config.gpx_dir / f"{gpx_id}.json").read_text(encoding="utf-8"))
+    assert meta["aid_stations"][0]["name"] == "Buvette" and meta["name"] == "Parcours"
+    text = client.get(f"/estimateur?gpx={gpx_id}").text
+    assert "Buvette" in text and "Ravito du col" not in text
+    assert client.post(url, json=[]).status_code == 200            # tout retirer : plus de proposition
+    assert "Ravito du col" not in client.get(f"/estimateur?gpx={gpx_id}").text
+    client.cookies.clear()
+    assert client.post(url, json=[]).status_code == 401

@@ -22,7 +22,10 @@ Estimateur trail sur un GPX (phase 3, fonctions pures, versionnées).
    de 500 m, pas en forte pente, montées et descentes mêlées) ou un tronçon plat ou doux qui
    cumule au moins 20 m de montée et 20 m de descente est dit « vallonné ».
 
-Temps en mouvement : les arrêts aux ravitaillements ne sont pas comptés (étape suivante).
+6. Ravitaillements : points saisis sur le parcours (km, nom, durée d'arrêt), proposés au départ
+   d'après les waypoints du GPX proches de la trace. Le temps de chaque arrêt s'ajoute aux passages
+   qui suivent et au temps final ; les tronçons gardent leur temps en mouvement et la fourchette ne
+   porte que sur le temps en mouvement (les arrêts sont ceux que tu prévois).
 """
 import json
 import math
@@ -31,9 +34,16 @@ from datetime import date
 import numpy as np
 
 from . import estimator, grade, settings
-from .elevation import cumulative_distance, hysteresis_gain_loss, median_filter, resample, resample_positions
+from .elevation import (
+    EARTH_RADIUS_M,
+    cumulative_distance,
+    hysteresis_gain_loss,
+    median_filter,
+    resample,
+    resample_positions,
+)
 
-TRAIL_VERSION = 1
+TRAIL_VERSION = 2               # 2 : ravitaillements et arrêts
 STEP_M = 10.0
 MIN_DISTANCE_M = 1000.0
 MIN_ELEVATION_SHARE = 0.5      # au moins la moitié des points avec une altitude
@@ -57,6 +67,11 @@ FATIGUE_BUCKETS_H = (2, 3, 4, 5, 6, 8, 10, 14, 24, 48)
 FATIGUE_MIN_POINTS = 3
 FATIGUE_SPREAD = 0.05          # fourchette : +5 % par facteur e au-delà des 2 premières heures
 CHART_STEP_M = 100.0
+AID_SNAP_M = 200.0             # waypoint retenu comme ravito s'il est à moins de 200 m de la trace
+AID_END_MARGIN_M = 300.0       # ni au départ ni à l'arrivée
+AID_MAX = 50
+AID_NAME_MAX = 60
+AID_STOP_MAX_MIN = 120
 
 
 def dem_altitudes(dem, lats, lons) -> dict | None:
@@ -233,9 +248,10 @@ def _fitted_grade(d, alt, i, j) -> float:
     return float(np.polyfit(x, y, 1)[0] * 100)
 
 
-def segments(profile, times) -> list[dict]:
+def segments(profile, times, stops=None) -> list[dict]:
     """Tronçons homogènes par pente (plat, douce, moyenne, forte, vallonné), avec D+ et D− (même
-    seuil d'hystérésis que le total), temps, allure et passage."""
+    seuil d'hystérésis que le total), temps en mouvement, allure et passage (arrêts aux ravitos
+    compris : stops = temps d'arrêt cumulé à chaque point du profil)."""
     d, alt = profile["distance"], profile["altitude"]
     threshold = profile.get("threshold_m", 0.0)
     every = max(1, int(SEGMENT_STEP_M / STEP_M))
@@ -285,16 +301,88 @@ def segments(profile, times) -> list[dict]:
                     "grade_pct": round(_fitted_grade(d, alt, i, j), 1),
                     "kind": "rolling" if cls == "rolling" else "flat" if cls == "flat" else cls[:-1],
                     "label": SEGMENT_LABELS[cls],
-                    "time_s": round(seconds), "passage_s": round(times[j]),
+                    "time_s": round(seconds),
+                    "passage_s": round(times[j] + (stops[j] if stops is not None else 0.0)),
                     "pace_s_km": round(seconds / length * 1000, 1) if length else None,
                     "altitude_m": round(float(alt[j]))})
     return out
 
 
+def waypoint_stations(lats, lons, waypoints) -> list[dict]:
+    """Ravitos proposés d'après les waypoints du GPX : ceux à moins de 200 m de la trace, hors
+    départ et arrivée, placés au km du point de trace le plus proche, sans arrêt."""
+    lat = np.asarray(lats, dtype=float)
+    lon = np.asarray(lons, dtype=float)
+    if lat.size < 2 or not waypoints:
+        return []
+    cum = cumulative_distance(lat, lon)
+    out = []
+    for wlat, wlon, name in waypoints:
+        dy = np.radians(lat - wlat) * EARTH_RADIUS_M
+        dx = np.radians(lon - wlon) * EARTH_RADIUS_M * math.cos(math.radians(wlat))
+        i = int(np.argmin(dx * dx + dy * dy))
+        inside = AID_END_MARGIN_M <= cum[i] <= cum[-1] - AID_END_MARGIN_M
+        if inside and math.hypot(dx[i], dy[i]) <= AID_SNAP_M:
+            out.append({"km": round(float(cum[i]) / 1000, 2), "name": (name or "Ravito")[:AID_NAME_MAX],
+                        "stop_min": 0.0})
+    return sorted(out, key=lambda a: a["km"])[:AID_MAX]
+
+
+def clean_stations(raw) -> list[dict]:
+    """Ravitos saisis sur la page, vérifiés et triés par km ; ValueError si la saisie est invalide."""
+    if not isinstance(raw, list) or len(raw) > AID_MAX:
+        raise ValueError(f"Liste de ravitos invalide ({AID_MAX} au plus).")
+    out = []
+    for r in raw:
+        try:
+            km, stop = float(r["km"]), float(r.get("stop_min") or 0)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            raise ValueError("Chaque ravito doit avoir un km et une durée d'arrêt en minutes.") from None
+        if not (math.isfinite(km) and km > 0) or not 0 <= stop <= AID_STOP_MAX_MIN:
+            raise ValueError(f"Km positif et arrêt de 0 à {AID_STOP_MAX_MIN} min.")
+        name = str(r.get("name") or "").strip()[:AID_NAME_MAX] or "Ravito"
+        out.append({"km": round(km, 2), "name": name, "stop_min": round(stop, 1)})
+    return sorted(out, key=lambda a: a["km"])
+
+
+def _stop_offsets(d, stations) -> np.ndarray:
+    """Temps d'arrêt cumulé (s) à chaque point du profil : arrêts des ravitos situés avant."""
+    out = np.zeros(d.size)
+    for a in stations:
+        out[d > a["km"] * 1000] += a["stop_min"] * 60
+    return out
+
+
+def aid_table(profile, times, stations, spread: float) -> list[dict]:
+    """Passage à chaque ravito puis à l'arrivée : depuis le point précédent (distance, D+, D−,
+    temps en mouvement), arrivée (avec sa fourchette), arrêt et départ."""
+    d, alt = profile["distance"], profile["altitude"]
+    threshold = profile.get("threshold_m", 0.0)
+    points = [*stations, {"km": round(float(d[-1]) / 1000, 2), "name": "Arrivée", "stop_min": 0.0,
+                          "finish": True}]
+    out, prev_i, prev_m, prev_t, stopped = [], 0, 0.0, 0.0, 0.0
+    for a in points:
+        at = min(a["km"] * 1000, float(d[-1]))
+        i = min(int(np.searchsorted(d, at)), d.size - 1)
+        moving = float(np.interp(at, d, times))
+        gain, loss = hysteresis_gain_loss(alt[prev_i:i + 1], threshold) if i > prev_i else (0.0, 0.0)
+        stop = a["stop_min"] * 60
+        out.append({"km": a["km"], "name": a["name"], "finish": a.get("finish", False),
+                    "leg_m": round(at - prev_m), "leg_gain_m": round(gain), "leg_loss_m": round(loss),
+                    "leg_s": round(moving - prev_t), "arrival_s": round(moving + stopped),
+                    "arrival_optimistic_s": round(moving * math.exp(-spread) + stopped),
+                    "arrival_prudent_s": round(moving * math.exp(spread) + stopped),
+                    "stop_s": round(stop), "departure_s": round(moving + stopped + stop),
+                    "altitude_m": round(float(alt[i]))})
+        prev_i, prev_m, prev_t, stopped = i, at, moving, stopped + stop
+    return out
+
+
 def predict_trail(profile, model, efforts, day: date, window_days: int = estimator.WINDOW_DAYS,
-                  fatigue: dict | None = None) -> dict | None:
-    """Temps estimé sur le parcours, avec sa fourchette, ses tronçons et son profil, ou None
-    faute de modèle allure-pente ou d'effort route récent."""
+                  fatigue: dict | None = None, aid_stations=None) -> dict | None:
+    """Temps estimé sur le parcours, avec sa fourchette, ses tronçons, ses ravitos et son profil,
+    ou None faute de modèle allure-pente ou d'effort route récent. Les temps (`*_s`) comprennent
+    les arrêts aux ravitos, les allures et la fourchette portent sur le temps en mouvement."""
     if not model:
         return None
     eq_cum = equivalent_steps(profile, model)
@@ -312,6 +400,9 @@ def predict_trail(profile, model, efforts, day: date, window_days: int = estimat
     times = passage_times(eq_cum, total, fatigue["value"])
     d, alt = profile["distance"], profile["altitude"]
     distance_m = float(d[-1])
+    stations = [a for a in (aid_stations or []) if 0 < a["km"] * 1000 < distance_m]
+    stops = _stop_offsets(d, stations)
+    stops_s = sum(a["stop_min"] * 60 for a in stations)
     estimates = {"optimistic": total * math.exp(-spread), "realistic": total,
                  "prudent": total * math.exp(spread)}
     every = max(1, int(CHART_STEP_M / STEP_M))
@@ -321,20 +412,23 @@ def predict_trail(profile, model, efforts, day: date, window_days: int = estimat
         "distance_m": round(distance_m), "gain_m": round(profile.get("gain_m", 0.0)),
         "loss_m": round(profile.get("loss_m", 0.0)), "equivalent_m": round(eq_m),
         "elevation_source": profile.get("source", "gpx"),
-        **{f"{k}_s": round(v) for k, v in estimates.items()},
+        **{f"{k}_s": round(v + stops_s) for k, v in estimates.items()},
         **{f"{k}_pace_s_km": round(v / distance_m * 1000, 1) for k, v in estimates.items()},
+        "moving_s": round(total), "stops_s": round(stops_s),
         "spread_pct": round(spread * 100, 1),
         "reference": ref, "fatigue": fatigue, "fatigue_applies": d0 is not None,
         "window_days": road["window_days"], "fallback": road["fallback"],
-        "segments": segments(profile, times),
+        "segments": segments(profile, times, stops),
+        "aid_stations": aid_table(profile, times, stations, spread),
         "chart": {"km": [round(float(d[i]) / 1000, 2) for i in idx],
                   "altitude": [round(float(alt[i])) for i in idx],
-                  "time": [round(float(times[i])) for i in idx]},
+                  "time": [round(float(times[i] + stops[i])) for i in idx],
+                  "aid": [{"km": a["km"], "name": a["name"]} for a in stations]},
     }
 
 
 def estimate_gpx(lats, lons, eles, acts, efforts, day: date, window_days=estimator.WINDOW_DAYS,
-                 model_days=estimator.MODEL_DAYS, dem_profile=None, params=None) -> dict:
+                 model_days=estimator.MODEL_DAYS, dem_profile=None, params=None, aid_stations=None) -> dict:
     """Chaîne complète pour un GPX : profil, modèle allure-pente et fatigue au soir de `day`."""
     profile = route_profile(lats, lons, eles, dem_profile, params)
     if profile is None:
@@ -344,7 +438,7 @@ def estimate_gpx(lats, lons, eles, acts, efforts, day: date, window_days=estimat
     if not model:
         return {"error": "Pas assez de sorties avec un profil d'altitude pour ton modèle allure-pente."}
     result = predict_trail(profile, model, efforts, day, window_days,
-                           fatigue_exponent(acts, model, day))
+                           fatigue_exponent(acts, model, day), aid_stations)
     if result is None:
         return {"error": "Aucun effort route de 3 km ou plus sur les 6 derniers mois pour caler le niveau."}
     return result
