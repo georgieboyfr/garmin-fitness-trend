@@ -282,3 +282,18 @@ def test_tracked_race_manual_link_and_calibration_admin(client, config):
     assert st["applied"]["correction_road"] == 0.97
     assert "Correction en vigueur" in client.get("/estimateur").text
 
+
+def test_estimate_vs_actual_endpoint(client, config):
+    conn = db.connect(config.db_path)
+    with conn:
+        conn.execute(
+            "INSERT INTO activities (id, start_time_utc, start_time_local, activity_type, garmin_name,"
+            " distance_m, duration_s, fit_status, first_seen_at, updated_at)"
+            " VALUES (66, ?, '2026-03-01T09:00:00', 'running', 'Trail', 10000, 4000, 'stored', ?, ?)",
+            (NOW, NOW, NOW))
+    conn.close()
+    assert client.get("/sorties/66/estime-reel").status_code == 401
+    login(client)
+    r = client.get("/sorties/66/estime-reel")
+    assert r.status_code == 400 and "trace" in r.json()["error"]
+

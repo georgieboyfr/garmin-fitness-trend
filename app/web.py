@@ -195,6 +195,21 @@ def sortie(request: Request, activity_id: int):
 
 
 
+
+@router.get("/sorties/{activity_id}/estime-reel")
+def estimate_vs_actual(request: Request, activity_id: int):
+    """Estimateur rejoué sur la trace d'une course réalisée (forme de la veille et d'aujourd'hui),
+    écart cumulé au temps réel le long du parcours."""
+    if (error := _session_error(request)):
+        return error
+    cfg = request.app.state.config
+    conn = db.connect(cfg.db_path)
+    try:
+        result = tracked.estimate_vs_actual(cfg, conn, activity_id, _today(request))
+    finally:
+        conn.close()
+    return JSONResponse(result, status_code=400 if "error" in result else 200)
+
 @router.get("/courses")
 def courses_page(request: Request):
     if (redirect := _login_redirect(request)):

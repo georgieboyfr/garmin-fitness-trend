@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -179,4 +179,58 @@ def test_corrections_settings_and_display(config, conn):
     raw = tracked.predictions(conn, race_id)[-1]
     s = tracked.summary(config, conn, tracked.get(conn, race_id), TODAY)
     assert s["factor"] == 0.96 and s["last"]["realistic_s"] == round(raw["realistic_s"] * 0.96)
+
+
+def race_series(config, activity_id, km=10.0, speed=10 / 3, stop_at_m=5000, stop_s=120):
+    """Trace d'une course : vitesse constante, une bosse de 100 m au milieu, un arrêt."""
+    import json as _json
+    import math as _math
+
+    import pyarrow as pa
+
+    from app.fit_parser import SCHEMA
+    from app.series import write_series
+
+    t0 = datetime(2026, 10, 25, 7, 0, tzinfo=UTC)
+    rows, d, t = [], 0.0, 0.0
+    while d <= km * 1000:
+        alt = 300 + 100 * _math.sin(_math.pi * d / (km * 1000))
+        rows.append((t0 + timedelta(seconds=t), d, 45 + d / 111195, 5.0, alt, 150.0, speed, 85.0))
+        if stop_at_m and abs(d - stop_at_m) < 1:
+            t += stop_s
+            rows.append((t0 + timedelta(seconds=t), d, 45 + d / 111195, 5.0, alt, 120.0, 0.0, 0.0))
+        d += 10.0
+        t += 10.0 / speed
+    cols = list(zip(*rows, strict=True))
+    table = pa.table(dict(zip(SCHEMA.names, cols, strict=True)), schema=SCHEMA)
+    write_series(config.series_dir, activity_id, table)
+    return _json, t - 10.0 / speed            # temps du dernier point
+
+
+def test_estimate_vs_actual_on_the_race_trace(config, conn, monkeypatch):
+    config.series_dir.mkdir(parents=True, exist_ok=True)
+    _, total = race_series(config, 500)
+    base = data()
+    bins = [[-4, 300, 900], [-2, 600, 1800], [0, 600, 1800], [2, 300, 900]]
+    import json as _json
+    for a in base["acts"]:
+        a.update({"grade_bins": _json.dumps(bins), "terrain": "trail", "distance_m": 6000.0})
+    race = {"id": 500, "name": "Trail", "start": datetime(2026, 10, 25, 9), "elevation_source": "barometer",
+            "elapsed_s": total, "distance_m": 10000.0, "terrain": "trail", "hrss": 80.0}
+    base["acts"].append(race)
+    monkeypatch.setattr(tracked, "load_data", lambda cfg, c: base)
+    r = tracked.estimate_vs_actual(config, conn, 500, TODAY)
+    assert [e["key"] for e in r["estimates"]] == ["eve", "today"]
+    eve = r["estimates"][0]
+    assert eve["day"] == "2026-10-24"
+    assert len(r["km"]) == len(r["actual"]) == len(eve["gap"]) == len(r["altitude"])
+    assert r["km"][0] == 0 and r["actual"][0] == 0 and r["actual"][-1] == round(total)
+    assert eve["gap"][-1] == round(total) - eve["times"][-1]
+    assert eve["error_pct"] == round((eve["realistic_s"] / total - 1) * 100, 1)
+    i = r["km"].index(5.0)                                                   # l'arrêt se voit dans le réel
+    assert r["actual"][i] - r["actual"][i - 1] > 120
+    assert max(r["altitude"]) == pytest.approx(400, abs=3)
+    assert tracked.estimate_vs_actual(config, conn, 999, TODAY) == {"error": "Sortie inconnue."}
+    base["acts"].append({**race, "id": 501})
+    assert "error" in tracked.estimate_vs_actual(config, conn, 501, TODAY)    # pas de série
 

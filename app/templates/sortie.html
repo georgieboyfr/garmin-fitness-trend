@@ -107,6 +107,26 @@
 </section>
 {% endif %}
 
+{% if d.race_status == "confirmed" and d.profiles.km %}
+<section class="card" id="estime-reel">
+  <div class="card-head">
+    <h2>Estimé et réel {{ tip("L'estimateur trail est rejoué sur la trace de cette course, comme sur un GPX : avec ta forme de la veille (ce qu'il aurait prédit) et avec ta forme d'aujourd'hui (ce que tu ferais maintenant sur ce parcours). Temps totaux, part d'arrêt habituelle comprise, sans correction. La courbe montre ton écart cumulé au temps estimé le long du parcours : au-dessus de zéro, tu étais en retard sur l'estimation ; en dessous, en avance. Une pente qui monte : tu as perdu du temps sur ce passage.") }}</h2>
+  </div>
+  <p><button class="btn-primary" type="button" id="estimate-run" data-url="/sorties/{{ d.id }}/estime-reel">Lancer l'estimation sur cette trace</button>
+    <span class="small muted" id="estimate-status" role="status"></span></p>
+  <div id="estimate-result" hidden>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Estimation</th><th>Temps estimé</th><th>Fourchette</th><th>Réel</th><th>Écart</th></tr></thead>
+        <tbody id="estimate-rows"></tbody>
+      </table>
+    </div>
+    <div class="chart chart-tall" id="chart-estimate" role="img" aria-label="Écart cumulé entre le temps réel et le temps estimé le long du parcours"></div>
+    <p class="small muted">Écart cumulé entre ton temps réel et chaque estimation : au-dessus de zéro, en retard sur l'estimé ; en dessous, en avance. Profil d'altitude en fond.</p>
+  </div>
+</section>
+{% endif %}
+
 {% set iv = d.profiles.intervals %}
 {% if iv %}
 <section class="card">

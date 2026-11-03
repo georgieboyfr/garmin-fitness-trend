@@ -19,6 +19,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Courses suivies, indépendantes du coach (page Estimateur et une page par course) : parcours GPX ou distance avec D+, date et objectif facultatifs ; prédiction enregistrée chaque lundi par le planificateur (forme du dimanche soir), 12 semaines rejouées à l'ajout ; vue d'ensemble avec l'évolution sur 4 semaines ; graphique par course avec la fourchette et l'objectif. Migration `0014_tracked_races`.
 - Après la course : course suivie reliée automatiquement à sa sortie (ou à la main), résultat face à la dernière prédiction (écart, fourchette, objectif), point du résultat sur le graphique. Migration `0015_tracked_link_manual`.
 - Calibration de l'estimateur (admin) : correction proposée par terrain d'après le rejeu des courses confirmées, appliquée sur demande et figée, signalée sur les estimations.
+- Fiche d'une course réalisée : estimation rejouée sur sa trace avec la forme de la veille et celle d'aujourd'hui, face au temps réel, et courbe de l'écart cumulé le long du parcours sur le profil d'altitude.
 
 ### Modifié
 - Page Estimateur : biais affiché « sans biais » au lieu de « −0,0 % ».

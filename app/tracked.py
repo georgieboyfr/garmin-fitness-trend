@@ -15,7 +15,10 @@ distance et D+ : estimateur route. Une fois la date passée, plus rien n'est enr
 import math
 from datetime import UTC, date, datetime, timedelta
 
+import numpy as np
+
 from . import courses, db, detail, estimator, gpx_store, metrics_job, queries, settings, stats, trail
+from .elevation import series_distance
 from .series import read_series
 
 VERSION = f"route{estimator.ESTIMATE_VERSION}-trail{trail.TRAIL_VERSION}"
@@ -206,19 +209,19 @@ def weekly_job(cfg, today: date, dem=None) -> int:
 def race_profiles(cfg, acts, confirmed, params) -> list[tuple[dict, dict | None]]:
     """Courses trail confirmées et le profil de leur propre trace (altitude retenue pour le D+ :
     baromètre ou MNT), qui sert de GPX pour rejouer l'estimateur trail."""
-    out = []
-    for a in acts:
-        if a["id"] not in confirmed or a.get("terrain") != "trail":
-            continue
-        profile = None
-        try:
-            table = read_series(cfg.series_dir, a["id"])
-            dist, alt = detail.retained_altitude(cfg, a["id"], table, a.get("elevation_source"))
-            profile = trail.altitude_profile(dist, alt, a.get("elevation_source") or "dem", params)
-        except (OSError, KeyError, ValueError):
-            pass
-        out.append((a, profile))
-    return out
+    return [(a, activity_profile(cfg, a, params)) for a in acts
+            if a["id"] in confirmed and a.get("terrain") == "trail"]
+
+
+def activity_profile(cfg, a: dict, params, table=None) -> dict | None:
+    """Profil de la trace d'une sortie (altitude retenue pour son D+ : baromètre ou MNT), qui sert
+    de GPX pour y rejouer l'estimateur trail ; None sans série ou sans altitude."""
+    try:
+        table = table if table is not None else read_series(cfg.series_dir, a["id"])
+        dist, alt = detail.retained_altitude(cfg, a["id"], table, a.get("elevation_source"))
+        return trail.altitude_profile(dist, alt, a.get("elevation_source") or "dem", params)
+    except (OSError, KeyError, ValueError):
+        return None
 
 
 # ---------- après la course : sortie reliée, écart, calibration ----------
@@ -373,6 +376,60 @@ def corrections(conn) -> dict:
     s = settings.get(conn, "estimator")
     return {"road": s["correction_road"] or 1.0, "trail": s["correction_trail"] or 1.0}
 
+
+
+# ---------- estimé et réel sur la trace d'une course (fiche de sortie) ----------
+
+def estimate_vs_actual(cfg, conn, activity_id: int, today: date) -> dict:
+    """L'estimateur trail rejoué sur la trace d'une sortie, avec la forme de la veille et celle
+    d'aujourd'hui (temps totaux, part d'arrêt comprise, sans correction), et l'écart cumulé entre
+    le temps réel (écoulé) et chaque estimation tous les 100 m : positif = en retard sur l'estimé.
+    Les distances de la montre sont ramenées à celle du profil (MNT ou baromètre) au prorata."""
+    data = load_data(cfg, conn)
+    a = next((x for x in data["acts"] if x["id"] == activity_id), None)
+    if a is None:
+        return {"error": "Sortie inconnue."}
+    try:
+        table = read_series(cfg.series_dir, activity_id)
+    except OSError:
+        return {"error": "Pas de trace enregistrée pour cette sortie."}
+    profile = activity_profile(cfg, a, data["params"], table)
+    if profile is None:
+        return {"error": "Trace sans altitude exploitable."}
+    ts = table.column("timestamp").to_pylist()
+    d = series_distance(table)
+    t = np.array([(x - ts[0]).total_seconds() if x else np.nan for x in ts])
+    ok = np.isfinite(d) & np.isfinite(t)
+    if ok.sum() < 2:
+        return {"error": "Trace sans distance ni temps."}
+    d, t = np.maximum.accumulate(d[ok]), t[ok]
+    estimates = []
+    for key, label, day in (("eve", "Forme de la veille", a["start"].date() - timedelta(days=1)),
+                            ("today", "Forme d'aujourd'hui", today)):
+        model = estimator.grade_pace_model(data["acts"], day)
+        r = None
+        if model:
+            r = trail.predict_trail(profile, model, data["efforts"], day,
+                                    fatigue=trail.fatigue_exponent(data["acts"], model, day),
+                                    stops=trail.stop_rate(data["acts"], data["confirmed"], day))
+        if r:
+            estimates.append({"key": key, "label": label, "day": day.isoformat(), "chart": r["chart"],
+                              **{k: r[k] for k in ("optimistic_s", "realistic_s", "prudent_s", "moving_s",
+                                                   "stops_s", "reference", "fatigue")}})
+    if not estimates:
+        return {"error": "L'estimateur n'a pas pu conclure (pas d'effort route ou de modèle allure-pente)."}
+    km = np.array(estimates[0]["chart"]["km"])
+    actual = np.interp(km * 1000 / profile["distance"][-1] * d[-1], d, t)
+    elapsed = a.get("elapsed_s") or float(t[-1])
+    out = []
+    for e in estimates:
+        times = np.array(e.pop("chart")["time"], dtype=float)
+        out.append({**e, "times": [round(float(x)) for x in times],
+                    "gap": [round(float(x)) for x in actual - times],
+                    "error_pct": round((e["realistic_s"] / elapsed - 1) * 100, 1) + 0.0})
+    altitude = np.interp(km * 1000, profile["distance"], profile["altitude"])
+    return {"activity_id": activity_id, "km": km.tolist(), "altitude": [round(float(v)) for v in altitude],
+            "actual": [round(float(x)) for x in actual], "elapsed_s": round(elapsed), "estimates": out}
 
 # ---------- affichage ----------
 

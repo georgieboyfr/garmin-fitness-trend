@@ -182,3 +182,70 @@
     });
   }
 })();
+
+// ---------- estimé et réel (course réalisée) ----------
+(() => {
+  const btn = document.getElementById("estimate-run");
+  if (!btn) return;
+  const status = document.getElementById("estimate-status");
+  const signed = (s) => (s > 0 ? "+" : s < 0 ? "−" : "") + GFT.chrono(Math.abs(s));
+  const run = async () => {
+    btn.disabled = true;
+    status.textContent = "Calcul en cours…";
+    try {
+      const r = await fetch(btn.dataset.url);
+      const data = await r.json();
+      if (!r.ok) { status.textContent = data.detail || data.error || "Estimation impossible."; return; }
+      status.textContent = "";
+      btn.hidden = true;
+      show(data);
+    } catch (e) { status.textContent = "Estimation impossible."; } finally { btn.disabled = false; }
+  };
+  const show = (data) => {
+    document.getElementById("estimate-result").hidden = false;
+    const rows = document.getElementById("estimate-rows");
+    rows.replaceChildren(...data.estimates.map((e) => {
+      const tr = document.createElement("tr");
+      const day = new Date(e.day + "T12:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+      const gap = data.elapsed_s - e.realistic_s;
+      tr.innerHTML = `<td></td><td class="strong"></td><td class="muted"></td><td></td><td></td>`;
+      tr.children[0].textContent = `${e.label} (${day})`;
+      tr.children[1].textContent = GFT.chrono(e.realistic_s);
+      tr.children[2].textContent = `${GFT.chrono(e.optimistic_s)} – ${GFT.chrono(e.prudent_s)}`;
+      tr.children[3].textContent = GFT.chrono(data.elapsed_s);
+      tr.children[4].textContent = `${signed(gap)} (${e.error_pct > 0 ? "estimé trop lent" : "estimé trop rapide"} de `
+        + `${Math.abs(e.error_pct).toFixed(1).replace(".", ",")} %)`;
+      return tr;
+    }));
+    GFT.chart("chart-estimate", (t) => {
+      const colors = [t.accent, t.series[2]];
+      return {
+        grid: { left: 8, right: 8, top: 28, bottom: 28, containLabel: true },
+        legend: { top: 0, textStyle: { color: t.muted }, data: data.estimates.map((e) => e.label) },
+        tooltip: { ...t.tooltip, trigger: "axis", formatter: (ps) => {
+          const i = ps[0].dataIndex;
+          return `<b>Km ${GFT.num(data.km[i], 1)}</b> · ${GFT.num(data.altitude[i])} m<br>Réel ${GFT.chrono(data.actual[i])}`
+            + data.estimates.map((e) => `<br>${e.label} : ${GFT.chrono(e.times[i])} (${signed(e.gap[i])})`).join(""); } },
+        xAxis: { type: "value", min: 0, max: data.km[data.km.length - 1], ...t.axis,
+                 axisLabel: { ...t.axis.axisLabel, formatter: "{value} km", showMaxLabel: false } },
+        yAxis: [
+          { type: "value", ...t.axis, axisLabel: { ...t.axis.axisLabel, formatter: (v) => signed(v) } },
+          { type: "value", scale: true, show: false },
+        ],
+        series: [
+          { name: "Altitude", type: "line", yAxisIndex: 1, symbol: "none", silent: true,
+            data: data.km.map((k, i) => [k, data.altitude[i]]), lineStyle: { opacity: 0 },
+            areaStyle: { color: t.grid, opacity: 0.6 } },
+          ...data.estimates.map((e, j) => ({
+            name: e.label, type: "line", symbol: "none", lineStyle: { width: 2, color: colors[j] },
+            itemStyle: { color: colors[j] }, data: data.km.map((k, i) => [k, e.gap[i]]),
+            markLine: j ? undefined : { symbol: "none", silent: true, data: [{ yAxis: 0 }],
+                                        lineStyle: { color: t.muted, type: "dashed" }, label: { show: false } } })),
+        ],
+      };
+    });
+  };
+  btn.addEventListener("click", run);
+  if (location.hash === "#estime-reel") run();
+})();
+
