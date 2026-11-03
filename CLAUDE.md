@@ -50,6 +50,8 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
     - [x] e. VAP (allure ajustée à la pente, min/km) sur les sorties trail (formule de Minetti, choix de Greg)
     - [x] f. Indicateur de forme du jour sur la fiche de sortie : vitesse et FC face à l'attendu, en tenant compte des intervalles et du dénivelé (FC attendue à la vitesse, choix de Greg)
   - [ ] 9. Vérification ordinateur et mobile, v0.2.0 (tag, CHANGELOG, image construite par la CI, mise à jour du Synology)
+    - [x] Commit et tag `v0.2.0` (3 novembre 2026), pages vérifiées en local sur ordinateur et en largeur mobile
+    - [ ] Push du tag, image construite par la CI, mise à jour du Synology et vérification sur le téléphone
 - [ ] Phase 3 — Estimateur
 - [ ] Phase 4 — Coach
 - [ ] Phase 5 — Extensions
