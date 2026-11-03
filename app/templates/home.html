@@ -3,7 +3,8 @@
 
 {% macro delta(pct) -%}
   {% if pct is none %}<span class="delta">—</span>
-  {% else %}<span class="delta {{ 'up' if pct >= 0 else 'down' }}">{{ '+' if pct >= 0 }}{{ '%.0f' % pct }} %</span>{% endif %}
+  {% elif pct | abs < 0.5 %}<span class="delta">=</span>
+  {% else %}<span class="delta {{ 'up' if pct > 0 else 'down' }}">{{ '+' if pct > 0 else '−' }}{{ (('%.1f' % (pct | abs)) if pct | abs < 10 else ('%.0f' % (pct | abs))) | replace('.', ',') }} %</span>{% endif %}
 {%- endmacro %}
 
 {% macro tip(text) -%}
@@ -83,7 +84,7 @@
     const year = {{ data.ytd.year }};
     const days = Array.from({ length: c.previous.length || 365 }, (_, i) => i);
     GFT.chart("chart-cumul", (t) => ({
-      grid: { left: 48, right: 16, top: 36, bottom: 32 },
+      grid: { left: 8, right: 16, top: 36, bottom: 8, containLabel: true },
       legend: { top: 0, left: 0, textStyle: { color: t.muted } },
       tooltip: {
         trigger: "axis", ...t.tooltip,
@@ -95,7 +96,7 @@
         axisLabel: { ...t.axis.axisLabel, interval: (i) => GFT.isMonthStart(year, i),
                      formatter: (i) => GFT.monthLabel(year, Number(i)) },
       },
-      yAxis: { type: "value", ...t.axis, axisLabel: { ...t.axis.axisLabel, formatter: "{value} km" } },
+      yAxis: { type: "value", ...t.axis, axisLabel: { ...t.axis.axisLabel, formatter: (v) => `${GFT.num(v)} km` } },
       series: [
         { name: String(year - 1), type: "line", data: c.previous, showSymbol: false,
           lineStyle: { width: 2, color: t.series[1] }, itemStyle: { color: t.series[1] } },

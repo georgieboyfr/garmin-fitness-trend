@@ -23,7 +23,7 @@ const GFT = (() => {
 
   function formatPage(root = document) {
     root.querySelectorAll("[data-num]").forEach((el) => {
-      const unit = el.dataset.unit ? ` ${el.dataset.unit}` : "";
+      const unit = el.dataset.unit ? ` ${el.dataset.unit}` : "";
       el.textContent = num(el.dataset.num, Number(el.dataset.dec || 0)) + unit;
     });
     root.querySelectorAll("[data-duration]").forEach((el) => { el.textContent = duration(el.dataset.duration); });
