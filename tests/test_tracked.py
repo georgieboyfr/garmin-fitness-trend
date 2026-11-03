@@ -234,3 +234,23 @@ def test_estimate_vs_actual_on_the_race_trace(config, conn, monkeypatch):
     base["acts"].append({**race, "id": 501})
     assert "error" in tracked.estimate_vs_actual(config, conn, 501, TODAY)    # pas de série
 
+
+
+def test_replayed_weeks_are_recomputed_when_the_estimator_changes(config, conn):
+    race_id = tracked.create(conn, road())
+    tracked.record(config, conn, TODAY, replay_weeks=2, data=data())
+    with conn:
+        conn.execute("UPDATE tracked_predictions SET version='ancienne', realistic_s=1 WHERE race_id=?",
+                     (race_id,))
+    assert tracked.record(config, conn, TODAY, data=data()) == 2           # les 2 semaines rejouées
+    rows = {p["week"]: p for p in tracked.predictions(conn, race_id)}
+    assert rows["2026-10-19"]["version"] == tracked.VERSION and rows["2026-10-19"]["realistic_s"] > 1
+    assert rows["2026-11-02"]["version"] == "ancienne"                      # enregistrée en temps réel
+
+
+def test_ahead_errors_only_count_predictions_recorded_before_the_race():
+    def race(err, replayed):
+        return {"result": {"error_pct": err, "prediction": {"replayed": replayed}}}
+    assert tracked.ahead_errors([race(5.0, 1), {"result": None}]) is None
+    s = tracked.ahead_errors([race(5.0, 1), race(-3.0, 0), race(1.0, 0)])
+    assert s == {"n": 2, "mae_pct": 2.0, "bias_pct": -1.0}

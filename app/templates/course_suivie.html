@@ -132,7 +132,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/courses_suivies.js?v={{ version }}"></script>
+<script src="/static/courses_suivies.js?v={{ asset_version }}"></script>
 <script type="application/json" id="tracked-data">{{ {"predictions": predictions, "target": race.target_s, "race_date": race.race_date, "result": race.result} | tojson }}</script>
 <script>
   (() => {

@@ -63,3 +63,15 @@ def start_positions(conn) -> dict[int, tuple[float, float]]:
 def race_decisions(conn) -> dict[int, str]:
     return dict(conn.execute("SELECT activity_id, status FROM races").fetchall())
 
+
+def steady_blocks(conn) -> list[tuple[str, float, float]]:
+    """Minutes stables (date, vitesse ajustée en m/s, FC) de toutes les sorties hors tapis, pour la
+    relation FC / vitesse (hr_speed)."""
+    import json
+
+    return [(r[0][:10], v, h) for r in conn.execute(
+        "SELECT x.start_time_local, m.steady_blocks FROM activity_metrics m"
+        " JOIN activities x ON x.id = m.activity_id"
+        " WHERE m.steady_blocks IS NOT NULL AND m.terrain != 'indoor' AND x.deleted_in_garmin = 0")
+        for v, h in json.loads(r[1])]
+

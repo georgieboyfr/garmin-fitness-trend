@@ -64,6 +64,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 9. Courses suivies, indépendantes du coach : liste (GPX ou distance, date facultative), prédiction enregistrée chaque semaine, graphique par course avec fourchette et objectif, vue d'ensemble sur 4 semaines (3 novembre 2026 ; enregistrement le lundi et 12 semaines rejouées à l'ajout, choix de Greg ; reste à valider, section 10 du brief)
   - [x] 10. Après la course : activité reliée automatiquement, écart prédiction / résultat, calibration (3 novembre 2026 ; correction proposée et activée dans l'admin, choix de Greg ; reste à valider, section 10 du brief)
   - [x] 10 bis. Fiche d'une course réalisée : bouton qui lance l'estimation sur la trace de la sortie (forme de la veille et forme d'aujourd'hui), graphique de l'écart cumulé au fil des km (choix de Greg) (demande de Greg du 3 novembre 2026, fait le même jour)
+  - [x] 10 ter. Niveau ajusté par la FC (vitesse à 85 % de la LTHR, références sur 4 mois), réglages figés et vraie précision séparée de l'erreur sur les courses de réglage (3 novembre 2026, choix de Greg ; section 10 du brief)
   - [ ] 11. Vérification ordinateur et mobile, v0.3.0
   - Points à trancher avec Greg au fil des étapes : terrain technique et chaleur (étape 6 ou plus tard), forme projetée à la date de la course (le coach de la phase 4 la fournira ; en attendant, forme actuelle maintenue)
   - Tranché : l'estimateur a son propre onglet dans le menu (3 novembre 2026)

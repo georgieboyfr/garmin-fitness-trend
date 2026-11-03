@@ -43,7 +43,7 @@ from .elevation import (
     resample_positions,
 )
 
-TRAIL_VERSION = 3               # 2 : ravitaillements ; 3 : temps total (part d'arrêt des courses passées)
+TRAIL_VERSION = 4               # 2 : ravitos ; 3 : temps total ; 4 : références ajustées par la FC
 STEP_M = 10.0
 MIN_DISTANCE_M = 1000.0
 MIN_ELEVATION_SHARE = 0.5      # au moins la moitié des points avec une altitude
@@ -73,7 +73,8 @@ AID_MAX = 50
 AID_NAME_MAX = 60
 AID_STOP_MAX_MIN = 120
 STOP_POWER = 2                 # part d'arrêt ∝ (heures en mouvement)², voir stop_rate
-STOP_DEFAULT = 0.0015          # faute de course passée : 1,4 % du temps total à 3 h, 5,4 % à 6 h
+STOP_DEFAULT = 0.001           # faute de course passée, valeur générique arrondie (non calée sur un
+                               # coureur) : 0,9 % du temps total à 3 h, 3,6 % à 6 h, 10 % à 10 h
 STOP_MAX_SHARE = 0.3
 
 
@@ -413,7 +414,8 @@ def aid_table(profile, times, stations, spread: float, factor: float = 1.0) -> l
 
 
 def predict_trail(profile, model, efforts, day: date, window_days: int = estimator.WINDOW_DAYS,
-                  fatigue: dict | None = None, aid_stations=None, stops: dict | None = None) -> dict | None:
+                  fatigue: dict | None = None, aid_stations=None, stops: dict | None = None,
+                  trend=None) -> dict | None:
     """Temps estimé sur le parcours, avec sa fourchette, ses tronçons, ses ravitos et son profil,
     ou None faute de modèle allure-pente ou d'effort route récent. Les temps (`*_s`) sont des temps
     totaux : arrêts saisis aux ravitos s'il y en a, sinon part d'arrêt de l'historique (`stops`,
@@ -422,7 +424,7 @@ def predict_trail(profile, model, efforts, day: date, window_days: int = estimat
         return None
     eq_cum = equivalent_steps(profile, model)
     eq_m = float(eq_cum[-1])
-    road = estimator.predict_road(efforts, day, eq_m, window_days=window_days)
+    road = estimator.predict_road(efforts, day, eq_m, window_days=window_days, trend=trend)
     if not road:
         return None
     ref = road["reference"]
@@ -476,7 +478,7 @@ def predict_trail(profile, model, efforts, day: date, window_days: int = estimat
 
 def estimate_gpx(lats, lons, eles, acts, efforts, day: date, window_days=estimator.WINDOW_DAYS,
                  model_days=estimator.MODEL_DAYS, dem_profile=None, params=None, aid_stations=None,
-                 race_ids=frozenset()) -> dict:
+                 race_ids=frozenset(), trend=None) -> dict:
     """Chaîne complète pour un GPX : profil, modèle allure-pente, fatigue et part d'arrêt (courses
     confirmées `race_ids`) au soir de `day`."""
     profile = route_profile(lats, lons, eles, dem_profile, params)
@@ -487,7 +489,8 @@ def estimate_gpx(lats, lons, eles, acts, efforts, day: date, window_days=estimat
     if not model:
         return {"error": "Pas assez de sorties avec un profil d'altitude pour ton modèle allure-pente."}
     result = predict_trail(profile, model, efforts, day, window_days,
-                           fatigue_exponent(acts, model, day), aid_stations, stop_rate(acts, race_ids, day))
+                           fatigue_exponent(acts, model, day), aid_stations, stop_rate(acts, race_ids, day),
+                           trend)
     if result is None:
         return {"error": "Aucun effort route de 3 km ou plus sur les 6 derniers mois pour caler le niveau."}
     return result
@@ -498,7 +501,7 @@ def estimate_gpx(lats, lons, eles, acts, efforts, day: date, window_days=estimat
 # ---------- validation sur les courses trail passées ----------
 
 def validate_trail(races, acts, efforts, race_ids, window_days: int = estimator.WINDOW_DAYS,
-                   model_days: int | None = estimator.MODEL_DAYS) -> dict:
+                   model_days: int | None = estimator.MODEL_DAYS, trend=None) -> dict:
     """Estimateur trail rejoué sur chaque course trail confirmée, sa propre trace servant de GPX,
     avec la forme de la veille (sorties, modèle allure-pente, exposant de fatigue et part d'arrêt
     jusqu'à la veille). races : liste de (sortie, profil de sa trace ou None). Écart en %, positif
@@ -518,7 +521,7 @@ def validate_trail(races, acts, efforts, race_ids, window_days: int = estimator.
                "reason": None}
         model = estimator.grade_pace_model(acts, day, model_days) if profile else None
         est = predict_trail(profile, model, efforts, day, window_days, fatigue_exponent(acts, model, day),
-                            stops=stop_rate(acts, race_ids, day)) if model else None
+                            stops=stop_rate(acts, race_ids, day), trend=trend) if model else None
         if profile is None:
             row["reason"] = "trace ou altitude indisponible"
         elif model is None:
@@ -539,4 +542,5 @@ def validate_trail(races, acts, efforts, race_ids, window_days: int = estimator.
     if summary:
         summary["within"] = sum(1 for r in rows if r["within"])
     return {"version": TRAIL_VERSION, "races": rows, "total": summary,
-            "moving": estimator.error_summary(rows, "moving_error_pct")}
+            "moving": estimator.error_summary(rows, "moving_error_pct"),
+            "split": estimator.split_summary(rows, "error_pct")}

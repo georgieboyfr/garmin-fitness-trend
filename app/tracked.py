@@ -17,7 +17,19 @@ from datetime import UTC, date, datetime, timedelta
 
 import numpy as np
 
-from . import courses, db, detail, estimator, gpx_store, metrics_job, queries, settings, stats, trail
+from . import (
+    courses,
+    db,
+    detail,
+    estimator,
+    gpx_store,
+    hr_speed,
+    metrics_job,
+    queries,
+    settings,
+    stats,
+    trail,
+)
 from .elevation import series_distance
 from .series import read_series
 
@@ -134,12 +146,13 @@ def predictions(conn, race_id: int) -> list[dict]:
 # ---------- prédictions ----------
 
 def load_data(cfg, conn) -> dict:
-    """Sorties, meilleurs efforts, courses confirmées et réglages de D+ : tout ce dont les
-    estimateurs ont besoin."""
+    """Sorties, meilleurs efforts, courses confirmées, réglages de D+, LTHR et tendance FC / vitesse :
+    tout ce dont les estimateurs ont besoin."""
+    lthr = metrics_job.params_of(cfg, conn)["lthr"]
     return {"acts": queries.running_activities(conn), "efforts": queries.best_efforts(conn),
             "confirmed": {i for i, s in queries.race_decisions(conn).items() if s == "confirmed"},
-            "params": settings.get(conn, "elevation"),
-            "lthr": metrics_job.params_of(cfg, conn)["lthr"]}
+            "params": settings.get(conn, "elevation"), "lthr": lthr,
+            "trend": hr_speed.SpeedTrend(queries.steady_blocks(conn), lthr)}
 
 
 def fitness_on(acts, day: date) -> float | None:
@@ -157,9 +170,10 @@ def predict(cfg, race: dict, day: date, data: dict, dem=None) -> dict | None:
         stations = gpx_store.meta(cfg, race["gpx_id"], stations=True)["aid_stations"]
         result = trail.estimate_gpx(lats, lons, eles, data["acts"], data["efforts"], day,
                                     dem_profile=dem_profile, params=data["params"], aid_stations=stations,
-                                    race_ids=data["confirmed"])
+                                    race_ids=data["confirmed"], trend=data.get("trend"))
         return None if result.get("error") else result
-    return estimator.predict_road(data["efforts"], day, race["distance_m"], race["gain_m"] or 0.0)
+    return estimator.predict_road(data["efforts"], day, race["distance_m"], race["gain_m"] or 0.0,
+                                  trend=data.get("trend"))
 
 
 def record(cfg, conn, today: date, race_ids=None, replay_weeks: int = 0, data: dict | None = None,
@@ -175,9 +189,15 @@ def record(cfg, conn, today: date, race_ids=None, replay_weeks: int = 0, data: d
             continue
         if race["activity_id"]:
             continue                    # course courue : plus de prédiction
-        have = {r["week"] for r in conn.execute("SELECT week FROM tracked_predictions WHERE race_id=?",
-                                                 (race["id"],))}
-        for w in weeks:
+        # semaines rejouées avec une ancienne version de l'estimateur : recalculées ; celles
+        # enregistrées en temps réel gardent ce qui avait été prédit à l'époque
+        stale = [date.fromisoformat(r["week"]) for r in conn.execute(
+            "SELECT week FROM tracked_predictions WHERE race_id=? AND replayed=1 AND version!=?",
+            (race["id"], VERSION))]
+        have = {r["week"] for r in conn.execute(
+            "SELECT week FROM tracked_predictions WHERE race_id=? AND (replayed=0 OR version=?)",
+            (race["id"], VERSION))}
+        for w in sorted(set(weeks) | set(stale)):
             if w.isoformat() in have or (race["race_date"] and w.isoformat() > race["race_date"]):
                 continue
             data = data or load_data(cfg, conn)
@@ -365,9 +385,9 @@ def _proposal(rows, key) -> dict:
 def proposed_corrections(cfg, conn, data: dict | None = None) -> dict:
     """Correction proposée par terrain, d'après le rejeu des courses confirmées (périodes par défaut)."""
     data = data or load_data(cfg, conn)
-    road = estimator.validate_road(data["acts"], data["efforts"], data["confirmed"])
+    road = estimator.validate_road(data["acts"], data["efforts"], data["confirmed"], trend=data.get("trend"))
     trail_v = trail.validate_trail(race_profiles(cfg, data["acts"], data["confirmed"], data["params"]),
-                                   data["acts"], data["efforts"], data["confirmed"])
+                                   data["acts"], data["efforts"], data["confirmed"], trend=data.get("trend"))
     return {"road": _proposal(road["races"], "error_pct"), "trail": _proposal(trail_v["races"], "error_pct")}
 
 
@@ -411,7 +431,8 @@ def estimate_vs_actual(cfg, conn, activity_id: int, today: date) -> dict:
         if model:
             r = trail.predict_trail(profile, model, data["efforts"], day,
                                     fatigue=trail.fatigue_exponent(data["acts"], model, day),
-                                    stops=trail.stop_rate(data["acts"], data["confirmed"], day))
+                                    stops=trail.stop_rate(data["acts"], data["confirmed"], day),
+                                    trend=data.get("trend"))
         if r:
             estimates.append({"key": key, "label": label, "day": day.isoformat(), "chart": r["chart"],
                               **{k: r[k] for k in ("optimistic_s", "realistic_s", "prudent_s", "moving_s",
@@ -467,6 +488,14 @@ def summary(cfg, conn, race: dict, today: date, factors: dict | None = None) -> 
             "target_gap_s": (round(last["realistic_s"] - race["target_s"])
                              if last and race["target_s"] else None),
             "past": days is not None and days < 0}
+
+
+def ahead_errors(races: list[dict]) -> dict | None:
+    """Erreur des prédictions enregistrées en temps réel avant la course (pas rejouées) : la seule
+    mesure qui ne doit rien au réglage de l'estimateur."""
+    rows = [{"error_pct": r["result"]["error_pct"]} for r in races
+            if r["result"] and r["result"]["prediction"] and not r["result"]["prediction"]["replayed"]]
+    return estimator.error_summary(rows, "error_pct")
 
 
 def overview(cfg, conn, today: date) -> list[dict]:

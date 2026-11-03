@@ -20,10 +20,15 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Après la course : course suivie reliée automatiquement à sa sortie (ou à la main), résultat face à la dernière prédiction (écart, fourchette, objectif), point du résultat sur le graphique. Migration `0015_tracked_link_manual`.
 - Calibration de l'estimateur (admin) : correction proposée par terrain d'après le rejeu des courses confirmées, appliquée sur demande et figée, signalée sur les estimations.
 - Fiche d'une course réalisée : estimation rejouée sur sa trace avec la forme de la veille et celle d'aujourd'hui, face au temps réel, et courbe de l'écart cumulé le long du parcours sur le profil d'altitude, ou au choix temps de passage réels et estimés.
+- Précision de l'estimateur : erreur sur les courses ayant servi au réglage (flatteuse) séparée de la vraie précision (prédictions enregistrées avant le départ des courses suivies, rejeu des courses suivantes).
 
 ### Modifié
+- Estimateur : chaque référence route est ramenée à ton aérobie du jour d'après l'évolution de ta vitesse à FC égale (85 % de la LTHR, droite FC / vitesse sur 12 mois), et cherchée sur 4 mois au lieu de 12 semaines ; référence affichée avec son ajustement. Semaines rejouées des courses suivies recalculées quand l'estimateur change. Valeurs par défaut génériques (part d'arrêt, effet de la forme).
 - Page Estimateur : biais affiché « sans biais » au lieu de « −0,0 % ».
 - Estimateur route : exposant standard de Riegel (1,06) au lieu de l'exposant personnel, qui se trompait davantage sur les courses passées (8,4 % d'erreur moyenne contre 4,4 %) ; l'exposant personnel reste affiché pour comparaison.
+
+### Corrigé
+- En développement, scripts et styles rechargés à chaque démarrage (le navigateur gardait d'anciennes versions).
 
 ## [0.2.0] - 2026-11-03
 

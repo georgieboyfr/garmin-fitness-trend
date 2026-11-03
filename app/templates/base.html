@@ -9,7 +9,7 @@
   // thème choisi (clair, sombre ou automatique) appliqué avant l'affichage, sans flash
   try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 </script>
-<link rel="stylesheet" href="/static/app.css?v={{ version }}">
+<link rel="stylesheet" href="/static/app.css?v={{ asset_version }}">
 {% block head %}{% endblock %}
 </head>
 <body>
@@ -37,7 +37,7 @@
 <footer class="footer">Fitness Trend {{ version }}</footer>
 
 <script src="/static/vendor/echarts.min.js?v=5.6.0"></script>
-<script src="/static/app.js?v={{ version }}"></script>
+<script src="/static/app.js?v={{ asset_version }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

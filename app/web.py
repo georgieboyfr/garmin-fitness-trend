@@ -7,6 +7,7 @@ pas d'appel d'API supplémentaire, et rien à mettre en cache côté navigateur.
 import hashlib
 import json
 import math
+import time
 from datetime import UTC, date, datetime
 from pathlib import Path
 from urllib.parse import quote, unquote
@@ -23,6 +24,7 @@ from . import (
     detail,
     estimator,
     gpx_store,
+    hr_speed,
     metrics_job,
     queries,
     settings,
@@ -48,6 +50,10 @@ PAGES = [
 
 router = APIRouter(include_in_schema=False)
 
+# paramètre de version des fichiers statiques : la version publiée, ou en développement l'heure de
+# démarrage, pour que le navigateur ne garde pas d'anciens scripts d'une session à l'autre
+ASSET_VERSION = __version__ if not __version__.endswith("-dev") else f"dev{int(time.time())}"
+
 
 def _today(request: Request):
     return datetime.now(ZoneInfo(request.app.state.config.timezone)).date()
@@ -63,6 +69,7 @@ def _login_redirect(request: Request):
 def render(request: Request, template: str, active: str, **context):
     return TEMPLATES.TemplateResponse(request, template, {
         "version": __version__,
+        "asset_version": ASSET_VERSION,
         "nav": [(path, label) for path, label, ready in PAGES if ready],
         "active": active,
         **context,
@@ -189,7 +196,8 @@ def sortie(request: Request, activity_id: int):
         finally:
             conn.close()
     if data is None:
-        return HTMLResponse(TEMPLATES.get_template("not_found.html").render(version=__version__, nav=[
+        return HTMLResponse(TEMPLATES.get_template("not_found.html").render(
+            version=__version__, asset_version=ASSET_VERSION, nav=[
             (path, label) for path, label, ready in PAGES if ready], active=""), status_code=404)
     return render(request, "sortie.html", "/sorties", data=data)
 
@@ -249,6 +257,7 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
         confirmed = {i for i, status in queries.race_decisions(conn).items() if status == "confirmed"}
         elevation_params = settings.get(conn, "elevation")
         factors = tracked.corrections(conn)
+        trend = hr_speed.SpeedTrend(queries.steady_blocks(conn), lthr)
     finally:
         conn.close()
     today = _today(request)
@@ -259,7 +268,8 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
     window = weeks_value * 7
     km, gain_m = _number(distance), _number(gain) or 0.0
     model = estimator.grade_pace_model(acts, today, estimator.MODEL_PERIODS[months_value])
-    estimate = estimator.predict_road(efforts, today, km * 1000, gain_m, window_days=window) if km else None
+    estimate = (estimator.predict_road(efforts, today, km * 1000, gain_m, window_days=window, trend=trend)
+                if km else None)
     trail_result, gpx_meta = None, None
     if gpx_store.exists(cfg, gpx):
         gpx_meta = gpx_store.meta(cfg, gpx, stations=True)
@@ -267,9 +277,10 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
         trail_result = trail.estimate_gpx(lats, lons, eles, acts, efforts, today, window,
                                           estimator.MODEL_PERIODS[months_value],
                                           dem_profile, elevation_params,
-                                          gpx_meta["aid_stations"], confirmed)
+                                          gpx_meta["aid_stations"], confirmed, trend)
     estimate = estimator.apply_correction(estimate, factors["road"])
     trail_result = estimator.apply_correction(trail_result, factors["trail"])
+    tracked_rows = _tracked_overview(cfg, today)
     profile = estimator.current_form(acts, efforts, today, lthr, window)
     slope = estimator.fitness_slope(acts, efforts, today, window)
     fitness = profile["load"]["fitness"] if profile["load"] else None
@@ -288,18 +299,18 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
                       trail_context=context(trail_result, trail_result.get("distance_m"),
                                             trail_result.get("gain_m")) if trail_result else None,
                       table=[estimator.apply_correction(r, factors["road"])
-                             for r in estimator.road_table(efforts, today, window)],
+                             for r in estimator.road_table(efforts, today, window, trend)],
                       estimate=estimate, factors=factors,
-                      validation=estimator.validate_road(acts, efforts, confirmed, window),
+                      validation=estimator.validate_road(acts, efforts, confirmed, window, trend),
                       trail_validation=trail.validate_trail(
                           tracked.race_profiles(cfg, acts, confirmed, elevation_params), acts, efforts,
                           confirmed,
-                          window, estimator.MODEL_PERIODS[months_value]),
+                          window, estimator.MODEL_PERIODS[months_value], trend),
                       weeks=weeks_value, months=months_value, form_weeks=estimator.FORM_WEEKS,
                       personal_exponent=estimator.personal_exponent(efforts, today),
                       model=model, model_table=estimator.model_table(model) if model else [],
                       trail=trail_result, gpx=gpx_meta, gpx_recent=gpx_store.recent(cfg),
-                      tracked=_tracked_overview(cfg, today),
+                      tracked=tracked_rows, ahead=tracked.ahead_errors(tracked_rows),
                       query={"distance": distance, "gain": gain, "gpx": gpx_meta["id"] if gpx_meta else ""})
     if weeks_chosen or months_chosen:
         response.set_cookie(ESTIMATOR_COOKIE, f"{weeks_value}-{months_value}", max_age=365 * 86400,
@@ -393,7 +404,8 @@ def tracked_page(request: Request, race_id: int):
         race = tracked.get(conn, race_id)
         if race is None:
             return HTMLResponse(TEMPLATES.get_template("not_found.html").render(
-                version=__version__, nav=[(path, label) for path, label, ready in PAGES if ready], active=""),
+                version=__version__, asset_version=ASSET_VERSION,
+                nav=[(path, label) for path, label, ready in PAGES if ready], active=""),
                 status_code=404)
         data = tracked.load_data(cfg, conn)
         if tracked.link_races(cfg, conn, today, data):

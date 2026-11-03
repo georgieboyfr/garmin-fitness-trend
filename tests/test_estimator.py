@@ -129,7 +129,8 @@ def test_predict_road_gain_adds_flat_equivalent_distance():
 
 
 def test_predict_road_falls_back_to_six_months_then_none():
-    efforts = [eff("distance", 5000, 1500, "2026-07-01")]
+    assert not estimator.predict_road([eff("distance", 5000, 1500, "2026-07-15")], DAY, 10000)["fallback"]
+    efforts = [eff("distance", 5000, 1500, "2026-06-01")]                    # plus de 4 mois
     p = estimator.predict_road(efforts, DAY, 10000)
     assert p["fallback"] and p["window_days"] == estimator.FALLBACK_WINDOW_DAYS
     assert estimator.predict_road([eff("distance", 5000, 1500, "2026-01-01")], DAY, 10000) is None
@@ -176,8 +177,17 @@ def test_validate_road_summary_and_missing_estimate():
     assert len(errors) == 2 and v["races"][-1]["estimate"] is None
     assert v["used"]["bias_pct"] == round(sum(errors) / 2, 1)
     assert v["used"]["mae_pct"] == round(sum(abs(e) for e in errors) / 2, 1)
-    assert estimator.validate_road([], efforts, set()) == {"version": estimator.ESTIMATE_VERSION, "races": [],
-                                                           "used": None, "personal": None}
+    empty = estimator.validate_road([], efforts, set())
+    assert empty["races"] == [] and empty["used"] is None and empty["personal"] is None
+    assert empty["split"] == {"tuned": None, "fresh": None, "tuned_until": estimator.TUNED_UNTIL.isoformat()}
+
+
+def test_split_summary_separates_tuning_races_from_later_ones():
+    rows = [{"date": "2026-07-11", "e": 4.0}, {"date": "2026-11-03", "e": -2.0},
+            {"date": "2027-03-14", "e": 8.0}]
+    s = estimator.split_summary(rows, "e")
+    assert s["tuned"]["n"] == 2 and s["tuned"]["mae_pct"] == 3.0
+    assert s["fresh"] == {"n": 1, "mae_pct": 8.0, "bias_pct": 8.0}
 
 
 # ---------- modèle allure-pente ----------
@@ -241,9 +251,10 @@ def test_form_window_is_configurable():
     p = estimator.current_form(acts, efforts, DAY, lthr=170, window_days=42)
     assert p["window_days"] == 42 and p["start"] == "2026-09-23" and p["runs"] == 1
     assert p["road"]["distances"][0]["time_s"] == 1600
-    assert estimator.predict_road(efforts, DAY, 5000, window_days=42)["reference"]["time_s"] == 1600
-    assert estimator.predict_road(efforts, DAY, 5000)["reference"]["time_s"] == 1500
-    assert estimator.road_table(efforts, DAY, 42)[0]["window_days"] == 42
+    # les références route sont cherchées sur 4 mois au moins, quelle que soit la fenêtre de la forme
+    assert estimator.predict_road(efforts, DAY, 5000, window_days=42)["reference"]["time_s"] == 1500
+    assert estimator.predict_road(efforts, DAY, 5000, window_days=182)["window_days"] == 182
+    assert estimator.road_table(efforts, DAY, 42)[0]["window_days"] == estimator.REFERENCE_DAYS
 
 
 def test_grade_pace_model_period_and_whole_history():
@@ -322,4 +333,39 @@ def test_apply_correction_scales_every_duration():
     assert c["correction"] == {"factor": 0.9, "pct": -10.0} and r["realistic_s"] == 1000
     assert estimator.apply_correction(r, 1.0) is r and estimator.apply_correction(None, 0.9) is None
     assert estimator.apply_correction({"error": "x"}, 0.9) == {"error": "x"}
+
+
+def test_speed_trend_ratio_follows_speed_at_fixed_hr():
+    from app import hr_speed
+
+    blocks = []
+    for k in range(400):                       # 2025 : 3 m/s à 150 ; 2026 : 3,3 m/s à 150
+        d = (date(2025, 1, 1) + timedelta(days=k)).isoformat()
+        fast = k >= 365
+        for v in (2.5, 3.0, 3.5):
+            blocks.append((d, v * (1.1 if fast else 1.0), 150 + 20 * (v - 3.0)))
+    trend = hr_speed.SpeedTrend(blocks, lthr=150 / hr_speed.TREND_HR_RATIO)
+    assert trend.speed(date(2025, 12, 31)) == pytest.approx(3.0, rel=1e-6)
+    assert trend.speed(date(2020, 1, 1)) is None
+    assert trend.ratio(date(2020, 1, 1), date(2025, 12, 31)) == 1.0
+    late = trend.speed(date(2026, 2, 4))
+    assert 3.0 < late < 3.3
+    assert trend.ratio(date(2025, 12, 31), date(2026, 2, 4)) == pytest.approx(3.0 / late)
+
+
+class FixedTrend:
+    def __init__(self, factor):
+        self.factor = factor
+
+    def ratio(self, then, now):
+        return self.factor if then < now else 1.0
+
+
+def test_predict_road_adjusts_references_with_the_trend():
+    efforts = [eff("distance", 10000, 3000, "2026-10-01")]
+    base = estimator.predict_road(efforts, DAY, 21097.5)
+    r = estimator.predict_road(efforts, DAY, 21097.5, trend=FixedTrend(0.96))
+    assert r["realistic_s"] == round(base["realistic_s"] * 0.96)
+    assert r["reference"]["raw_time_s"] == 3000 and r["reference"]["time_s"] == pytest.approx(2880)
+    assert r["reference"]["adjust_pct"] == -4.0 and base["reference"]["adjust_pct"] == 0.0
 

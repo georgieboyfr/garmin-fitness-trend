@@ -71,7 +71,7 @@
 
 <section class="card">
   <div class="card-head">
-    <h2>Route {{ tip("Formule de Riegel : temps visé = temps de référence × (distance visée / distance de référence) puissance k. L'exposant k vaut 1,06, la valeur standard : plus il est élevé, plus on ralentit quand la distance s'allonge. Ton exposant personnel, calé sur tes meilleurs efforts route, est plus élevé mais se trompait davantage sur tes courses passées. Chacun de tes meilleurs efforts route des {{ weeks }} dernières semaines (3 km et plus, 20 min et plus) est extrapolé à la distance visée : l'estimation la plus rapide est retenue, car un effort d'entraînement n'est pas toujours à fond. La fourchette s'élargit quand la distance visée s'éloigne de la distance de référence.") }}</h2>
+    <h2>Route {{ tip("Formule de Riegel : temps visé = temps de référence × (distance visée / distance de référence) puissance k. L'exposant k vaut 1,06, la valeur standard : plus il est élevé, plus on ralentit quand la distance s'allonge. Ton exposant personnel, calé sur tes meilleurs efforts route, est plus élevé mais se trompait davantage sur tes courses passées. Chacun de tes meilleurs efforts route des {{ weeks }} dernières semaines (3 km et plus, 20 min et plus) est extrapolé à la distance visée : l'estimation la plus rapide est retenue, car un effort d'entraînement n'est pas toujours à fond. Chaque effort est d'abord ramené à ta forme du jour : son temps est corrigé de l'évolution de ta vitesse à FC égale depuis sa date (droite FC / vitesse sur 12 mois), ce qui compte même sans séance rapide récente. La fourchette s'élargit quand la distance visée s'éloigne de la distance de référence.") }}</h2>
   </div>
   <form class="filters" method="get">
     <input type="hidden" name="weeks" value="{{ weeks }}"><input type="hidden" name="months" value="{{ months }}">
@@ -100,7 +100,7 @@
   <p class="small muted">
     {{ ('%g' % (e.distance_m / 1000)) | replace('.', ',') }} km
     {% if e.gain_m %} avec <span data-num="{{ e.gain_m }}" data-unit="m"></span> de D+, soit <span data-num="{{ e.equivalent_m / 1000 }}" data-dec="1" data-unit="km"></span> sur le plat {{ tip("Chaque mètre de D+ compte comme environ 6 m de plat en plus (coût énergétique de Minetti pour une montée à 5 %) ; la descente est comptée comme du plat. Approximation grossière en attendant ton modèle allure-pente personnel.") }}{% endif %}
-    · calé sur ton meilleur {{ e.reference.label }} récent ({% if e.reference.kind == "distance" %}<span data-chrono="{{ e.reference.time_s }}"></span>{% else %}<span data-num="{{ e.reference.distance_m / 1000 }}" data-dec="2" data-unit="km"></span>{% endif %}, {{ effort_link(e.reference) }})
+    · calé sur ton meilleur {{ e.reference.label }} récent ({% if e.reference.kind == "distance" %}<span data-chrono="{{ e.reference.time_s }}"></span>{% else %}<span data-num="{{ e.reference.distance_m / 1000 }}" data-dec="2" data-unit="km"></span>{% endif %}, {{ effort_link(e.reference) }}{% if e.reference.adjust_pct %}, ajusté de {{ ('%+.1f' % e.reference.adjust_pct) | replace('-', '−') | replace('.', ',') }} % à ton aérobie du jour {{ tip("Ton efficacité (vitesse à FC 150, droite FC / vitesse sur 12 mois) a changé depuis cet effort : son temps est ramené à ta forme d'aujourd'hui. Négatif : tu cours plus vite à FC égale qu'à l'époque.") }}{% endif %})
     {% if e.fallback %}· aucun effort route en {{ weeks }} semaines : références des 6 derniers mois{% endif %}
     {% if e.correction %}· corrigé de {{ ('%+.1f' % e.correction.pct) | replace('-', '−') | replace('.', ',') }} % (calibration activée dans <a href="/admin">l'admin</a>){% endif %}
   </p>
@@ -172,7 +172,7 @@
     <span data-num="{{ t.gain_m }}" data-unit="m"></span> de D+ et <span data-num="{{ t.loss_m }}" data-unit="m"></span> de D−
     ({{ {"ign": "altitude du MNT IGN", "copernicus": "altitude du MNT Copernicus", "ign+copernicus": "altitude des MNT IGN et Copernicus"}.get(t.elevation_source, "altitude du GPX, faute de MNT") }}),
     soit <span data-num="{{ t.equivalent_m / 1000 }}" data-dec="1" data-unit="km"></span> équivalents plat
-    · calé sur ton meilleur {{ t.reference.label }} récent ({{ effort_link(t.reference) }})
+    · calé sur ton meilleur {{ t.reference.label }} récent ({{ effort_link(t.reference) }}{% if t.reference.adjust_pct %}, ajusté de {{ ('%+.1f' % t.reference.adjust_pct) | replace('-', '−') | replace('.', ',') }} % à ton aérobie du jour {{ tip("Ton efficacité (vitesse à FC 150, droite FC / vitesse sur 12 mois) a changé depuis cet effort : son temps est ramené à ta forme d'aujourd'hui. Négatif : tu cours plus vite à FC égale qu'à l'époque.") }}{% endif %})
     {% if t.fatigue_applies %}· exposant de fatigue {{ "%.2f" | format(t.fatigue.value) | replace(".", ",") }}{% if t.fatigue.personal %} (ta courbe au-delà de 2 h{% if t.fatigue.fitted != t.fatigue.value %}, borné{% endif %}){% else %} (valeur par défaut, pas assez de sorties longues){% endif %}{% endif %}
     {% if t.fallback %}· aucun effort route en {{ weeks }} semaines : références des 6 derniers mois{% endif %}
     {% if t.stops_source == "ravitos" %}· temps total, dont <span data-duration="{{ t.stops_s }}"></span> d'arrêts saisis aux ravitos{% elif t.stops_source == "history" %}· temps total, dont <span data-duration="{{ t.stops_s }}"></span> d'arrêts ({{ t.stop_share_pct | string | replace(".", ",") }} % du temps{% if t.stop_rate.personal %}, d'après tes {{ t.stop_rate.points | length }} courses trail passées{% else %}, valeur par défaut faute de course trail passée{% endif %} ; tes arrêts saisis aux ravitos la remplacent) {{ tip("Part du temps passée à l'arrêt en course, qui croît avec le carré de la durée (les ravitos s'allongent sur les longues courses), calée sur tes courses trail confirmées : temps écoulé comparé au temps en mouvement. Les pauses de tes sorties d'entraînement ne comptent pas. Si tu saisis une durée d'arrêt à au moins un ravito, seuls tes arrêts saisis comptent.") }}{% else %}· temps en mouvement, sans arrêt{% endif %}
@@ -239,6 +239,11 @@
   <div class="card-head">
     <h2>Précision sur tes courses passées</h2>
   </div>
+  <p class="small">{% set s1, s2 = validation.split, trail_validation.split %}
+    Les réglages de l'estimateur (fenêtres, exposants, arrêts, ajustement par la FC) ont été choisis en le rejouant sur tes courses jusqu'au <span data-short-date="{{ s1.tuned_until }}"></span> : sur ces courses, l'erreur est flatteuse. {{ tip("Choisir une méthode parce qu'elle colle le mieux à des courses, puis mesurer son erreur sur ces mêmes courses, donne une erreur trop optimiste (surajustement), surtout avec peu de courses. Les réglages sont désormais figés : les courses courues ensuite, et surtout les prédictions de tes courses suivies enregistrées avant le départ, mesurent la vraie précision.") }}
+    <b>Vraie précision</b> :
+    {% if ahead %}{{ ahead.mae_pct | string | replace(".", ",") }} % d'erreur sur {{ ahead.n }} course{{ "s" if ahead.n > 1 }} suivie{{ "s" if ahead.n > 1 }}, prédite{{ "s" if ahead.n > 1 }} avant le départ{% else %}pas encore de course suivie courue avec une prédiction enregistrée avant le départ{% endif %}
+    {%- if s1.fresh or s2.fresh %} ; rejeu des courses suivantes : {% if s1.fresh %}route {{ s1.fresh.mae_pct | string | replace(".", ",") }} % ({{ s1.fresh.n }}){% endif %}{% if s1.fresh and s2.fresh %}, {% endif %}{% if s2.fresh %}trail {{ s2.fresh.mae_pct | string | replace(".", ",") }} % ({{ s2.fresh.n }}){% endif %}{% endif %}.</p>
   <p class="small muted">Mesurée sans correction.{% if factors.road != 1 or factors.trail != 1 %} Correction en vigueur : route {{ ('%+.1f' % ((factors.road - 1) * 100)) | replace('-', '−') | replace('.', ',') }} %, trail {{ ('%+.1f' % ((factors.trail - 1) * 100)) | replace('-', '−') | replace('.', ',') }} %.{% endif %} La correction proposée se règle dans <a href="/admin">l'admin</a>.</p>
   <h3>Route {{ tip("L'estimateur route est rejoué sur chacune de tes courses route confirmées, avec uniquement les sorties jusqu'à la veille (forme de la veille), puis comparé à ton temps réel (temps écoulé). Écart positif : estimation trop lente. L'erreur moyenne est la moyenne des écarts en valeur absolue ; le biais, leur moyenne signée. La colonne « Exposant personnel » montre ce qu'aurait donné l'exposant calé sur tes meilleurs efforts route des 2 années précédant la course.") }}</h3>
   {% if v.used %}
@@ -473,7 +478,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/courses_suivies.js?v={{ version }}"></script>
+<script src="/static/courses_suivies.js?v={{ asset_version }}"></script>
 <script type="application/json" id="aid-data">{{ (gpx.aid_stations if gpx and gpx.aid_stations else []) | tojson }}</script>
 <script type="application/json" id="trail-data">{{ (trail.chart if trail and not trail.error else none) | tojson }}</script>
 <script>

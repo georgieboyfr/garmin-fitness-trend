@@ -20,6 +20,12 @@ des 2 dernières années, donnait 8,4 % d'erreur contre 4,4 % ; il reste calcul�
 Le niveau vient des meilleurs efforts route de la même période que la forme : chacun est extrapolé à la
 distance visée et l'estimation la plus rapide est retenue (un effort d'entraînement n'est pas
 toujours à fond).
+Chaque référence est ramenée à ton aérobie du jour : son temps est multiplié par le rapport de ta
+vitesse à FC 150 à sa date et au jour donné (droites FC / vitesse sur 12 mois, hr_speed.SpeedTrend).
+Les références sont cherchées sur 4 mois (REFERENCE_DAYS), plus longtemps que la forme : une séance
+rapide d'il y a 3 mois compte encore, ramenée à la forme du jour. Choix de Greg après le rejeu des
+courses : erreur 4,6 % au lieu de 5,0 %, biais −0,9 % au lieu de +2,9 %, 15 sauts de plus de 5 % d'une
+semaine à l'autre au lieu de 20 (12 semaines ajustées : 3,6 % mais aussi instable qu'avant).
 Le D+ éventuel est converti en distance équivalente sur le plat (coût de Minetti d'une montée à
 5 %, descente neutre). La fourchette s'élargit avec l'écart entre la distance de référence et la
 distance visée (incertitude sur l'exposant).
@@ -35,7 +41,7 @@ from statistics import median
 from . import grade, stats
 
 PROFILE_VERSION = 1
-ESTIMATE_VERSION = 2           # 2 : exposant standard au lieu de l'exposant personnel
+ESTIMATE_VERSION = 3           # 2 : exposant standard ; 3 : références ajustées par la FC
 WINDOW_DAYS = 84               # 12 semaines, par défaut
 FORM_WEEKS = (6, 8, 10, 12)    # fenêtres de la forme actuelle proposées sur la page
 EF_REFERENCE_DAYS = 365
@@ -58,6 +64,11 @@ EXPONENT_DAYS = 730
 EXPONENT_MIN_RATIO = 3.0       # la frontière doit couvrir au moins un rapport 3 entre distances
 MIN_REF_DISTANCE_M = 3000      # en dessous, effort trop court (part anaérobie)
 MIN_REF_DURATION_S = 1200
+REFERENCE_DAYS = 126           # références route cherchées sur 4 mois (choix de Greg), ajustées par la FC
+# Réglages de l'estimateur (fenêtres, exposants, part d'arrêt, ajustement FC) choisis sur les courses
+# de Greg jusqu'à cette date, puis figés : l'erreur mesurée sur ces courses-là est optimiste
+# (surajustement) ; celle des courses suivantes est la vraie mesure.
+TUNED_UNTIL = date(2026, 11, 3)
 FALLBACK_WINDOW_DAYS = 182     # aucune référence route sur la période : on remonte à 6 mois
 BASE_SPREAD = 0.02             # fourchette : ±2 %, plus 3 % par facteur e entre les distances
 EXPONENT_SPREAD = 0.03
@@ -233,11 +244,13 @@ def equivalent_distance(distance_m: float, gain_m: float = 0.0) -> float:
 
 
 def predict_road(efforts, day: date, distance_m: float, gain_m: float = 0.0, exponent: dict | None = None,
-                 window_days: int = WINDOW_DAYS):
+                 window_days: int = WINDOW_DAYS, trend=None):
     """Temps estimé sur route « si je courais au soir de `day` », avec sa fourchette, ou None
-    faute d'effort route récent."""
+    faute d'effort route récent. trend (hr_speed.SpeedTrend) : références ajustées à l'aérobie du
+    jour ; la référence retenue porte alors son temps ajusté (time_s), le temps réel (raw_time_s)
+    et l'ajustement (adjust_pct)."""
     exponent = exponent or STANDARD_EXPONENT
-    window = window_days
+    window = max(window_days, REFERENCE_DAYS)
     refs = road_points(efforts, day - timedelta(days=window - 1), day)
     if not refs:
         window = FALLBACK_WINDOW_DAYS
@@ -247,6 +260,10 @@ def predict_road(efforts, day: date, distance_m: float, gain_m: float = 0.0, exp
     k = exponent["value"]
     target = equivalent_distance(distance_m, gain_m)
     for r in refs:
+        factor = trend.ratio(date.fromisoformat(r["date"][:10]), day) if trend else 1.0
+        r["raw_time_s"] = r["time_s"]
+        r["time_s"] = r["time_s"] * factor
+        r["adjust_pct"] = round((factor - 1) * 100, 1) + 0.0
         r["predicted_s"] = round(riegel(r["time_s"], r["distance_m"], target, k))
     best = min(refs, key=lambda r: r["predicted_s"])
     time_s = riegel(best["time_s"], best["distance_m"], target, k)
@@ -260,21 +277,29 @@ def predict_road(efforts, day: date, distance_m: float, gain_m: float = 0.0, exp
         **{f"{k_}_pace_s_km": round(v / distance_m * 1000, 1) for k_, v in times.items()},
         "spread_pct": round(spread * 100, 1),
         "reference": best, "references": refs,
-        "exponent": exponent, "window_days": window, "fallback": window != window_days,
+        "exponent": exponent, "window_days": window, "fallback": window == FALLBACK_WINDOW_DAYS,
     }
 
 
-def road_table(efforts, day: date, window_days: int = WINDOW_DAYS) -> list[dict]:
+def road_table(efforts, day: date, window_days: int = WINDOW_DAYS, trend=None) -> list[dict]:
     """Estimations sur les distances usuelles (5 km, 10 km, semi, marathon)."""
     out = []
     for d in STANDARD_DISTANCES_M:
-        p = predict_road(efforts, day, d, window_days=window_days)
+        p = predict_road(efforts, day, d, window_days=window_days, trend=trend)
         if p:
             out.append({"label": DISTANCE_LABELS[d], **p})
     return out
 
 
 # ---------- validation sur les courses passées ----------
+
+def split_summary(rows, key) -> dict:
+    """Erreur sur les courses ayant servi au réglage (jusqu'à TUNED_UNTIL) et sur les suivantes."""
+    tuned = [r for r in rows if r["date"] <= TUNED_UNTIL.isoformat()]
+    fresh = [r for r in rows if r["date"] > TUNED_UNTIL.isoformat()]
+    return {"tuned": error_summary(tuned, key), "fresh": error_summary(fresh, key),
+            "tuned_until": TUNED_UNTIL.isoformat()}
+
 
 def error_summary(rows, key) -> dict | None:
     errors = [r[key] for r in rows if r.get(key) is not None]
@@ -284,7 +309,7 @@ def error_summary(rows, key) -> dict | None:
             "bias_pct": round(sum(errors) / len(errors), 1) + 0.0}     # + 0.0 : pas de « −0,0 »
 
 
-def validate_road(acts, efforts, confirmed_ids, window_days: int = WINDOW_DAYS) -> dict:
+def validate_road(acts, efforts, confirmed_ids, window_days: int = WINDOW_DAYS, trend=None) -> dict:
     """Estimateur route rejoué sur chaque course route confirmée, avec la forme de la veille :
     écart entre le temps estimé (réaliste) et le temps réel (écoulé), en %, positif quand
     l'estimation est trop lente. Comparé à l'exposant personnel."""
@@ -294,9 +319,10 @@ def validate_road(acts, efforts, confirmed_ids, window_days: int = WINDOW_DAYS) 
             continue
         actual = a.get("elapsed_s") or a["duration_s"]
         day = a["start"].date() - timedelta(days=1)
-        used = predict_road(efforts, day, a["distance_m"], a["gain_m"], window_days=window_days)
+        used = predict_road(efforts, day, a["distance_m"], a["gain_m"], window_days=window_days, trend=trend)
         personal = predict_road(efforts, day, a["distance_m"], a["gain_m"],
-                                exponent=personal_exponent(efforts, day), window_days=window_days)
+                                exponent=personal_exponent(efforts, day), window_days=window_days,
+                                trend=trend)
         row = {"activity_id": a["id"], "date": a["start"].date().isoformat(), "name": a["name"],
                "distance_km": round(a["distance_km"], 1), "gain_m": round(a["gain_m"]),
                "actual_s": round(actual), "estimate": None, "error_pct": None, "within": None,
@@ -314,7 +340,7 @@ def validate_road(acts, efforts, confirmed_ids, window_days: int = WINDOW_DAYS) 
     if summary:
         summary["within"] = sum(1 for r in rows if r["within"])
     return {"version": ESTIMATE_VERSION, "races": rows, "used": summary,
-            "personal": error_summary(rows, "personal_error_pct")}
+            "personal": error_summary(rows, "personal_error_pct"), "split": split_summary(rows, "error_pct")}
 
 
 # ---------- modèle allure-pente personnel ----------
@@ -423,7 +449,7 @@ def model_table(model: dict) -> list[dict]:
 
 LEVEL_DISTANCE_M = 10000
 FORM_MIN_WEEKS = 26            # au moins 26 semaines avec un niveau pour une pente personnelle
-FORM_SLOPE_DEFAULT = -0.008    # −0,8 % de temps par point de fitness
+FORM_SLOPE_DEFAULT = -0.005    # faute d'historique : −0,5 % par point, valeur générique prudente
 FORM_SLOPE_BOUNDS = (-0.02, 0.0)
 FORM_STEPS = (-10, -5, 5, 10)  # écarts de fitness proposés le jour J
 NEAREST_RACES = 3

@@ -10,6 +10,9 @@ Forme du jour : la FC d'une sortie face à celle attendue à cette vitesse (fonc
 3. Écart moyen de la sortie à cette droite, en bpm : négatif = FC plus basse que d'habitude à
    la même vitesse (en forme), positif = plus haute (fatigue, chaleur, maladie, manque de sommeil).
 """
+from bisect import bisect_left, bisect_right
+from datetime import date, timedelta
+
 import numpy as np
 
 BLOCK_S = 60
@@ -105,3 +108,38 @@ def assess(model, blocks) -> dict | None:
     return {"hr_diff": round(diff, 1), "speed_pct": round(speed_pct, 1), "verdict": verdict,
             "blocks": len(rows), "history_blocks": model["n"], "speed_mps": round(float(v.mean()), 2),
             "expected_hr": round(float(model["a"] + model["b"] * v.mean())), "hr": round(float(h.mean()))}
+
+
+# ---------- tendance : vitesse à FC fixe au fil du temps (estimateur) ----------
+
+TREND_HR_RATIO = 0.85      # FC de référence : 85 % de la LTHR (plage des sorties faciles, haut de Z1)
+TREND_DAYS = 365           # droite FC / vitesse apprise sur les 12 mois qui se terminent ce jour-là
+
+
+class SpeedTrend:
+    """Vitesse à FC de référence (TREND_HR_RATIO × LTHR) au soir d'un jour donné, d'après les minutes
+    stables (date, vitesse, FC) des TREND_DAYS jours précédents ; mise en cache par jour. Sert à
+    ramener un effort passé à l'aérobie du jour : rapport des vitesses à FC égale entre les deux dates."""
+
+    def __init__(self, blocks, lthr: float):
+        self.hr = TREND_HR_RATIO * lthr
+        rows = sorted((d[:10], v, h) for d, v, h in blocks)
+        self.days = [r[0] for r in rows]
+        self.blocks = [(r[1], r[2]) for r in rows]
+        self._cache = {}
+
+    def speed(self, day: date) -> float | None:
+        if day not in self._cache:
+            lo = bisect_left(self.days, (day - timedelta(days=TREND_DAYS - 1)).isoformat())
+            hi = bisect_right(self.days, day.isoformat())
+            m = fit(self.blocks[lo:hi])
+            v = (self.hr - m["a"]) / m["b"] if m else None
+            self._cache[day] = v if v and v > 0 else None
+        return self._cache[day]
+
+    def ratio(self, then: date, now: date) -> float:
+        """Facteur de temps pour ramener un effort de `then` à l'aérobie de `now` : < 1 si tu cours
+        plus vite à FC égale aujourd'hui ; 1 faute de données."""
+        a, b = self.speed(then), self.speed(now)
+        return a / b if a and b else 1.0
+
