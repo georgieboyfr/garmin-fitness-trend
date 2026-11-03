@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Accueil · Fitness Trend{% endblock %}
+
+{% macro delta(pct) -%}
+  {% if pct is none %}<span class="delta">—</span>
+  {% else %}<span class="delta {{ 'up' if pct >= 0 else 'down' }}">{{ '+' if pct >= 0 }}{{ '%.0f' % pct }} %</span>{% endif %}
+{%- endmacro %}
+
+{% macro tip(text) -%}
+  <button class="tip" type="button" aria-label="Explication" data-tip="{{ text }}">i</button>
+{%- endmacro %}
+
+{% block content %}
+{% set y = data.ytd %}
+<section class="hero">
+  <h1>{{ y.year }}, à ce jour</h1>
+  <p class="muted">Comparé à {{ y.year - 1 }} à la même date.</p>
+</section>
+
+<section class="kpis">
+  <article class="kpi">
+    <header>Distance {{ tip("Kilomètres courus depuis le 1er janvier, toutes sorties de course à pied (route, trail, tapis).") }}</header>
+    <div class="kpi-value" data-num="{{ y.current.distance_km }}" data-unit="km" data-dec="0"></div>
+    <footer>{{ delta(y.change_pct.distance_km) }} <span class="muted" data-num="{{ y.previous.distance_km }}" data-unit="km" data-dec="0"></span></footer>
+  </article>
+  <article class="kpi">
+    <header>Dénivelé positif {{ tip("D+ recalculé : altimètre pour la Forerunner 255, carte d'altitude IGN le long de la trace pour les autres montres.") }}</header>
+    <div class="kpi-value" data-num="{{ y.current.gain_m }}" data-unit="m" data-dec="0"></div>
+    <footer>{{ delta(y.change_pct.gain_m) }} <span class="muted" data-num="{{ y.previous.gain_m }}" data-unit="m" data-dec="0"></span></footer>
+  </article>
+  <article class="kpi">
+    <header>Km-effort {{ tip("Kilomètres + D+/100 (convention ITRA) : 100 m de montée comptent comme 1 km. Rend comparables une année route et une année trail.") }}</header>
+    <div class="kpi-value" data-num="{{ y.current.km_effort }}" data-unit="km" data-dec="0"></div>
+    <footer>{{ delta(y.change_pct.km_effort) }} <span class="muted" data-num="{{ y.previous.km_effort }}" data-unit="km" data-dec="0"></span></footer>
+  </article>
+  <article class="kpi">
+    <header>Sorties {{ tip("Nombre de sorties de course à pied depuis le 1er janvier.") }}</header>
+    <div class="kpi-value" data-num="{{ y.current.count }}" data-dec="0"></div>
+    <footer>{{ delta(y.change_pct.count) }} <span class="muted">{{ y.previous.count }}</span></footer>
+  </article>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Distance cumulée {{ tip("Cumul jour par jour depuis le 1er janvier. Un total annuel ne se compare qu'en fin d'année ; la courbe dit dès maintenant si tu es en avance ou en retard sur l'an dernier.") }}</h2>
+  </div>
+  <div class="chart" id="chart-cumul" role="img" aria-label="Distance cumulée de l'année comparée à l'année précédente"></div>
+</section>
+
+<section class="grid-2">
+  {% if data.last %}
+  <article class="card">
+    <h2>Dernière sortie</h2>
+    <p class="last-name">{{ data.last.name }}</p>
+    <p class="muted" data-date="{{ data.last.date }}"></p>
+    <dl class="facts">
+      <div><dt>Distance</dt><dd data-num="{{ data.last.distance_km }}" data-unit="km" data-dec="1"></dd></div>
+      <div><dt>D+</dt><dd data-num="{{ data.last.gain_m }}" data-unit="m" data-dec="0"></dd></div>
+      <div><dt>Temps</dt><dd data-duration="{{ data.last.moving_s or 0 }}"></dd></div>
+    </dl>
+  </article>
+  {% endif %}
+  <article class="card">
+    <h2>Depuis {{ data.first_year }}</h2>
+    <dl class="facts">
+      <div><dt>Distance</dt><dd data-num="{{ data.all_time.distance_km }}" data-unit="km" data-dec="0"></dd></div>
+      <div><dt>D+</dt><dd data-num="{{ data.all_time.gain_m }}" data-unit="m" data-dec="0"></dd></div>
+      <div><dt>Sorties</dt><dd data-num="{{ data.all_time.count }}" data-dec="0"></dd></div>
+      <div><dt>Heures</dt><dd data-num="{{ data.all_time.hours }}" data-unit="h" data-dec="0"></dd></div>
+    </dl>
+    <p class="muted small">Cette semaine : <span data-num="{{ data.week.distance_km }}" data-unit="km" data-dec="1"></span>,
+      <span data-num="{{ data.week.gain_m }}" data-unit="m D+" data-dec="0"></span>, {{ data.week.count }} sortie(s).</p>
+  </article>
+</section>
+
+<script type="application/json" id="page-data">{{ data.cumulative | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    const c = JSON.parse(document.getElementById("page-data").textContent);
+    const year = {{ data.ytd.year }};
+    const days = Array.from({ length: c.previous.length || 365 }, (_, i) => i);
+    GFT.chart("chart-cumul", (t) => ({
+      grid: { left: 48, right: 16, top: 36, bottom: 32 },
+      legend: { top: 0, left: 0, textStyle: { color: t.muted } },
+      tooltip: {
+        trigger: "axis", ...t.tooltip,
+        formatter: (ps) => `${GFT.dayLabel(year, ps[0].dataIndex)}<br>` + ps.map((p) =>
+          `${p.marker} ${p.seriesName} : <b>${GFT.num(p.value, 0)} km</b>`).join("<br>"),
+      },
+      xAxis: {
+        type: "category", data: days, boundaryGap: false, ...t.axis,
+        axisLabel: { ...t.axis.axisLabel, interval: (i) => GFT.isMonthStart(year, i),
+                     formatter: (i) => GFT.monthLabel(year, Number(i)) },
+      },
+      yAxis: { type: "value", ...t.axis, axisLabel: { ...t.axis.axisLabel, formatter: "{value} km" } },
+      series: [
+        { name: String(year - 1), type: "line", data: c.previous, showSymbol: false,
+          lineStyle: { width: 2, color: t.series[1] }, itemStyle: { color: t.series[1] } },
+        { name: String(year), type: "line", data: c.current, showSymbol: false,
+          lineStyle: { width: 3, color: t.accent }, itemStyle: { color: t.accent },
+          areaStyle: { color: t.accentSoft } },
+      ],
+    }));
+  })();
+</script>
+{% endblock %}

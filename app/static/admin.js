@@ -58,6 +58,12 @@ $("login-form").addEventListener("submit", (e) => {
       await api("/login", { username: $("login-user").value, password: $("login-password").value });
       $("login-password").value = "";
       showError("login-error", null);
+      // retour à la page de statistiques demandée avant la connexion
+      const next = new URLSearchParams(location.search).get("next");
+      if (next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/admin")) {
+        location.href = next;
+        return;
+      }
       await init();
     } catch (err) {
       showError("login-error", err);

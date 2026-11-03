@@ -81,13 +81,13 @@ def login(body: LoginBody, request: Request, response: Response):
     throttle.success(client)
     secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     response.set_cookie(SESSION_COOKIE, auth.make_session(), max_age=auth.max_age, httponly=True,
-                        samesite="strict", secure=secure, path="/admin")
+                        samesite="strict", secure=secure, path="/")
     return {"authenticated": True}
 
 
 @public.post("/logout")
 def logout(response: Response):
-    response.delete_cookie(SESSION_COOKIE, path="/admin")
+    response.delete_cookie(SESSION_COOKIE, path="/")
     return {"authenticated": False}
 
 

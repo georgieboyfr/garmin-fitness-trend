@@ -2,10 +2,10 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, admin, db, processing
+from . import __version__, admin, db, processing, web
 from .auth import AdminAuth, LoginThrottle, load_or_create_secret
 from .config import Config, load_config
 from .dem import CopernicusDem, Dem, IgnDem
@@ -68,11 +68,7 @@ def create_app(config: Config | None = None, garmin_class=None, sync_options=Non
             return JSONResponse({"status": "error", "error": str(e)}, status_code=503)
         return {"status": "ok", "version": __version__, "schema_version": version}
 
-    @app.get("/", include_in_schema=False)
-    def home():
-        # pas encore de pages de statistiques (phase 2) : l'admin est la seule page
-        return RedirectResponse("/admin")
-
+    app.include_router(web.router)
     app.include_router(admin.pages)
     app.include_router(admin.public)
     app.include_router(admin.protected)

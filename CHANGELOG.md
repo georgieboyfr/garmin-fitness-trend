@@ -4,6 +4,12 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 
 ## [Non publié]
 
+### Ajouté
+- Pages de statistiques (templates Jinja, ECharts embarqué, thèmes clair/sombre/automatique, menu compact sur mobile, info-bulles), protégées par la session de l'admin : page d'accueil avec le cumul de l'année face à l'an dernier à la même date (distance, D+, km-effort, sorties), la courbe de distance cumulée, la dernière sortie et les totaux.
+
+### Modifié
+- Le cookie de session couvre tout le site (et plus seulement `/admin`) ; après connexion, retour à la page demandée.
+
 ## [0.1.1] - 2026-11-03
 
 ### Corrigé
