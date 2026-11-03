@@ -67,7 +67,24 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [ ] 11. Vérification ordinateur et mobile, v0.3.0
   - Points à trancher avec Greg au fil des étapes : terrain technique et chaleur (étape 6 ou plus tard), forme projetée à la date de la course (le coach de la phase 4 la fournira ; en attendant, forme actuelle maintenue)
   - Tranché : l'estimateur a son propre onglet dans le menu (3 novembre 2026)
-- [ ] Phase 4 — Coach
+- [ ] Phase 4 — Coach (section 6 du brief ; terminé quand un plan est suivi sur 2 semaines réelles sans intervention manuelle ; v1.0.0). Logique de plan à base de règles explicites, en fonctions pures testées ; tout reste utilisable sans LLM
+  - [ ] 1. Calendrier du coach : une course suivie de l'estimateur passe en échéance A, B ou C (date obligatoire) ; démarrage en 5 minutes (disponibilités et habitudes facultatives, déduites de l'historique sinon ; objectif proposé par l'estimateur, accepté ou modifié)
+  - [ ] 2. Plan périodisé vers une course A : à rebours depuis la date (foncier, développement, spécifique, affûtage de 1 à 2 semaines), charge pilotée par la fitness visée le jour J (hausse hebdomadaire plafonnée, cycle 3 semaines de charge et 1 allégée), séances typées (footing, sortie longue, seuil, fractionné, côtes ; D+ et sorties longues proches du profil pour un trail), 80/20, jamais deux séances dures d'affilée, un jour de repos par semaine
+  - [ ] 3. Écran « Cette semaine » : séances prévues, séances faites détectées automatiquement dans les activités synchronisées, séance clé et ce qui peut sauter, prochaines courses avec compte à rebours et temps prévu
+  - [ ] 4. Bilan du dimanche (verdict sans jugement, séances faites face aux prévues, charge réalisée face à la prévue, orientation de la semaine suivante) et réajustement automatique : semaine chargée, séances manquées jamais rattrapées, fatigue ou forme trop basse, avance sur le plan ; notification le dimanche soir
+  - [ ] 5. Temps prévu chaque semaine avec la fitness projetée au jour J (remplace la forme actuelle maintenue en phase 3), courbe face à l'objectif, objectif réajusté si l'écart dure 3 semaines
+  - [ ] 6. Plusieurs courses : priorités A (affûtage complet), B (mini-affûtage), C (semaine allégée), récupération après chaque course selon durée, D+ et intensité, conflits signalés avec solutions au choix de Greg, résultat d'une course qui met à jour les suivantes, plan reconstruit après la course A
+  - [ ] 7. Maintien de forme sans course prévue : plage de fitness tirée des 8 à 12 dernières semaines, semaine type, reprise progressive si la fitness passe durablement sous la plage ; bascules automatiques maintien, préparation, récupération
+  - [ ] 8. Orientation modifiable (maintien, reprise, foncier, vitesse, route longue, trail) et semaines particulières (vacances, Noël, déplacement, semaine chargée, maladie, blessure) à trois niveaux, avec l'effet affiché sur les échéances ; progression suspendue en cas de douleur
+  - [ ] 9. Disponibilités et habitudes (sortie habituelle gardée à sa place avec un rôle selon la phase), deux propositions par séance, bibliothèque de séances, variété des séances et des parcours habituels, indicateur de monotonie
+  - [ ] 10. Unités au choix (allure, zones de FC, sensation ; durée ou distance), séance de remplacement avec pourcentage de compatibilité et suggestion d'ajustement, bilan de semaine détaillé
+  - [ ] 11. Vérification ordinateur et mobile, plan suivi 2 semaines réelles sans intervention, v1.0.0
+  - Points à trancher avec Greg au fil des étapes : pondérations et seuils des règles (hausse de charge, durée d'affûtage, compatibilité), canal de notification (ntfy, mail), place du coach dans le menu
+  - Hors phase 4 (section 8 du brief, qui fait foi sur la section 6) : envoi des séances vers le calendrier Garmin en phase 5 ; coach conversationnel en phase 4 bis
+- [ ] Phase 4 bis — Coach conversationnel (section 6 du brief, LLM OVHcloud AI Endpoints ; accès et modèles à vérifier avant, section 9)
+  - [ ] 1. Saisie rapide en langage naturel en haut de l'accueil et de « Cette semaine » : étiquettes modifiables avant validation (fatigue, sommeil, douleur, motivation, disponibilités, période particulière), boutons rapides sans LLM, dictée vocale du navigateur, journal de forme affiché sur la page Forme
+  - [ ] 2. Coach conversationnel : le LLM traduit la discussion en actions structurées, le moteur de règles recalcule, le LLM explique ; rien n'est appliqué sans accord de Greg ; initiative mesurée (bilan du dimanche, alerte de fatigue, mot sur un record), mémoire des préférences
+  - [ ] 3. Vérification ordinateur et mobile, version mineure
 - [ ] Phase 5 — Extensions
 
 ## Commandes
