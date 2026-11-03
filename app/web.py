@@ -203,6 +203,7 @@ def estimateur(request: Request, distance: str = "", gain: str = ""):
         acts = queries.running_activities(conn)
         efforts = queries.best_efforts(conn)
         lthr = metrics_job.params_of(cfg, conn)["lthr"]
+        confirmed = {i for i, status in queries.race_decisions(conn).items() if status == "confirmed"}
     finally:
         conn.close()
     today = _today(request)
@@ -211,4 +212,5 @@ def estimateur(request: Request, distance: str = "", gain: str = ""):
     return render(request, "estimateur.html", "/estimateur",
                   profile=estimator.current_form(acts, efforts, today, lthr),
                   table=estimator.road_table(efforts, today), estimate=estimate,
+                  validation=estimator.validate_road(acts, efforts, confirmed),
                   query={"distance": distance, "gain": gain})

@@ -75,7 +75,66 @@
   {% set x = table[0].exponent %}
   <p class="small muted">Exposant {{ "%.3f" | format(x.value) | replace(".", ",") }}
     {%- if x.personal %} : pente de tes meilleurs efforts route des 2 dernières années ({{ x.n }} efforts de {{ x.range_km[0] | string | replace(".", ",") }} à {{ x.range_km[1] | string | replace(".", ",") }} km){% if x.bounded %}, borné (valeur calculée {{ "%.3f" | format(x.fitted) | replace(".", ",") }}){% endif %}{% else %} : valeur standard de Riegel, faute d'efforts route assez variés{% endif %}.
-    Précision non encore mesurée sur tes courses passées.</p>
+    {% if validation.personal %}Erreur moyenne de {{ validation.personal.mae_pct | string | replace(".", ",") }} % sur tes {{ validation.personal.n }} courses route passées (<a href="#precision">détail</a>).{% else %}Précision non encore mesurée : aucune course route confirmée.{% endif %}</p>
+  {% endif %}
+</section>
+
+{% set v = validation %}
+<section class="card" id="precision">
+  <div class="card-head">
+    <h2>Précision sur tes courses passées {{ tip("L'estimateur route est rejoué sur chacune de tes courses route confirmées, avec uniquement les sorties jusqu'à la veille (forme de la veille), puis comparé à ton temps réel (temps écoulé). Écart positif : estimation trop lente. L'erreur moyenne est la moyenne des écarts en valeur absolue ; le biais, leur moyenne signée. La colonne « Exposant standard » montre ce qu'aurait donné la valeur classique de Riegel (1,06).") }}</h2>
+  </div>
+  {% if v.personal %}
+  <section class="kpis">
+    <article class="kpi">
+      <header>Erreur moyenne</header>
+      <div class="kpi-value">{{ v.personal.mae_pct | string | replace(".", ",") }}<span class="kpi-unit">%</span></div>
+      <footer class="muted">{{ v.personal.n }} course{{ "s" if v.personal.n > 1 }} route</footer>
+    </article>
+    <article class="kpi">
+      <header>Biais</header>
+      <div class="kpi-value">{{ ('%+.1f' % v.personal.bias_pct) | replace('-', '−') | replace('.', ',') }}<span class="kpi-unit">%</span></div>
+      <footer class="muted">{{ "estimation trop lente" if v.personal.bias_pct > 0 else "estimation trop rapide" }}</footer>
+    </article>
+    <article class="kpi">
+      <header>Dans la fourchette</header>
+      <div class="kpi-value">{{ v.personal.within }}<span class="kpi-unit">/ {{ v.personal.n }}</span></div>
+      <footer class="muted">entre optimiste et prudent</footer>
+    </article>
+    <article class="kpi">
+      <header>Exposant standard (1,06)</header>
+      <div class="kpi-value">{% if v.standard %}{{ v.standard.mae_pct | string | replace(".", ",") }}<span class="kpi-unit">%</span>{% else %}—{% endif %}</div>
+      {% if v.standard %}<footer class="muted">biais {{ ('%+.1f' % v.standard.bias_pct) | replace('-', '−') | replace('.', ',') }} %</footer>{% endif %}
+    </article>
+  </section>
+  {% endif %}
+  {% if v.races %}
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Course</th><th>Distance</th><th>D+</th><th>Réel</th><th>Estimé la veille</th><th>Écart</th><th>Fourchette</th><th>Exposant standard</th><th>Référence</th></tr></thead>
+      <tbody>
+        {% for r in v.races %}
+        <tr>
+          <td><a class="act-name" href="/sorties/{{ r.activity_id }}">{{ r.name or "Sans nom" }}</a> <span class="muted" data-short-date="{{ r.date }}"></span></td>
+          <td data-num="{{ r.distance_km }}" data-dec="1" data-unit="km"></td>
+          <td data-num="{{ r.gain_m }}" data-unit="m"></td>
+          <td class="strong" data-chrono="{{ r.actual_s }}"></td>
+          {% if r.estimate %}
+          <td data-chrono="{{ r.estimate.realistic_s }}"></td>
+          <td><span class="delta {{ 'down' if r.error_pct > 0 else 'up' }}">{{ ('%+.1f' % r.error_pct) | replace('-', '−') | replace('.', ',') }} %</span></td>
+          <td class="muted">{{ "oui" if r.within else "non" }}</td>
+          <td class="muted">{% if r.standard_s %}<span data-chrono="{{ r.standard_s }}"></span> ({{ ('%+.1f' % r.standard_error_pct) | replace('-', '−') | replace('.', ',') }} %){% endif %}</td>
+          <td class="muted">{{ r.estimate.reference.label }}, <span data-short-date="{{ r.estimate.reference.date }}"></span>{% if r.estimate.exponent.personal %} · k {{ "%.3f" | format(r.estimate.exponent.value) | replace(".", ",") }}{% endif %}</td>
+          {% else %}
+          <td colspan="5" class="muted">pas d'effort route dans les 6 mois précédents</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Aucune course route confirmée. Valide tes courses dans <a href="/admin">l'admin</a> pour mesurer la précision de l'estimateur.</p>
   {% endif %}
 </section>
 

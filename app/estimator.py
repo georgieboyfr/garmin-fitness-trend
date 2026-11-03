@@ -267,3 +267,49 @@ def road_table(efforts, day: date) -> list[dict]:
         if p:
             out.append({"label": DISTANCE_LABELS[d], **p})
     return out
+
+
+# ---------- validation sur les courses passées ----------
+
+STANDARD_EXPONENT = {"value": RIEGEL_DEFAULT, "fitted": None, "personal": False, "n": 0, "bounded": False,
+                     "range_km": None}
+
+
+def _error_summary(rows, key) -> dict | None:
+    errors = [r[key] for r in rows if r.get(key) is not None]
+    if not errors:
+        return None
+    return {"n": len(errors), "mae_pct": round(sum(abs(e) for e in errors) / len(errors), 1),
+            "bias_pct": round(sum(errors) / len(errors), 1)}
+
+
+def validate_road(acts, efforts, confirmed_ids) -> dict:
+    """Estimateur route rejoué sur chaque course route confirmée, avec la forme de la veille :
+    écart entre le temps estimé (réaliste) et le temps réel (écoulé), en %, positif quand
+    l'estimation est trop lente. Comparé à l'exposant standard de Riegel."""
+    rows = []
+    for a in acts:
+        if a["id"] not in confirmed_ids or a.get("terrain") != "road" or not a.get("distance_m"):
+            continue
+        actual = a.get("elapsed_s") or a["duration_s"]
+        day = a["start"].date() - timedelta(days=1)
+        personal = predict_road(efforts, day, a["distance_m"], a["gain_m"])
+        standard = predict_road(efforts, day, a["distance_m"], a["gain_m"], exponent=STANDARD_EXPONENT)
+        row = {"activity_id": a["id"], "date": a["start"].date().isoformat(), "name": a["name"],
+               "distance_km": round(a["distance_km"], 1), "gain_m": round(a["gain_m"]),
+               "actual_s": round(actual), "estimate": None, "error_pct": None, "within": None,
+               "standard_s": None, "standard_error_pct": None}
+        if personal:
+            row.update({"estimate": personal,
+                        "error_pct": round((personal["realistic_s"] / actual - 1) * 100, 1),
+                        "within": personal["optimistic_s"] <= actual <= personal["prudent_s"]})
+        if standard:
+            row.update({"standard_s": standard["realistic_s"],
+                        "standard_error_pct": round((standard["realistic_s"] / actual - 1) * 100, 1)})
+        rows.append(row)
+    rows.sort(key=lambda r: r["date"], reverse=True)
+    summary = _error_summary(rows, "error_pct")
+    if summary:
+        summary["within"] = sum(1 for r in rows if r["within"])
+    return {"version": ESTIMATE_VERSION, "races": rows, "personal": summary,
+            "standard": _error_summary(rows, "standard_error_pct")}

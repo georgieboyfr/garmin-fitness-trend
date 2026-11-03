@@ -140,3 +140,39 @@ def test_road_table_standard_distances():
     assert [r["label"] for r in rows] == ["5 km", "10 km", "Semi", "Marathon"]
     assert rows[0]["realistic_s"] == 1500
     assert all(a["realistic_s"] < b["realistic_s"] for a, b in zip(rows, rows[1:], strict=False))
+
+
+# ---------- validation ----------
+
+def race(id, day, km, elapsed, terrain="road", gain=0.0):
+    a = act(day, km=km, terrain=terrain, gain=gain)
+    return {**a, "id": id, "name": f"Course {id}", "distance_m": km * 1000, "elapsed_s": elapsed,
+            "duration_s": elapsed}
+
+
+def test_validate_road_replays_with_the_form_of_the_day_before():
+    efforts = riegel_efforts(1.10, base_day="2026-09-01", old_day="2025-06-01")
+    efforts.append(eff("distance", 10000, 2500, "2026-10-01", id=99))       # la course elle-même : ignorée
+    acts = [race(99, "2026-10-01", 10, 3000), race(98, "2026-10-01", 10, 3000, terrain="trail"),
+            race(97, "2026-09-15", 10, 3000)]
+    v = estimator.validate_road(acts, efforts, {99, 98})
+    assert [r["activity_id"] for r in v["races"]] == [99]
+    r = v["races"][0]
+    assert r["estimate"]["reference"]["distance_m"] == 5000
+    assert r["estimate"]["realistic_s"] == round(1500 * 2 ** 1.10)
+    assert r["error_pct"] == round((round(1500 * 2 ** 1.10) / 3000 - 1) * 100, 1)
+    assert r["standard_s"] == round(1500 * 2 ** estimator.RIEGEL_DEFAULT)
+    assert v["personal"]["n"] == 1 and v["personal"]["mae_pct"] == abs(r["error_pct"])
+    assert v["personal"]["within"] == int(r["within"])
+
+
+def test_validate_road_summary_and_missing_estimate():
+    efforts = riegel_efforts(1.10, base_day="2026-09-01")
+    acts = [race(1, "2026-10-01", 10, 3000), race(2, "2026-10-02", 10, 3400), race(3, "2020-01-01", 10, 3000)]
+    v = estimator.validate_road(acts, efforts, {1, 2, 3})
+    errors = [r["error_pct"] for r in v["races"] if r["error_pct"] is not None]
+    assert len(errors) == 2 and v["races"][-1]["estimate"] is None
+    assert v["personal"]["bias_pct"] == round(sum(errors) / 2, 1)
+    assert v["personal"]["mae_pct"] == round(sum(abs(e) for e in errors) / 2, 1)
+    assert estimator.validate_road([], efforts, set()) == {"version": estimator.ESTIMATE_VERSION, "races": [],
+                                                           "personal": None, "standard": None}
