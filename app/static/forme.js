@@ -87,13 +87,20 @@
     };
   });
 
+  // un clic sur un point ouvre la sortie
+  const openOnClick = (chart, rows) => chart?.instance.on("click", (p) => {
+    const row = rows[p.dataIndex];
+    if (p.seriesIndex === 0 && row && row.id != null) location.href = `/sorties/${row.id}`;
+  });
+
   // ---------- Efficiency Factor ----------
-  GFT.chart("chart-ef", (t) => ({
+  const efChart = GFT.chart("chart-ef", (t) => ({
     grid: { left: 8, right: 16, top: 36, bottom: 8, containLabel: true },
     legend: { top: 0, left: 0, textStyle: { color: t.muted } },
     tooltip: { ...t.tooltip, formatter: (p) => p.seriesIndex === 0
       ? `${dateFmt(p.value[0])}<br><b>EF ${GFT.num(p.value[1], 2)}</b><br>${D.ef_points[p.dataIndex].name}`
-      : `${p.value[0].slice(0, 7)} : médiane <b>${GFT.num(p.value[1], 2)}</b>` },
+      : p.seriesIndex === 1 ? `${p.value[0].slice(0, 7)} : médiane <b>${GFT.num(p.value[1], 2)}</b>`
+      : `${p.seriesName}<br>${dateFmt(p.value[0])} : <b>${GFT.num(p.value[1], 2)}</b>` },
     xAxis: { type: "time", ...t.axis },
     yAxis: { type: "value", scale: true, ...t.axis, axisLabel: { ...t.axis.axisLabel, formatter: (v) => GFT.num(v, 2) } },
     series: [
@@ -102,11 +109,18 @@
       { name: "Médiane du mois", type: "line", smooth: 0.3, showSymbol: false, connectNulls: false,
         data: D.ef_monthly.map((m) => [m.month + "-15", m.ef]), lineStyle: { width: 2.5, color: t.accent },
         itemStyle: { color: t.accent } },
+      ...[["all", "Tendance depuis le début", t.text], ["12m", "Tendance 12 derniers mois", t.series[2]]]
+        .filter(([k]) => D.ef_trend[k])
+        .map(([k, name, color]) => ({ name, type: "line", symbol: "circle", symbolSize: 7,
+          data: [D.ef_trend[k].start, D.ef_trend[k].end],
+          lineStyle: { width: 2, type: "dashed", color }, itemStyle: { color }, z: 5 })),
     ],
   }));
 
+  openOnClick(efChart, D.ef_points);
+
   // ---------- découplage ----------
-  GFT.chart("chart-decoupling", (t) => ({
+  const decChart = GFT.chart("chart-decoupling", (t) => ({
     grid: { left: 8, right: 16, top: 16, bottom: 8, containLabel: true },
     tooltip: { ...t.tooltip, formatter: (p) => { const d = D.decoupling[p.dataIndex];
       return `${dateFmt(d.date)}<br><b>${GFT.num(d.pct, 1)} %</b> sur ${GFT.num(d.hours, 1)} h<br>${d.name}`; } },
@@ -119,4 +133,5 @@
         lineStyle: { color: t.text, type: "dashed" },
         label: { formatter: "5 %", color: t.muted, position: "insideEndTop" } } }],
   }));
+  openOnClick(decChart, D.decoupling);
 })();

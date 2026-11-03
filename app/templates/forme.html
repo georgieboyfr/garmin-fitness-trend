@@ -12,26 +12,54 @@
   <p class="muted">Charge d'entraînement (HRSS) et progression aérobie, sans avoir besoin de courses.</p>
 </section>
 
-<section class="kpis">
+{% macro gauge(c, value) -%}
+  {%- set span = (c.max - c.min) or 1 -%}
+  {%- set pos = ((value - c.min) / span * 100) | round(1) -%}
+  <div class="gauge" aria-hidden="true">
+    {% if c.p25_12m is not none %}<span class="gauge-band" style="left: {{ ((c.p25_12m - c.min) / span * 100) | round(1) }}%; width: {{ ((c.p75_12m - c.p25_12m) / span * 100) | round(1) }}%"></span>{% endif %}
+    <span class="gauge-mark" style="left: {{ [0, [pos, 100] | min] | max }}%"></span>
+  </div>
+  <div class="gauge-ends muted"><span data-num="{{ c.min }}"></span><span data-num="{{ c.max }}"></span></div>
+{%- endmacro %}
+
+{% macro context(c, value, label_max="record") -%}
+  <ul class="kpi-context muted">
+    <li>Plus haut que <b>{{ c.rank_pct }} %</b> de tes jours</li>
+    {% if c.mean_12m is not none %}<li>Habituel sur 12 mois : <span data-num="{{ c.p25_12m }}"></span> à <span data-num="{{ c.p75_12m }}"></span></li>{% endif %}
+    {% if c.year_ago is not none %}<li>Il y a un an : <span data-num="{{ c.year_ago }}"></span></li>{% endif %}
+    <li>{{ label_max | capitalize }} : <span data-num="{{ c.max }}"></span> le <span data-short-date="{{ c.max_date }}"></span></li>
+  </ul>
+{%- endmacro %}
+
+{% set c = data.context %}
+<section class="kpis kpis-context">
   <article class="kpi">
-    <header>Fitness {{ tip("Charge chronique : moyenne de ta charge quotidienne (HRSS) sur environ 6 semaines (constante de 42 jours). Elle monte lentement quand tu t'entraînes régulièrement.") }}</header>
+    <header>Fitness {{ tip("Charge chronique : moyenne de ta charge quotidienne (HRSS) sur environ 6 semaines (constante de 42 jours). Elle monte lentement quand tu t'entraînes régulièrement. La jauge va de ton plus bas à ton plus haut niveau historique ; la zone grisée est ta plage habituelle des 12 derniers mois.") }}</header>
     <div class="kpi-value" data-num="{{ t.fitness }}"></div>
-    <footer class="muted">{% if data.peaks %}pic <span data-num="{{ data.peaks[-1].fitness }}" data-dec="1"></span> en {{ data.peaks[-1].year }}{% endif %}</footer>
+    {{ gauge(c.fitness, t.fitness) }}
+    {{ context(c.fitness, t.fitness) }}
   </article>
   <article class="kpi">
     <header>Fatigue {{ tip("Charge aiguë : moyenne de ta charge sur environ une semaine (constante de 7 jours). Elle monte vite après une grosse semaine et redescend vite au repos.") }}</header>
     <div class="kpi-value" data-num="{{ t.fatigue }}"></div>
-    <footer class="muted">charge de la dernière semaine</footer>
+    {{ gauge(c.fatigue, t.fatigue) }}
+    {{ context(c.fatigue, t.fatigue, "maximum") }}
   </article>
   <article class="kpi form-{{ t.zone }}">
-    <header>Forme {{ tip("Fitness − fatigue de la veille. Négative : tu accumules de la charge (normal à l'entraînement). Positive : tu es frais, c'est le moment de courir vite.") }}</header>
+    <header>Forme {{ tip("Fitness − fatigue de la veille. Négative : tu accumules de la charge (normal à l'entraînement). Positive : tu es frais, c'est le moment de courir vite. Repères : au-dessus de +5 frais, de −10 à −30 entraînement productif, sous −30 surcharge.") }}</header>
     <div class="kpi-value">{{ '+' if t.form > 0 }}<span data-num="{{ t.form }}"></span></div>
-    <footer>{{ t.zone_label }}</footer>
+    <p class="kpi-zone">{{ t.zone_label }}</p>
+    {{ gauge(c.form, t.form) }}
+    {{ context(c.form, t.form, "plus frais") }}
   </article>
   <article class="kpi {{ 'ramp-high' if t.ramp > 8 else ('ramp-warn' if t.ramp > 5 else '') }}">
     <header>Montée sur 7 jours {{ tip("Variation de la fitness sur la dernière semaine. Au-delà de +5 à +8 points par semaine, le risque de blessure augmente.") }}</header>
     <div class="kpi-value">{{ '+' if t.ramp > 0 }}<span data-num="{{ t.ramp }}" data-dec="1"></span></div>
-    <footer class="muted">{% if t.ramp > 8 %}trop rapide{% elif t.ramp > 5 %}soutenue, attention{% else %}raisonnable{% endif %}</footer>
+    <p class="kpi-zone">{% if t.ramp > 8 %}Trop rapide : risque de blessure{% elif t.ramp > 5 %}Soutenue : à surveiller{% elif t.ramp < -3 %}En baisse : récupération ou coupure{% else %}Raisonnable{% endif %}</p>
+    <ul class="kpi-context muted">
+      <li>Repère : au-delà de +5 à +8 par semaine, le risque de blessure augmente.</li>
+      {% if data.peaks %}<li>Pic de fitness {{ data.peaks[-1].year }} : <span data-num="{{ data.peaks[-1].fitness }}" data-dec="1"></span> le <span data-short-date="{{ data.peaks[-1].date }}"></span></li>{% endif %}
+    </ul>
   </article>
 </section>
 
@@ -58,6 +86,13 @@
     <h2>Efficiency Factor {{ tip("Vitesse (m/min) divisée par la FC moyenne, sur les sorties faciles et plates : route, moins de 10 m de D+ par km, au moins 30 min, FC moyenne sous la zone 3. S'il monte, tu cours plus vite pour le même effort cardiaque.") }}</h2>
     <span class="muted small">{{ data.ef_points | length }} sorties retenues</span>
   </div>
+  {% macro trend(tr, label) -%}
+    {%- if tr -%}
+    <span class="trend {{ 'up' if tr.per_year > 0 else 'down' }}">{{ '↗' if tr.per_year > 0 else '↘' }} {{ label }} :
+      {{ ('%+.1f' % tr.per_year_pct) | replace('.', ',') | replace('-', '−') }} % par an</span>
+    {%- endif -%}
+  {%- endmacro %}
+  <p class="trends">{{ trend(data.ef_trend["12m"], "12 derniers mois") }} {{ trend(data.ef_trend["all"], "depuis le début") }}</p>
   <div class="chart" id="chart-ef" role="img" aria-label="Efficiency Factor des sorties faciles et plates"></div>
 </section>
 
@@ -69,7 +104,7 @@
   <div class="chart" id="chart-decoupling" role="img" aria-label="Découplage cardiaque des sorties de plus d'une heure"></div>
 </section>
 
-<script type="application/json" id="page-data">{{ {"series": data.series, "peaks": data.peaks, "ef_points": data.ef_points, "ef_monthly": data.ef_monthly, "decoupling": data.decoupling, "zones": data.zones} | tojson }}</script>
+<script type="application/json" id="page-data">{{ {"series": data.series, "peaks": data.peaks, "ef_points": data.ef_points, "ef_monthly": data.ef_monthly, "ef_trend": data.ef_trend, "decoupling": data.decoupling, "zones": data.zones} | tojson }}</script>
 {% endblock %}
 
 {% block scripts %}

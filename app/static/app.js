@@ -45,6 +45,10 @@ const GFT = (() => {
       el.textContent = d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
       el.title = d.toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "short" });
     });
+    root.querySelectorAll("[data-datetime-long]").forEach((el) => {
+      el.textContent = new Date(el.dataset.datetimeLong).toLocaleString("fr-FR", {
+        weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    });
     root.querySelectorAll("[data-short-date]").forEach((el) => {
       el.textContent = new Date(el.dataset.shortDate + "T12:00:00").toLocaleDateString("fr-FR", {
         day: "numeric", month: "short", year: "numeric" });

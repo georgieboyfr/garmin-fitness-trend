@@ -42,6 +42,7 @@
     <select id="sort-select" onchange="const [s, o] = this.value.split(':'); this.form.sort.value = s; this.form.order.value = o; this.form.submit()">
       {% for value, label in [("date:desc", "Plus récentes"), ("date:asc", "Plus anciennes"), ("distance:desc", "Distance"),
                                ("gain:desc", "D+"), ("time:desc", "Durée"), ("pace:asc", "Allure la plus rapide"),
+                               ("route:asc", "Meilleur écart à son parcours"),
                                ("hrss:desc", "Charge")] %}
         <option value="{{ value }}" {% if value == filters.sort ~ ":" ~ filters.order %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
@@ -58,27 +59,34 @@
         <th class="col-name">Sortie</th>
         {{ th("distance", "Distance") }}
         {{ th("gain", "D+") }}
-        {{ th("time", "Temps") }}
+        {{ th("time", "En mouvement") }}
+        {{ th("elapsed", "Écoulé") }}
         {{ th("pace", "Allure") }}
         {{ th("hr", "FC moy.") }}
         {{ th("hrss", "Charge") }}
+        {{ th("route", "Vs parcours") }}
       </tr></thead>
       <tbody>
         {% for r in data.rows %}
         <tr>
           <td class="col-date" data-datetime="{{ r.date }}"></td>
           <td class="col-name">
-            <span class="act-name">{{ r.name or "Sans nom" }}</span>
+            <a class="act-name" href="/sorties/{{ r.id }}">{{ r.name or "Sans nom" }}</a>
             {% if r.terrain %}<span class="badge badge-{{ r.terrain }}">{{ {"road": "route", "trail": "trail", "indoor": "tapis"}[r.terrain] }}</span>{% endif %}
             {% if r.source == "strava" %}<span class="badge">Strava</span>{% endif %}
             {% if r.description %}<span class="act-desc">{{ r.description }}</span>{% endif %}
           </td>
           <td data-label="Distance" data-num="{{ r.distance_km }}" data-unit="km" data-dec="1"></td>
           <td data-label="D+" data-num="{{ r.gain_m }}" data-unit="m"></td>
-          <td data-label="Temps" {% if r.moving_s %}data-duration="{{ r.moving_s }}"{% endif %}>{% if not r.moving_s %}—{% endif %}</td>
+          <td data-label="En mouvement" {% if r.moving_s %}data-duration="{{ r.moving_s }}"{% endif %}>{% if not r.moving_s %}—{% endif %}</td>
+          <td data-label="Écoulé" {% if r.elapsed_s %}data-duration="{{ r.elapsed_s }}"{% endif %}>{% if not r.elapsed_s %}—{% endif %}</td>
           <td data-label="Allure" {% if r.pace_s_km %}data-pace="{{ r.pace_s_km }}"{% endif %}>{% if not r.pace_s_km %}—{% endif %}</td>
           <td data-label="FC moy.">{{ r.avg_hr or "—" }}</td>
           <td data-label="Charge">{{ r.hrss if r.hrss is not none else "—" }}</td>
+          <td data-label="Vs parcours">{% if r.route %}
+            <span class="delta {{ 'up' if r.route.diff_s < 0 else 'down' }}" title="Écart à la moyenne des {{ r.route.n - 1 }} autres passages sur ce parcours (temps en mouvement)">{{ '−' if r.route.diff_s < 0 else '+' }}<span data-duration="{{ r.route.diff_s | abs }}"></span> ({{ ('%+.0f' % r.route.diff_pct) | replace('-', '−') }} %)</span>
+            <span class="muted small">{{ r.route.rank }}e/{{ r.route.n }}</span>
+          {% else %}<span class="muted">—</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

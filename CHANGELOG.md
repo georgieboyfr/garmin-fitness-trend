@@ -13,6 +13,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Page Performance : records en fenêtre glissante sur 1, 3, 5, 10 km, semi et marathon (route et trail séparés, top 10, filtre par année, pics GPS filtrés), meilleur temps par année, courbe allure-durée par année (1 min à 2 h), VAM sur les montées de plus de 200 m (meilleure par année, top 10).
 - Admin : LTHR, FC max et FC repos modifiables (bouton « Utiliser l'estimation », retour aux valeurs du `.env`), avec recalcul automatique des sorties.
 - Page Forme : fitness, fatigue et forme (Banister, sur la charge HRSS) avec la zone de forme et la montée sur 7 jours, pic de fitness par année, temps par zone de FC par année (repère 80/20), Efficiency Factor des sorties faciles et plates (médiane mensuelle), découplage cardiaque des sorties de plus d'une heure sur le plat (repère 5 %).
+- Parcours similaires : les sorties qui suivent le même tracé (même départ, distance à ±5 %, écart de forme sous 40 m, même sens) sont regroupées ; dans la liste des sorties, écart (temps en mouvement) à la moyenne des autres passages et rang.
+- Fiche de chaque sortie (`/sorties/<id>`), accessible depuis toutes les pages : résumé (temps en mouvement et écoulé, allure, FC, charge, EF, découplage), tracé sur fond Plan IGN, photos aériennes ou OpenStreetMap, profils d'altitude, d'allure et de FC synchronisés avec la carte, temps par kilomètre, zones de FC, meilleurs efforts, passages sur le même parcours.
+- Liste des sorties : temps écoulé en plus du temps en mouvement.
+- Page Forme : repères historiques pour situer fitness, fatigue et forme (jauge entre le minimum et le maximum de l'historique, plage habituelle des 12 derniers mois, rang, valeur il y a un an, record) ; droites de tendance de l'Efficiency Factor (12 derniers mois et depuis le début, en % par an).
 
 ### Modifié
 - Hors de France, le D+ de Strava remplace celui du MNT Copernicus (qui compte les bâtiments) quand l'activité est appariée.

@@ -102,3 +102,19 @@ def test_forme_page(client):
     login(client)
     r = client.get("/forme")
     assert r.status_code == 200 and "Efficiency Factor" in r.text
+
+
+def test_activity_page(client, config):
+    conn = db.connect(config.db_path)
+    with conn:
+        conn.execute(
+            "INSERT INTO activities (id, start_time_utc, start_time_local, activity_type, garmin_name,"
+            " distance_m, duration_s, fit_status, first_seen_at, updated_at)"
+            " VALUES (55, ?, '2026-03-01T09:00:00', 'running', 'Bastille', 8000, 3000, 'stored', ?, ?)",
+            (NOW, NOW, NOW))
+    conn.close()
+    login(client)
+    r = client.get("/sorties/55")
+    assert r.status_code == 200 and "Bastille" in r.text and "Par kilomètre" not in r.text   # pas de série
+    assert client.get("/sorties/999").status_code == 404
+    assert client.get("/sorties/55", cookies={}).status_code == 200

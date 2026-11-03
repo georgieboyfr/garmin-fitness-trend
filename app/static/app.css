@@ -302,3 +302,36 @@ table.activities td.col-date { color: var(--muted); }
 .form-optimal .kpi-value { color: var(--series-2); }
 .ramp-warn .kpi-value { color: var(--series-5); }
 .ramp-high .kpi-value { color: var(--down); }
+a.act-name { color: inherit; text-decoration: none; }
+a.act-name:hover { color: var(--accent); text-decoration: underline; }
+
+/* ---------- fiche d'une sortie ---------- */
+.back { margin: 0 0 6px; font-size: 14px; }
+.back a { color: var(--muted); text-decoration: none; }
+.back a:hover { color: var(--accent); }
+.description { white-space: pre-line; max-width: 72ch; margin: 10px 0 0; }
+.kpis-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 1000px) { .kpis-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .kpis-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.kpis-6 .kpi-value { font-size: 22px; }
+.map-card { padding: 0; overflow: hidden; }
+.map { height: 420px; width: 100%; z-index: 0; }
+@media (max-width: 640px) { .map { height: 320px; } }
+.chart-zones { height: 170px; }
+.subhead { margin-top: 14px; }
+.leaflet-container { font: inherit; background: var(--surface-2); }
+
+/* ---------- repères historiques (page Forme) ---------- */
+.kpis-context .kpi { display: flex; flex-direction: column; }
+.kpi-zone { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.gauge { position: relative; height: 8px; border-radius: 99px; background: var(--surface-2); margin: 8px 0 2px; }
+.gauge-band { position: absolute; top: 0; bottom: 0; background: var(--border); border-radius: 99px; }
+.gauge-mark { position: absolute; top: -4px; width: 4px; height: 16px; margin-left: -2px; border-radius: 2px;
+              background: var(--accent); box-shadow: 0 0 0 2px var(--surface); }
+.gauge-ends { display: flex; justify-content: space-between; font-size: 11px; }
+.kpi-context { list-style: none; padding: 0; margin: 8px 0 0; font-size: 12.5px; display: grid; gap: 3px; }
+.kpi-context b { color: var(--text); }
+.trends { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 6px; font-size: 13px; }
+.trend { font-weight: 600; }
+.trend.up { color: var(--up); }
+.trend.down { color: var(--down); }

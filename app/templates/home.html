@@ -52,7 +52,7 @@
   {% if data.last %}
   <article class="card">
     <h2>Dernière sortie</h2>
-    <p class="last-name">{{ data.last.name }}</p>
+    <p class="last-name"><a class="act-name" href="/sorties/{{ data.last.id }}">{{ data.last.name }}</a></p>
     <p class="muted" data-date="{{ data.last.date }}"></p>
     <dl class="facts">
       <div><dt>Distance</dt><dd data-num="{{ data.last.distance_km }}" data-unit="km" data-dec="1"></dd></div>

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}{{ data.name or "Sortie" }} · Fitness Trend{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css?v=1.9.4">{% endblock %}
+
+{% macro tip(text) -%}
+  <button class="tip" type="button" aria-label="Explication" data-tip="{{ text }}">i</button>
+{%- endmacro %}
+
+{% block content %}
+{% set d = data %}
+<p class="back"><a href="/sorties" onclick="if (history.length > 1 && document.referrer.includes(location.host)) { history.back(); return false; }">← Sorties</a></p>
+<section class="hero">
+  <h1>{{ d.name or "Sans nom" }}</h1>
+  <p class="muted"><span data-datetime-long="{{ d.start }}"></span>
+    {% if d.terrain %}<span class="badge badge-{{ d.terrain }}">{{ {"road": "route", "trail": "trail", "indoor": "tapis"}[d.terrain] }}</span>{% endif %}
+    {% if d.source == "strava" %}<span class="badge">importée de Strava</span>{% endif %}
+    {% if d.device %}<span class="muted small"> · {{ d.device }}</span>{% endif %}</p>
+  {% if d.description %}<p class="description">{{ d.description }}</p>{% endif %}
+</section>
+
+<section class="kpis kpis-6">
+  <article class="kpi"><header>Distance</header><div class="kpi-value" data-num="{{ d.distance_km }}" data-unit="km" data-dec="2"></div></article>
+  <article class="kpi"><header>D+ {{ tip("D+ recalculé : " ~ {"barometer": "altimètre de la montre", "dem": "carte d'altitude IGN le long de la trace", "strava": "valeur de Strava (sortie hors de France)", "none": "sans GPS, D+ nul"}.get(d.elevation_source, "—") ~ ".") }}</header>
+    <div class="kpi-value" data-num="{{ d.gain_m }}" data-unit="m"></div>
+    <footer class="muted">{% if d.loss_m is not none %}D− <span data-num="{{ d.loss_m }}" data-unit="m"></span>{% endif %}</footer></article>
+  <article class="kpi"><header>En mouvement {{ tip("Temps passé à au moins 0,5 m/s : feux rouges et pauses exclus. Le temps écoulé compte tout, du départ à l'arrivée.") }}</header>
+    <div class="kpi-value" {% if d.moving_s %}data-duration="{{ d.moving_s }}"{% endif %}>{% if not d.moving_s %}—{% endif %}</div>
+    <footer class="muted">{% if d.elapsed_s %}écoulé <span data-duration="{{ d.elapsed_s }}"></span>{% endif %}</footer></article>
+  <article class="kpi"><header>Allure</header>
+    <div class="kpi-value" {% if d.pace_s_km %}data-pace="{{ d.pace_s_km }}"{% endif %}>{% if not d.pace_s_km %}—{% endif %}</div>
+    <footer class="muted">moyenne en mouvement</footer></article>
+  <article class="kpi"><header>FC moyenne</header>
+    <div class="kpi-value">{{ d.avg_hr or "—" }}</div>
+    <footer class="muted">{% if d.max_hr %}max {{ d.max_hr }}{% endif %}</footer></article>
+  <article class="kpi"><header>Charge {{ tip("HRSS : charge cardiaque de la sortie, 100 = une heure à la LTHR.") }}</header>
+    <div class="kpi-value">{{ d.hrss if d.hrss is not none else "—" }}</div>
+    <footer class="muted">{% if d.ef %}EF {{ ('%.2f' % d.ef) | replace('.', ',') }}{% endif %}{% if d.decoupling_pct is not none %} · découplage {{ ('%.1f' % d.decoupling_pct) | replace('.', ',') }} %{% endif %}</footer></article>
+</section>
+
+{% if d.route %}
+<section class="card route-card">
+  <div class="card-head">
+    <h2>Ce parcours {{ tip("Les sorties qui suivent le même tracé, dans le même sens, à quelques dizaines de mètres près. Comparaison sur le temps en mouvement.") }}</h2>
+    <span class="delta {{ 'up' if d.route.diff_s < 0 else 'down' }}">{{ '−' if d.route.diff_s < 0 else '+' }}<span data-duration="{{ d.route.diff_s | abs }}"></span>
+      ({{ ('%+.1f' % d.route.diff_pct) | replace('.', ',') | replace('-', '−') }} %)</span>
+  </div>
+  <p class="muted">{{ d.route.rank }}e temps sur {{ d.route.n }} passages · moyenne des autres passages
+    <span data-duration="{{ d.route.mean_others_s }}"></span> · record <span data-duration="{{ d.route.best_s }}"></span></p>
+  <div class="chart chart-small" id="chart-route" role="img" aria-label="Temps de chaque passage sur ce parcours"></div>
+</section>
+{% endif %}
+
+{% if d.profiles.track %}
+<section class="card map-card">
+  <div id="map" class="map" role="img" aria-label="Tracé de la sortie sur une carte"></div>
+</section>
+{% endif %}
+
+{% if d.profiles.km %}
+<section class="card">
+  <div class="card-head"><h2>Profil {{ tip("Altitude, allure (lissée sur 200 m) et fréquence cardiaque le long de la distance. Au survol, la position s'affiche sur la carte.") }}</h2></div>
+  <div class="chart chart-tall" id="chart-profile" role="img" aria-label="Altitude, allure et fréquence cardiaque le long de la sortie"></div>
+</section>
+{% endif %}
+
+<section class="grid-2">
+  {% if d.profiles.splits %}
+  <article class="card">
+    <h2>Par kilomètre</h2>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Km</th><th>Temps</th><th>Allure</th><th>FC</th><th>D+</th><th>D−</th></tr></thead>
+        <tbody>
+          {% for s in d.profiles.splits %}
+          <tr><td>{{ s.km }}{% if s.distance_m < 990 %} <span class="muted small">({{ s.distance_m }} m)</span>{% endif %}</td>
+            <td data-chrono="{{ s.time_s }}"></td><td data-pace="{{ s.pace_s_km }}"></td>
+            <td>{{ s.avg_hr or "—" }}</td><td>{{ s.gain_m if s.gain_m is not none else "—" }}</td>
+            <td>{{ s.loss_m if s.loss_m is not none else "—" }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+  {% endif %}
+  <article class="card">
+    <h2>Temps par zone de FC</h2>
+    <div class="chart chart-zones" id="chart-zones" role="img" aria-label="Temps passé dans chaque zone de FC"></div>
+    {% if d.bests.distance or d.bests.climb %}
+    <h2 class="subhead">Meilleurs efforts dans la sortie</h2>
+    <dl class="facts">
+      {% for b in d.bests.distance %}<div><dt>{{ b.label }}</dt><dd data-chrono="{{ b.time_s }}"></dd></div>{% endfor %}
+      {% if d.bests.climb %}<div><dt>VAM ({{ d.bests.climb.gain }} m)</dt><dd data-num="{{ d.bests.climb.vam }}" data-unit="m/h"></dd></div>{% endif %}
+    </dl>
+    {% endif %}
+  </article>
+</section>
+
+<script type="application/json" id="page-data">{{ {"profiles": d.profiles, "zones": d.zones_s, "passages": d.passages, "id": d.id} | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/vendor/leaflet/leaflet.js?v=1.9.4"></script>
+<script src="/static/sortie.js?v={{ version }}"></script>
+{% endblock %}

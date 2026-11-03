@@ -196,3 +196,36 @@ def test_forme_payload():
     assert f["zones"][0]["year"] == 2026 and sum(f["zones"][0]["pct"]) == pytest.approx(100, abs=0.2)
     assert f["peaks"][-1]["year"] == 2026
     assert len(f["series"]["dates"]) == len(f["series"]["fitness"]) == 64
+
+
+def test_route_comparison():
+    acts = [dict(act(f"2026-01-0{i + 1}", 10, moving=m), id=i, route_id=7)
+            for i, m in enumerate((3000, 3300, 3600))]
+    acts.append(dict(act("2026-01-09", 10, moving=2000), id=9, route_id=9))   # parcours couru une fois
+    cmp = stats.route_comparison(acts)
+    assert set(cmp) == {0, 1, 2}
+    assert cmp[0] == {"route_id": 7, "n": 3, "mean_others_s": 3450, "diff_s": -450, "diff_pct": -13.0,
+                      "rank": 1, "best_s": 3000}
+    assert cmp[2]["rank"] == 3 and cmp[2]["diff_s"] == 450
+
+
+def test_form_context():
+    start = date(2025, 1, 1)
+    days = [start + timedelta(days=i) for i in range(500)]
+    daily = {d: (150.0 if d.month in (5, 6) else 40.0) for d in days}      # bloc de charge en mai-juin
+    series = stats.banister(daily, days[0], days[-1])
+    ctx = stats.form_context(series, days[-1])
+    f = ctx["fitness"]
+    assert f["max_date"].startswith("2025-06") or f["max_date"].startswith("2025-07")
+    assert f["min"] <= f["p25_12m"] <= f["mean_12m"] <= f["max"]
+    assert f["year_ago"] is not None and 0 <= f["rank_pct"] <= 100
+    assert ctx["form"]["min"] < 0 < ctx["form"]["max"]
+
+
+def test_linear_trend():
+    pts = [((date(2025, 1, 1) + timedelta(days=30 * i)).isoformat(), 1.0 + 0.01 * i) for i in range(13)]
+    tr = stats.linear_trend(pts)
+    assert tr["per_year"] == pytest.approx(0.01 * 365.25 / 30, rel=0.01)
+    assert tr["start"][1] == pytest.approx(1.0) and tr["end"][1] == pytest.approx(1.12)
+    assert stats.linear_trend(pts[:3]) is None                                  # trop peu de points
+    assert stats.linear_trend(pts, since=date(2025, 6, 1))["n"] == 7         # 30 juin -> 27 déc.

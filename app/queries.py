@@ -13,11 +13,12 @@ def running_activities(conn) -> list[dict]:
         " a.distance_m, a.duration_s, COALESCE(m.moving_s, a.moving_duration_s) AS moving_duration_s,"
         " COALESCE(m.avg_hr, a.avg_hr) AS avg_hr, COALESCE(m.max_hr, a.max_hr) AS max_hr,"
         " e.gain_m, e.loss_m, e.source AS elevation_source, m.hrss, m.terrain, m.ef, m.decoupling_pct,"
-        " m.zone1_s, m.zone2_s, m.zone3_s, m.zone4_s, m.zone5_s"
+        " m.zone1_s, m.zone2_s, m.zone3_s, m.zone4_s, m.zone5_s, m.elapsed_s, r.route_id"
         " FROM activities a"
         " JOIN activity_names n ON n.activity_id = a.id"
         " LEFT JOIN activity_elevation e ON e.activity_id = a.id"
         " LEFT JOIN activity_metrics m ON m.activity_id = a.id"
+        " LEFT JOIN activity_routes r ON r.activity_id = a.id"
         f" WHERE a.deleted_in_garmin = 0 AND a.activity_type IN ({','.join('?' * len(types))})"
         " ORDER BY a.start_time_local",
         types,
@@ -28,6 +29,7 @@ def running_activities(conn) -> list[dict]:
         d["start"] = datetime.fromisoformat(d["start_time_local"])
         d["distance_km"] = (d["distance_m"] or 0) / 1000
         d["gain_m"] = d["gain_m"] or 0.0
+        d["elapsed_s"] = d["elapsed_s"] or d["duration_s"]
         out.append(d)
     return out
 

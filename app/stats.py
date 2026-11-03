@@ -80,7 +80,7 @@ def home(acts, today: date) -> dict:
         "all_time": totals(acts),
         "first_year": acts[0]["start"].year if acts else today.year,
         "last": last and {
-            "name": last["name"], "date": last["start"].date().isoformat(),
+            "id": last.get("id"), "name": last["name"], "date": last["start"].date().isoformat(),
             "distance_km": round(last["distance_km"], 2), "gain_m": round(last["gain_m"]),
             "moving_s": last["moving_duration_s"] or last["duration_s"],
         },
@@ -196,6 +196,8 @@ SORTS = {
     "distance": lambda a: a["distance_km"],
     "gain": lambda a: a["gain_m"],
     "time": lambda a: a["moving_duration_s"],
+    "elapsed": lambda a: a.get("elapsed_s"),
+    "route": lambda a: a["route_cmp"]["diff_pct"] if a.get("route_cmp") else None,
     "pace": lambda a: a["pace_s_km"],
     "hr": lambda a: a["avg_hr"],
     "hrss": lambda a: a["hrss"],
@@ -207,6 +209,30 @@ def pace_s_per_km(moving_s, distance_km):
     return moving_s / distance_km if moving_s and distance_km and distance_km > 0.2 else None
 
 
+def route_comparison(acts) -> dict[int, dict]:
+    """Pour chaque sortie d'un parcours couru plusieurs fois : écart (temps en mouvement) à la
+    moyenne des autres passages, rang et record du parcours."""
+    by_route = {}
+    for a in acts:
+        if a.get("route_id") is not None and a["moving_duration_s"]:
+            by_route.setdefault(a["route_id"], []).append(a)
+    out = {}
+    for route_id, members in by_route.items():
+        if len(members) < 2:
+            continue
+        times = sorted(m["moving_duration_s"] for m in members)
+        total = sum(times)
+        for m in members:
+            t = m["moving_duration_s"]
+            mean_others = (total - t) / (len(members) - 1)
+            out[m["id"]] = {
+                "route_id": route_id, "n": len(members), "mean_others_s": round(mean_others),
+                "diff_s": round(t - mean_others), "diff_pct": round((t - mean_others) / mean_others * 100, 1),
+                "rank": times.index(t) + 1, "best_s": times[0],
+            }
+    return out
+
+
 def activity_list(acts, year=None, terrain="all", sort="date", order="desc", page=1, query="") -> dict:
     """Sorties filtrées (année, terrain, texte dans le nom ou la description), triées et paginées."""
     rows = filter_terrain(acts, terrain)
@@ -215,8 +241,10 @@ def activity_list(acts, year=None, terrain="all", sort="date", order="desc", pag
     q = query.strip().lower()
     if q:
         rows = [a for a in rows if q in (a["name"] or "").lower() or q in (a["description"] or "").lower()]
+    comparisons = route_comparison(acts)
     for a in rows:
         a["pace_s_km"] = pace_s_per_km(a["moving_duration_s"], a["distance_km"])
+        a["route_cmp"] = comparisons.get(a["id"])
     sort = sort if sort in SORTS else "date"
     key = SORTS[sort]
     # les sorties sans valeur (pas de FC, pas de distance...) restent en fin de liste
@@ -234,7 +262,8 @@ def activity_list(acts, year=None, terrain="all", sort="date", order="desc", pag
             "id": a["id"], "date": a["start"].isoformat(timespec="minutes"), "name": a["name"],
             "description": a["description"], "terrain": a.get("terrain"),
             "distance_km": round(a["distance_km"], 2), "gain_m": round(a["gain_m"]),
-            "moving_s": a["moving_duration_s"], "pace_s_km": a["pace_s_km"],
+            "moving_s": a["moving_duration_s"], "elapsed_s": a.get("elapsed_s"), "pace_s_km": a["pace_s_km"],
+            "route": a["route_cmp"],
             "avg_hr": round(a["avg_hr"]) if a["avg_hr"] else None,
             "hrss": round(a["hrss"]) if a.get("hrss") is not None else None,
             "source": a["source"],
@@ -287,7 +316,7 @@ def performance(efforts, terrain: str = "road", year: int | None = None) -> dict
     for e in climbs:
         if e["year"] not in vam_years or e["value"] > vam_years[e["year"]]["vam"]:
             vam_years[e["year"]] = {"vam": round(e["value"]), "gain": round(e["extra"] or 0),
-                                    "date": e["date"], "name": e["name"]}
+                                    "date": e["date"], "name": e["name"], "id": e["id"]}
     top_climbs = sorted((e for e in climbs if year is None or e["year"] == year),
                         key=lambda e: -e["value"])[:TOP]
 
@@ -301,7 +330,7 @@ def performance(efforts, terrain: str = "road", year: int | None = None) -> dict
         "duration_labels": list(DURATION_LABELS.values()),
         "vam_by_year": [{"year": y, **vam_years[y]} for y in sorted(vam_years)],
         "top_climbs": [{"vam": round(e["value"]), "gain": round(e["extra"] or 0), "date": e["date"],
-                        "name": e["name"]} for e in top_climbs],
+                        "name": e["name"], "id": e["id"]} for e in top_climbs],
     }
 
 
@@ -359,6 +388,64 @@ def is_easy_flat(a, lthr) -> bool:
             and a["avg_hr"] is not None and a["avg_hr"] < EASY_MAX_LTHR * lthr and a.get("ef") is not None)
 
 
+def _percentile(sorted_values, p):
+    if not sorted_values:
+        return None
+    k = (len(sorted_values) - 1) * p
+    lo, hi = math.floor(k), math.ceil(k)
+    return sorted_values[lo] + (sorted_values[hi] - sorted_values[lo]) * (k - lo)
+
+
+def form_context(series, today: date, warmup_days=int(TAU_FITNESS)) -> dict:
+    """Repères historiques de fitness, fatigue et forme pour situer la valeur du jour : extrêmes
+    de tout l'historique, plage habituelle (25e–75e centile) des 12 derniers mois, valeur un an
+    plus tôt et rang du jour parmi tous les jours. Les premières semaines (modèle qui démarre
+    à zéro) sont exclues."""
+    history = series[warmup_days:] if len(series) > warmup_days + 30 else series
+    year_ago = same_day_last_year(today)
+    last_year = [p for p in history if p["date"] > year_ago]
+    by_date = {p["date"]: p for p in series}
+    out = {}
+    for key in ("fitness", "fatigue", "form"):
+        values = sorted(p[key] for p in history)
+        recent = sorted(p[key] for p in last_year)
+        now = series[-1][key]
+        top = max(history, key=lambda p: p[key])
+        low = min(history, key=lambda p: p[key])
+        out[key] = {
+            "min": round(low[key], 1), "min_date": low["date"].isoformat(),
+            "max": round(top[key], 1), "max_date": top["date"].isoformat(),
+            "p25_12m": round(_percentile(recent, 0.25), 1) if recent else None,
+            "p75_12m": round(_percentile(recent, 0.75), 1) if recent else None,
+            "mean_12m": round(sum(recent) / len(recent), 1) if recent else None,
+            "year_ago": round(by_date[year_ago][key], 1) if year_ago in by_date else None,
+            "rank_pct": round(sum(v < now for v in values) / len(values) * 100) if values else None,
+        }
+    return out
+
+
+def linear_trend(points, since: date | None = None) -> dict | None:
+    """Droite des moindres carrés (date, valeur) : extrémités et évolution par an, en valeur et en %."""
+    pts = [(date.fromisoformat(d), v) for d, v in points if since is None or date.fromisoformat(d) >= since]
+    if len(pts) < 5:
+        return None
+    x0 = pts[0][0]
+    xs = [(d - x0).days for d, _ in pts]
+    ys = [v for _, v in pts]
+    n = len(pts)
+    mx, my = sum(xs) / n, sum(ys) / n
+    sxx = sum((x - mx) ** 2 for x in xs)
+    if sxx == 0:
+        return None
+    slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys, strict=True)) / sxx
+    start_v, end_v = my + slope * (xs[0] - mx), my + slope * (xs[-1] - mx)
+    per_year = slope * 365.25
+    return {"start": [pts[0][0].isoformat(), round(start_v, 3)],
+            "end": [pts[-1][0].isoformat(), round(end_v, 3)],
+            "per_year": round(per_year, 3), "per_year_pct": round(per_year / my * 100, 1) if my else None,
+            "n": n}
+
+
 def forme(acts, today: date, lthr: float) -> dict:
     daily = {}
     for a in acts:
@@ -377,7 +464,8 @@ def forme(acts, today: date, lthr: float) -> dict:
             peaks[y] = {"year": y, "fitness": round(p["fitness"], 1), "date": p["date"].isoformat()}
 
     # Efficiency Factor des sorties faciles et plates, et sa médiane par mois
-    ef_points = [{"date": a["start"].date().isoformat(), "ef": round(a["ef"], 3), "name": a["name"]}
+    ef_points = [{"date": a["start"].date().isoformat(), "ef": round(a["ef"], 3), "name": a["name"],
+                  "id": a.get("id")}
                  for a in acts if is_easy_flat(a, lthr)]
     by_month = {}
     for p in ef_points:
@@ -395,7 +483,8 @@ def forme(acts, today: date, lthr: float) -> dict:
 
     # découplage des sorties d'au moins une heure, sur le plat (sinon la pente fausse l'allure)
     decoupling = [{"date": a["start"].date().isoformat(), "pct": round(a["decoupling_pct"], 1),
-                   "name": a["name"], "hours": round((a["moving_duration_s"] or 0) / 3600, 1)}
+                   "name": a["name"], "id": a.get("id"),
+                   "hours": round((a["moving_duration_s"] or 0) / 3600, 1)}
                   for a in acts if a.get("decoupling_pct") is not None and a.get("terrain") == "road"
                   and a["distance_km"] > 0 and a["gain_m"] / a["distance_km"] < FLAT_MAX_GAIN_PER_KM]
 
@@ -412,6 +501,7 @@ def forme(acts, today: date, lthr: float) -> dict:
                                "hours": round(total / 3600)})
 
     return {
+        "context": form_context(series, today),
         "today": {"fitness": round(cur["fitness"], 1), "fatigue": round(cur["fatigue"], 1),
                   "form": round(cur["form"], 1), "zone": zone, "zone_label": zone_label,
                   "ramp": round(cur["fitness"] - week_ago["fitness"], 1)},
@@ -422,6 +512,9 @@ def forme(acts, today: date, lthr: float) -> dict:
                    "stress": [round(p["stress"]) for p in series]},
         "peaks": [peaks[y] for y in sorted(peaks)],
         "ef_points": ef_points, "ef_monthly": ef_monthly,
+        "ef_trend": {"all": linear_trend([(p["date"], p["ef"]) for p in ef_points]),
+                     "12m": linear_trend([(p["date"], p["ef"]) for p in ef_points],
+                                         same_day_last_year(today))},
         "decoupling": decoupling,
         "zones": zone_years,
         "lthr": lthr,

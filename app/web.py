@@ -10,10 +10,10 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from . import __version__, db, metrics_job, queries, stats
+from . import __version__, db, detail, metrics_job, queries, stats
 from .auth import SESSION_COOKIE
 
 TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -127,4 +127,21 @@ def forme(request: Request):
     finally:
         conn.close()
     return render(request, "forme.html", "/forme", data=stats.forme(acts, _today(request), lthr))
+
+
+@router.get("/sorties/{activity_id}")
+def sortie(request: Request, activity_id: int):
+    if (redirect := _login_redirect(request)):
+        return redirect
+    cfg = request.app.state.config
+    conn = db.connect(cfg.db_path)
+    try:
+        acts = queries.running_activities(conn)
+        data = detail.activity_detail(cfg, conn, activity_id, acts)
+    finally:
+        conn.close()
+    if data is None:
+        return HTMLResponse(TEMPLATES.get_template("not_found.html").render(version=__version__, nav=[
+            (path, label) for path, label, ready in PAGES if ready], active=""), status_code=404)
+    return render(request, "sortie.html", "/sorties", data=data)
 
