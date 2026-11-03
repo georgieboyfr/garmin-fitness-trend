@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Volume · Fitness Trend{% endblock %}
+
+{% macro tip(text) -%}
+  <button class="tip" type="button" aria-label="Explication" data-tip="{{ text }}">i</button>
+{%- endmacro %}
+
+{% block content %}
+{% set r = data.regularity %}
+<section class="hero hero-row">
+  <div>
+    <h1>Volume et régularité</h1>
+    <p class="muted">Depuis {{ data.years[0] }} : <span data-num="{{ data.all_time.distance_km }}" data-unit="km"></span>,
+      <span data-num="{{ data.all_time.gain_m }}" data-unit="m D+"></span>, {{ data.all_time.count }} sorties.</p>
+  </div>
+  <nav class="segmented" aria-label="Terrain">
+    {% for key, label in terrains.items() %}
+      <a href="?terrain={{ key }}" {% if key == terrain %}aria-current="true"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+</section>
+
+<section class="kpis">
+  <article class="kpi">
+    <header>Semaines actives {{ tip("Semaines (lundi à dimanche) avec au moins une sortie cette année, sur le nombre de semaines écoulées. La régularité prédit mieux la progression que les gros pics de volume.") }}</header>
+    <div class="kpi-value">{{ r.active_weeks_this_year }}<span class="kpi-unit"> / {{ r.elapsed_weeks_this_year }}</span></div>
+    <footer class="muted">en {{ data.years[-1] }}</footer>
+  </article>
+  <article class="kpi">
+    <header>Série en cours {{ tip("Nombre de semaines consécutives avec au moins une sortie, jusqu'à cette semaine ou la précédente.") }}</header>
+    <div class="kpi-value">{{ r.current_weeks }}<span class="kpi-unit"> sem.</span></div>
+    <footer class="muted">semaines d'affilée</footer>
+  </article>
+  <article class="kpi">
+    <header>Plus longue série {{ tip("Record de semaines consécutives avec au moins une sortie.") }}</header>
+    <div class="kpi-value">{{ r.longest.weeks if r.longest else 0 }}<span class="kpi-unit"> sem.</span></div>
+    <footer class="muted">{% if r.longest %}<span data-short-date="{{ r.longest.start }}"></span> → <span data-short-date="{{ r.longest.end }}"></span>{% endif %}</footer>
+  </article>
+  <article class="kpi">
+    <header>D+ par km {{ tip("Ratio moyen de dénivelé positif par kilomètre cette année : le profil de ta pratique en un chiffre (route autour de 5 à 10 m/km, trail au-delà de 20).") }}</header>
+    {% set cur = data.yearly[-1] if data.yearly else none %}
+    <div class="kpi-value">{{ (cur.gain_per_km | round(0) | int) if cur else 0 }}<span class="kpi-unit"> m/km</span></div>
+    <footer class="muted">en {{ cur.year if cur else data.years[-1] }}</footer>
+  </article>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Cumul de l'année, jour par jour {{ tip("Une courbe par année : au même jour, es-tu en avance ou en retard ? Km-effort = km + D+/100 (convention ITRA), seule unité qui rend comparables une année route et une année trail. Clique sur une année de la légende pour la masquer.") }}</h2>
+    <div class="segmented small" role="tablist" id="cumul-metric">
+      <button type="button" data-metric="distance_km" aria-current="true">Distance</button>
+      <button type="button" data-metric="gain_m">D+</button>
+      <button type="button" data-metric="km_effort">Km-effort</button>
+    </div>
+  </div>
+  <div class="chart" id="chart-cumul" role="img" aria-label="Cumul jour par jour de chaque année"></div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Par année {{ tip("Barres : distance et km-effort de chaque année. Courbe : D+ par km, qui montre l'évolution de ta part de trail.") }}</h2>
+  </div>
+  <div class="chart" id="chart-years" role="img" aria-label="Distance, km-effort et D+ par km de chaque année"></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Année</th><th>Sorties</th><th>Distance</th><th>D+</th><th>Km-effort</th><th>D+/km</th>
+        <th>Heures</th><th>Sem. actives</th><th>Plus longue série</th></tr></thead>
+      <tbody>
+        {% for y in data.yearly | reverse %}
+        <tr>
+          <td><span class="year-dot" data-year="{{ y.year }}"></span>{{ y.year }}</td>
+          <td>{{ y.count }}</td>
+          <td data-num="{{ y.distance_km }}" data-unit="km"></td>
+          <td data-num="{{ y.gain_m }}" data-unit="m"></td>
+          <td data-num="{{ y.km_effort }}" data-unit="km"></td>
+          <td data-num="{{ y.gain_per_km }}" data-dec="1"></td>
+          <td data-num="{{ y.hours }}" data-unit="h"></td>
+          <td>{{ y.active_weeks }}</td>
+          <td>{{ y.longest_streak }} sem.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Par mois {{ tip("Distance (ou D+) de chaque mois, une barre par année. Par défaut les trois dernières années ; la légende permet d'en afficher d'autres.") }}</h2>
+    <div class="segmented small" id="month-metric">
+      <button type="button" data-metric="distance_km" aria-current="true">Distance</button>
+      <button type="button" data-metric="gain_m">D+</button>
+    </div>
+  </div>
+  <div class="chart" id="chart-months" role="img" aria-label="Distance par mois et par année"></div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Calendrier {{ tip("Une case par jour, plus foncée quand la distance est plus grande : les trous et les blocs d'entraînement se voient tout de suite.") }}</h2>
+    <div class="segmented small" id="cal-year">
+      {% for y in data.years | reverse %}
+        <button type="button" data-year="{{ y }}" {% if loop.first %}aria-current="true"{% endif %}>{{ y }}</button>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="chart chart-calendar" id="chart-calendar" role="img" aria-label="Calendrier des sorties de l'année"></div>
+</section>
+
+<script type="application/json" id="page-data">{{ {"cumulative": data.cumulative, "yearly": data.yearly, "monthly": data.monthly, "calendar": data.calendar, "today": data.today} | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/volume.js?v={{ version }}"></script>
+{% endblock %}

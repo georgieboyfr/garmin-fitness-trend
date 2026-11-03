@@ -28,6 +28,10 @@ const GFT = (() => {
     });
     root.querySelectorAll("[data-duration]").forEach((el) => { el.textContent = duration(el.dataset.duration); });
     root.querySelectorAll("[data-date]").forEach((el) => { el.textContent = dateLong(el.dataset.date); });
+    root.querySelectorAll("[data-short-date]").forEach((el) => {
+      el.textContent = new Date(el.dataset.shortDate + "T12:00:00").toLocaleDateString("fr-FR", {
+        day: "numeric", month: "short", year: "numeric" });
+    });
   }
 
   // ---------- thème : automatique, clair ou sombre ----------

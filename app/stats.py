@@ -86,3 +86,103 @@ def home(acts, today: date) -> dict:
         "cumulative": cumulative_all_years(acts, today, "distance_km"),
         "week": totals([a for a in acts if monday <= a["start"].date() <= today]),
     }
+
+
+# ---------- volume et régularité ----------
+
+TERRAINS = {"all": "Toutes", "road": "Route", "trail": "Trail"}
+
+
+def filter_terrain(acts, terrain: str):
+    """Route : route et tapis ; trail : sorties au-delà de 20 m de D+ par km."""
+    if terrain == "road":
+        return [a for a in acts if a.get("terrain") in ("road", "indoor")]
+    if terrain == "trail":
+        return [a for a in acts if a.get("terrain") == "trail"]
+    return acts
+
+
+def _week(d: date) -> date:
+    return d - timedelta(days=d.weekday())
+
+
+def week_streaks(weeks: set[date]) -> list[tuple[date, date, int]]:
+    """Séries de semaines consécutives avec au moins une sortie : (premier lundi, dernier lundi, durée)."""
+    out = []
+    for w in sorted(weeks):
+        if out and w - out[-1][1] == timedelta(weeks=1):
+            out[-1] = (out[-1][0], w, out[-1][2] + 1)
+        else:
+            out.append((w, w, 1))
+    return out
+
+
+def regularity(acts, today: date) -> dict:
+    weeks = {_week(a["start"].date()) for a in acts}
+    streaks = week_streaks(weeks)
+    longest = max(streaks, key=lambda s: s[2], default=None)
+    this_week = _week(today)
+    current = 0
+    if streaks and streaks[-1][1] >= this_week - timedelta(weeks=1):
+        current = streaks[-1][2]
+    elapsed_weeks = (this_week - _week(date(today.year, 1, 1))).days // 7 + 1
+    return {
+        "active_weeks_this_year": len({_week(a["start"].date()) for a in acts
+                                       if a["start"].year == today.year}),
+        "elapsed_weeks_this_year": elapsed_weeks,
+        "longest": longest and {"start": longest[0].isoformat(), "end": longest[1].isoformat(),
+                                "weeks": longest[2]},
+        "current_weeks": current,
+    }
+
+
+def yearly_table(acts) -> list[dict]:
+    rows = []
+    for y in sorted({a["start"].year for a in acts}):
+        ya = [a for a in acts if a["start"].year == y]
+        t = totals(ya)
+        weeks = {_week(a["start"].date()) for a in ya}
+        t.update({
+            "year": y,
+            "gain_per_km": round(t["gain_m"] / t["distance_km"], 1) if t["distance_km"] else 0,
+            "active_weeks": len(weeks),
+            "longest_streak": max((s[2] for s in week_streaks(weeks)), default=0),
+            "hrss": round(sum(a.get("hrss") or 0 for a in ya)),
+        })
+        rows.append(t)
+    return rows
+
+
+def monthly(acts, metric: str) -> dict[str, list[float]]:
+    out = {}
+    for a in acts:
+        months = out.setdefault(str(a["start"].year), [0.0] * 12)
+        months[a["start"].month - 1] += a[metric]
+    return {y: [round(v, 1) for v in m] for y, m in sorted(out.items())}
+
+
+def daily_calendar(acts) -> dict[str, dict]:
+    """Par jour : distance, D+ et noms des sorties (pour le calendrier en heatmap)."""
+    days = {}
+    for a in acts:
+        d = days.setdefault(a["start"].date().isoformat(), {"km": 0.0, "gain": 0.0, "names": []})
+        d["km"] = round(d["km"] + a["distance_km"], 2)
+        d["gain"] = round(d["gain"] + a["gain_m"])
+        d["names"].append(a["name"] or "")
+    return days
+
+
+def volume(acts, today: date) -> dict:
+    for a in acts:
+        a["km_effort"] = km_effort(a["distance_km"], a["gain_m"])
+    return {
+        "today": today.isoformat(),
+        "years": sorted({a["start"].year for a in acts} | {today.year}),
+        "cumulative": {m: cumulative_all_years(acts, today, m)
+                       for m in ("distance_km", "gain_m", "km_effort")},
+        "yearly": yearly_table(acts),
+        "monthly": {m: monthly(acts, m) for m in ("distance_km", "gain_m")},
+        "calendar": daily_calendar(acts),
+        "regularity": regularity(acts, today),
+        "all_time": totals(acts),
+    }

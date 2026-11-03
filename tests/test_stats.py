@@ -54,3 +54,43 @@ def test_home():
     assert h["cumulative"]["2025"][-1] == 30
     assert h["week"]["count"] == 1                           # lundi 2 nov. -> mardi 3 nov.
     assert stats.home([], date(2026, 11, 3))["last"] is None
+
+
+# ---------- volume et régularité ----------
+
+def test_week_streaks():
+    weeks = {date(2026, 1, 5), date(2026, 1, 12), date(2026, 1, 19), date(2026, 2, 2)}
+    assert stats.week_streaks(weeks) == [(date(2026, 1, 5), date(2026, 1, 19), 3),
+                                         (date(2026, 2, 2), date(2026, 2, 2), 1)]
+
+
+def test_regularity():
+    acts = [act(d, 5) for d in ("2026-10-12", "2026-10-21", "2026-10-28", "2026-11-02", "2025-12-30")]
+    r = stats.regularity(acts, date(2026, 11, 3))
+    assert r["current_weeks"] == 4            # semaines du 12, 19, 26 oct. et 2 nov.
+    assert r["longest"]["weeks"] == 4
+    assert r["active_weeks_this_year"] == 4
+    assert r["elapsed_weeks_this_year"] == 45
+    # pas de sortie cette semaine ni la précédente : série interrompue
+    assert stats.regularity(acts, date(2026, 11, 25))["current_weeks"] == 0
+
+
+def test_yearly_table_and_terrain_filter():
+    acts = [dict(act("2026-01-05", 10, 300), terrain="trail"), dict(act("2026-01-06", 10, 0), terrain="road"),
+            dict(act("2026-01-07", 8, 0), terrain="indoor"), dict(act("2025-03-01", 12, 120), terrain="road")]
+    rows = stats.yearly_table(acts)
+    assert [r["year"] for r in rows] == [2025, 2026]
+    assert rows[1]["distance_km"] == 28 and rows[1]["gain_per_km"] == pytest.approx(10.7)
+    assert rows[1]["active_weeks"] == 1 and rows[1]["longest_streak"] == 1
+    assert len(stats.filter_terrain(acts, "trail")) == 1
+    assert len(stats.filter_terrain(acts, "road")) == 3       # le tapis compte comme route
+    assert stats.filter_terrain(acts, "all") is acts
+
+
+def test_volume_payload():
+    v = stats.volume(ACTS, date(2026, 11, 3))
+    assert set(v["cumulative"]) == {"distance_km", "gain_m", "km_effort"}
+    assert v["cumulative"]["km_effort"]["2026"][-1] == pytest.approx(35 + 9.5)
+    assert v["monthly"]["distance_km"]["2025"][2] == 12
+    assert v["calendar"]["2026-11-02"] == {"km": 15, "gain": 700, "names": ["Bastille"]}
+    assert v["years"] == [2025, 2026]

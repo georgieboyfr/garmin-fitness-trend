@@ -21,7 +21,7 @@ TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
 # (chemin, libellé, prête) : les pages pas encore prêtes n'apparaissent pas dans le menu
 PAGES = [
     ("/", "Accueil", True),
-    ("/volume", "Volume", False),
+    ("/volume", "Volume", True),
     ("/performance", "Performance", False),
     ("/forme", "Forme", False),
     ("/courses", "Courses", False),
@@ -61,3 +61,23 @@ def home(request: Request):
     finally:
         conn.close()
     return render(request, "home.html", "/", data=stats.home(acts, _today(request)))
+
+
+def _activities(request: Request):
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        return queries.running_activities(conn)
+    finally:
+        conn.close()
+
+
+@router.get("/volume")
+def volume(request: Request, terrain: str = "all"):
+    if (redirect := _login_redirect(request)):
+        return redirect
+    if terrain not in stats.TERRAINS:
+        terrain = "all"
+    acts = stats.filter_terrain(_activities(request), terrain)
+    return render(request, "volume.html", "/volume", data=stats.volume(acts, _today(request)),
+                  terrain=terrain, terrains=stats.TERRAINS)
+

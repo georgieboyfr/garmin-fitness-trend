@@ -8,6 +8,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Pages de statistiques (templates Jinja, ECharts embarqué, thèmes clair/sombre/automatique, menu compact sur mobile, info-bulles), protégées par la session de l'admin : page d'accueil avec le cumul de l'année face à l'an dernier à la même date (distance, D+, km-effort, sorties), la courbe de distance cumulée, la dernière sortie et les totaux.
 - Métriques de chaque sortie, recalculées si la version de l'algorithme ou les paramètres du `.env` changent : temps en mouvement, TRIMP et HRSS, temps par zone de FC (Friel, sur la LTHR), meilleures FC moyennes sur 20, 30 et 60 min, terrain (route, trail au-delà de 20 m de D+ par km, indoor).
 - Admin : carte « Physiologie » avec la LTHR estimée (meilleure FC moyenne tenue une heure sur 12 mois) à côté de la valeur réglée, et la FC max observée.
+- Page Volume et régularité : filtre route / trail, semaines actives, série en cours et plus longue série de semaines consécutives, D+ par km ; cumul jour par jour de toutes les années (distance, D+ ou km-effort) ; totaux, km-effort et D+ par km par année ; distance ou D+ par mois ; calendrier en heatmap par année.
 
 ### Modifié
 - Le cookie de session couvre tout le site (et plus seulement `/admin`) ; après connexion, retour à la page demandée.

@@ -10,11 +10,13 @@ def running_activities(conn) -> list[dict]:
     types = tuple(RUNNING_TYPES)
     rows = conn.execute(
         "SELECT a.id, a.source, a.start_time_local, a.activity_type, n.name, n.description,"
-        " a.distance_m, a.duration_s, a.moving_duration_s, a.avg_hr, a.max_hr,"
-        " e.gain_m, e.loss_m, e.source AS elevation_source"
+        " a.distance_m, a.duration_s, COALESCE(m.moving_s, a.moving_duration_s) AS moving_duration_s,"
+        " COALESCE(m.avg_hr, a.avg_hr) AS avg_hr, COALESCE(m.max_hr, a.max_hr) AS max_hr,"
+        " e.gain_m, e.loss_m, e.source AS elevation_source, m.hrss, m.terrain"
         " FROM activities a"
         " JOIN activity_names n ON n.activity_id = a.id"
         " LEFT JOIN activity_elevation e ON e.activity_id = a.id"
+        " LEFT JOIN activity_metrics m ON m.activity_id = a.id"
         f" WHERE a.deleted_in_garmin = 0 AND a.activity_type IN ({','.join('?' * len(types))})"
         " ORDER BY a.start_time_local",
         types,

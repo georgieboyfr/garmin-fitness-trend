@@ -185,3 +185,35 @@ h2 { font-size: 16px; display: flex; align-items: center; gap: 6px; }
   background: var(--text); color: var(--bg); font-size: 13px; line-height: 1.45; font-weight: 400;
   padding: 9px 11px; border-radius: 9px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
 }
+
+/* ---------- en-tête de page avec filtre ---------- */
+.hero-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.kpi-unit { font-size: 15px; font-weight: 500; color: var(--muted); margin-left: 2px; }
+
+/* ---------- boutons segmentés ---------- */
+.segmented {
+  display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--border); max-width: 100%; overflow-x: auto;
+  scrollbar-width: none;
+}
+.segmented::-webkit-scrollbar { display: none; }
+.segmented a, .segmented button {
+  font: inherit; font-size: 14px; border: 0; background: transparent; color: var(--muted);
+  padding: 5px 12px; border-radius: 7px; cursor: pointer; text-decoration: none; white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.segmented.small a, .segmented.small button { font-size: 13px; padding: 4px 10px; }
+.segmented [aria-current="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); font-weight: 600; }
+@media (max-width: 640px) { .card-head { flex-wrap: wrap; } }
+
+/* ---------- tableaux ---------- */
+.table-wrap { overflow-x: auto; margin-top: 12px; }
+table.data { width: 100%; border-collapse: collapse; font-size: 14px; white-space: nowrap; }
+table.data th { text-align: right; font-weight: 500; font-size: 12px; color: var(--muted); padding: 6px 10px; }
+table.data td { text-align: right; padding: 8px 10px; border-top: 1px solid var(--border); }
+table.data th:first-child, table.data td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface); }
+table.data tbody tr:hover td { background: var(--surface-2); }
+.year-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; }
+
+.chart-calendar { height: 170px; }
+@media (max-width: 600px) { .chart-calendar { height: 760px; } }

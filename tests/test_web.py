@@ -62,3 +62,11 @@ def test_home_with_activities(client, config):
     r = client.get("/")
     assert "Bastille" in r.text           # dernière sortie de course
     assert "Piscine" not in r.text        # la natation ne compte pas
+
+
+def test_volume_page(client, config):
+    login(client)
+    for terrain in ("all", "road", "trail", "nimporte"):
+        r = client.get(f"/volume?terrain={terrain}")
+        assert r.status_code == 200 and "Volume et régularité" in r.text
+    assert client.get("/volume", follow_redirects=False).status_code == 200
