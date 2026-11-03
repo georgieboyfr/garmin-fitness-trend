@@ -103,7 +103,7 @@ Interface soignée et responsive, page d'admin protégée, exécution sous Docke
 
 - **Pas austère** : thème clair et sombre, cartes de chiffres clés en tête de page, graphiques interactifs (survol, zoom, filtres par année et par sport), couleurs cohérentes par année et par type d'activité, typographie soignée, transitions légères.
 - **Responsive, mobile d'abord** : graphiques qui se redimensionnent, tableaux en défilement horizontal ou en cartes sur mobile, navigation compacte (menu ou barre en bas d'écran).
-- **Pages** : Volume et régularité, Performance, Forme, Courses, Admin.
+- **Pages** : Volume et régularité, Performance, Forme, Courses, Sorties, Admin.
 
 ### Page d'admin protégée
 
@@ -190,9 +190,23 @@ Un tableau de tes courses avec fitness et forme le jour J relie l'entraînement 
 - Tu découvres à quel niveau de forme tu performes le mieux, et si ton affûtage fonctionne.
 - Ni Garmin ni Strava n'identifient les activités comme courses : l'application les détecte automatiquement, puis Greg les confirme en un clic (voir section 2).
 
+### Sorties et parcours similaires
+
+Idée de Greg (3 novembre 2026) : la liste de toutes les sorties, et pour chacune, comment elle se situe face aux passages précédents sur le même parcours.
+
+- **Liste paginée des sorties** : date, nom (et description Strava au survol), route ou trail, distance, D+ recalculé, temps en mouvement, allure, FC moyenne, HRSS. Filtres par année et par type, tri par colonne ; en cartes sur mobile.
+- **Parcours similaires** : regroupement automatique des sorties qui suivent le même tracé.
+  - Présélection : départ à moins de 300 m et distance à ±5 %.
+  - Comparaison du tracé : chaque trace réduite à une cinquantaine de points répartis le long du parcours, écart moyen entre les deux tracés sous un seuil (distingue les variantes et le sens de parcours). Seuils à calibrer sur les vraies données.
+  - Réutilisé ensuite par le coach (parcours habituels, variété) et première brique de l'idée « Montées et parcours récurrents » (section 7).
+- **Pour chaque sortie** : écart au temps moyen des autres passages sur ce parcours, en temps et en pourcentage (« −1 min 32, −3 % sur 12 passages »), rang et record du parcours ; « parcours unique » s'il n'y en a pas d'autre. Comparaison sur le **temps en mouvement** (feux, pauses exclus).
+- **Fiche parcours** : évolution des temps au fil des passages.
+- Hors périmètre pour l'instant : les segments communs à des sorties différentes (montée au milieu d'une sortie plus longue), à voir avec l'idée des montées récurrentes.
+- Difficulté : liste facile ; parcours similaires moyenne.
+
 ### Organisation et exclusions
 
-Trois pages : **Volume et régularité**, **Performance**, **Forme**, avec le tableau des courses comme pont entre les deux dernières.
+Trois pages : **Volume et régularité**, **Performance**, **Forme**, avec le tableau des courses comme pont entre les deux dernières, plus une page **Sorties** (liste paginée et parcours similaires).
 
 À laisser de côté : calories, nombre de pas, « X fois la tour Eiffel ». Amusant une fois, mais ça n'apprend rien.
 
@@ -447,7 +461,7 @@ Cinq phases après l'audit, chacune close par un tag de version mineure ; la v1.
 | --- | --- | --- |
 | 0. Audit | Audit de l'existant, plan module par module (garder, refactorer, réécrire) | Plan validé par Greg |
 | 1. Socle | Synchro Garmin et premier import, parsing FIT, D+ (altimètre ou MNT), noms Strava, SQLite, Docker, CI, admin minimale | Historique importé sans doublon, relance idempotente, D+ calibré sur au moins 3 parcours connus, image multi-architecture publiée, admin protégée accessible |
-| 2. Statistiques | Pages Volume et régularité, Performance, Forme, Courses ; détection des courses | Pages vérifiées sur mobile, records en fenêtre glissante séparés route et trail, courses probables validables dans l'admin |
+| 2. Statistiques | Pages Volume et régularité, Performance, Forme, Courses, Sorties (liste et parcours similaires) ; détection des courses | Pages vérifiées sur mobile, records en fenêtre glissante séparés route et trail, courses probables validables dans l'admin |
 | 3. Estimateur | Estimation route et trail depuis un GPX ou une distance | Erreur moyenne affichée, mesurée sur les courses passées |
 | 4. Coach | Plan depuis GPX ou distance, séances détectées, bilan du dimanche, réajustement, temps prévu chaque semaine | Un plan suivi sur 2 semaines réelles sans intervention manuelle |
 | 5. Extensions | Temps par tronçon en trail, envoi des séances vers Garmin, idées retenues en section 7 | Selon l'idée retenue |
