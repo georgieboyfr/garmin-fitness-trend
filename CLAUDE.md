@@ -55,7 +55,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 - [ ] Phase 3 — Estimateur (en cours ; section 5 du brief ; terminé quand l'erreur moyenne, mesurée sur les courses passées, est affichée)
   - [x] 1. Forme actuelle : profil calculé sur les 6 à 12 dernières semaines (courbe allure-durée récente, VAM, allure en descente, fitness, EF), fonction pure versionnée, visible sur une page Estimateur minimale (3 novembre 2026)
   - [x] 2. Route : Riegel à exposant personnel calé sur les meilleurs efforts récents, fourchette optimiste / réaliste / prudent, allure cible ; saisie d'une distance (et D+ éventuel), « si je courais maintenant » (3 novembre 2026 ; choix à valider par Greg, section 10 du brief)
-  - [x] 3. Validation route : estimateur rejoué sur les courses confirmées avec la forme de la veille, erreur moyenne affichée (3 novembre 2026 : 8,4 % sur 3 courses, estimation trop lente ; correction à trancher avec Greg)
+  - [x] 3. Validation route : estimateur rejoué sur les courses confirmées avec la forme de la veille, erreur moyenne affichée (3 novembre 2026 : exposant standard 1,06 retenu par Greg, 4,4 % d'erreur sur 3 courses, estimation encore trop lente, biais non corrigé)
   - [ ] 4. Modèle allure-pente personnel (allure selon la pente à effort égal, montée et descente), calé sur les sorties ; comparé à la VAP de Minetti
   - [ ] 5. Trail sur GPX : import du GPX, découpage en tronçons homogènes, temps par tronçon (modèle allure-pente et facteur de fatigue tiré de la courbe allure-durée), profil et temps de passage
   - [ ] 6. Trail sans GPX (distance, D+, type de terrain) ; ravitaillements et barrières horaires saisis sur un GPX

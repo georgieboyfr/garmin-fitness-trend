@@ -103,7 +103,8 @@ def test_predict_road_extrapolates_the_fastest_recent_effort():
     efforts = riegel_efforts(1.10)
     p = estimator.predict_road(efforts, DAY, 10000)
     assert p["reference"]["distance_m"] == 5000            # seul effort route des 12 semaines
-    assert p["realistic_s"] == round(1500 * 2 ** 1.10)
+    assert p["exponent"] == estimator.STANDARD_EXPONENT
+    assert p["realistic_s"] == round(1500 * 2 ** 1.06)
     spread = estimator.BASE_SPREAD + estimator.EXPONENT_SPREAD * math.log(2)
     assert p["optimistic_s"] == pytest.approx(p["realistic_s"] * math.exp(-spread), abs=1)
     assert p["prudent_s"] == pytest.approx(p["realistic_s"] * math.exp(spread), abs=1)
@@ -159,11 +160,12 @@ def test_validate_road_replays_with_the_form_of_the_day_before():
     assert [r["activity_id"] for r in v["races"]] == [99]
     r = v["races"][0]
     assert r["estimate"]["reference"]["distance_m"] == 5000
-    assert r["estimate"]["realistic_s"] == round(1500 * 2 ** 1.10)
-    assert r["error_pct"] == round((round(1500 * 2 ** 1.10) / 3000 - 1) * 100, 1)
-    assert r["standard_s"] == round(1500 * 2 ** estimator.RIEGEL_DEFAULT)
-    assert v["personal"]["n"] == 1 and v["personal"]["mae_pct"] == abs(r["error_pct"])
-    assert v["personal"]["within"] == int(r["within"])
+    assert r["estimate"]["realistic_s"] == round(1500 * 2 ** 1.06)
+    assert r["error_pct"] == round((round(1500 * 2 ** 1.06) / 3000 - 1) * 100, 1)
+    assert r["personal_k"] == pytest.approx(1.10, abs=0.001)
+    assert r["personal_s"] == pytest.approx(1500 * 2 ** 1.10, abs=2)
+    assert v["used"]["n"] == 1 and v["used"]["mae_pct"] == abs(r["error_pct"])
+    assert v["used"]["within"] == int(r["within"])
 
 
 def test_validate_road_summary_and_missing_estimate():
@@ -172,7 +174,7 @@ def test_validate_road_summary_and_missing_estimate():
     v = estimator.validate_road(acts, efforts, {1, 2, 3})
     errors = [r["error_pct"] for r in v["races"] if r["error_pct"] is not None]
     assert len(errors) == 2 and v["races"][-1]["estimate"] is None
-    assert v["personal"]["bias_pct"] == round(sum(errors) / 2, 1)
-    assert v["personal"]["mae_pct"] == round(sum(abs(e) for e in errors) / 2, 1)
+    assert v["used"]["bias_pct"] == round(sum(errors) / 2, 1)
+    assert v["used"]["mae_pct"] == round(sum(abs(e) for e in errors) / 2, 1)
     assert estimator.validate_road([], efforts, set()) == {"version": estimator.ESTIMATE_VERSION, "races": [],
-                                                           "personal": None, "standard": None}
+                                                           "used": None, "personal": None}

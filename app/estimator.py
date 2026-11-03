@@ -13,11 +13,12 @@ courses passées avec la forme de la veille) :
 - fitness, fatigue et forme (modèle de Banister, comme la page Forme) ;
 - Efficiency Factor des sorties faciles et plates, comparé aux 12 mois précédents.
 
-Route : formule de Riegel, T2 = T1 × (D2 / D1)^k, avec un exposant k personnel. L'exposant est
-la pente de la droite log(temps) = f(log(distance)) sur la frontière de tes meilleurs efforts
-route des 2 dernières années (le meilleur de chaque distance et de chaque durée) ; le niveau vient
-des meilleurs efforts route des 12 dernières semaines : chacun est extrapolé à la distance visée
-et l'estimation la plus rapide est retenue (un effort d'entraînement n'est pas toujours à fond).
+Route : formule de Riegel, T2 = T1 × (D2 / D1)^k, avec l'exposant standard k = 1,06 (choix de
+Greg après la validation : l'exposant personnel, calé sur la frontière des meilleurs efforts route
+des 2 dernières années, donnait 8,4 % d'erreur contre 4,4 % ; il reste calculé pour comparaison).
+Le niveau vient des meilleurs efforts route des 12 dernières semaines : chacun est extrapolé à la
+distance visée et l'estimation la plus rapide est retenue (un effort d'entraînement n'est pas
+toujours à fond).
 Le D+ éventuel est converti en distance équivalente sur le plat (coût de Minetti d'une montée à
 5 %, descente neutre). La fourchette s'élargit avec l'écart entre la distance de référence et la
 distance visée (incertitude sur l'exposant).
@@ -33,7 +34,7 @@ from statistics import median
 from . import grade, stats
 
 PROFILE_VERSION = 1
-ESTIMATE_VERSION = 1
+ESTIMATE_VERSION = 2           # 2 : exposant standard au lieu de l'exposant personnel
 WINDOW_DAYS = 84               # 12 semaines
 EF_REFERENCE_DAYS = 365
 
@@ -47,7 +48,9 @@ SLOPE_BANDS = [(-2, 2, "Plat (−2 à +2 %)"), (-10, -4, "Descente douce (−4 �
                (-20, -10, "Descente (−10 à −20 %)"), (-46, -20, "Forte descente (plus de −20 %)")]
 SLOPE_MIN_S = 300              # en dessous de 5 min dans la bande, l'allure n'est pas affichée
 
-RIEGEL_DEFAULT = 1.06          # exposant standard de Riegel, faute d'efforts assez variés
+RIEGEL_DEFAULT = 1.06          # exposant standard de Riegel
+STANDARD_EXPONENT = {"value": RIEGEL_DEFAULT, "fitted": None, "personal": False, "n": 0, "bounded": False,
+                     "range_km": None}
 EXPONENT_BOUNDS = (1.02, 1.20)
 EXPONENT_DAYS = 730
 EXPONENT_MIN_RATIO = 3.0       # la frontière doit couvrir au moins un rapport 3 entre distances
@@ -230,7 +233,7 @@ def equivalent_distance(distance_m: float, gain_m: float = 0.0) -> float:
 def predict_road(efforts, day: date, distance_m: float, gain_m: float = 0.0, exponent: dict | None = None):
     """Temps estimé sur route « si je courais au soir de `day` », avec sa fourchette, ou None
     faute d'effort route récent."""
-    exponent = exponent or personal_exponent(efforts, day)
+    exponent = exponent or STANDARD_EXPONENT
     window = WINDOW_DAYS
     refs = road_points(efforts, day - timedelta(days=window - 1), day)
     if not refs:
@@ -260,20 +263,15 @@ def predict_road(efforts, day: date, distance_m: float, gain_m: float = 0.0, exp
 
 def road_table(efforts, day: date) -> list[dict]:
     """Estimations sur les distances usuelles (5 km, 10 km, semi, marathon)."""
-    exponent = personal_exponent(efforts, day)
     out = []
     for d in STANDARD_DISTANCES_M:
-        p = predict_road(efforts, day, d, exponent=exponent)
+        p = predict_road(efforts, day, d)
         if p:
             out.append({"label": DISTANCE_LABELS[d], **p})
     return out
 
 
 # ---------- validation sur les courses passées ----------
-
-STANDARD_EXPONENT = {"value": RIEGEL_DEFAULT, "fitted": None, "personal": False, "n": 0, "bounded": False,
-                     "range_km": None}
-
 
 def _error_summary(rows, key) -> dict | None:
     errors = [r[key] for r in rows if r.get(key) is not None]
@@ -286,30 +284,31 @@ def _error_summary(rows, key) -> dict | None:
 def validate_road(acts, efforts, confirmed_ids) -> dict:
     """Estimateur route rejoué sur chaque course route confirmée, avec la forme de la veille :
     écart entre le temps estimé (réaliste) et le temps réel (écoulé), en %, positif quand
-    l'estimation est trop lente. Comparé à l'exposant standard de Riegel."""
+    l'estimation est trop lente. Comparé à l'exposant personnel."""
     rows = []
     for a in acts:
         if a["id"] not in confirmed_ids or a.get("terrain") != "road" or not a.get("distance_m"):
             continue
         actual = a.get("elapsed_s") or a["duration_s"]
         day = a["start"].date() - timedelta(days=1)
-        personal = predict_road(efforts, day, a["distance_m"], a["gain_m"])
-        standard = predict_road(efforts, day, a["distance_m"], a["gain_m"], exponent=STANDARD_EXPONENT)
+        used = predict_road(efforts, day, a["distance_m"], a["gain_m"])
+        personal = predict_road(efforts, day, a["distance_m"], a["gain_m"],
+                                exponent=personal_exponent(efforts, day))
         row = {"activity_id": a["id"], "date": a["start"].date().isoformat(), "name": a["name"],
                "distance_km": round(a["distance_km"], 1), "gain_m": round(a["gain_m"]),
                "actual_s": round(actual), "estimate": None, "error_pct": None, "within": None,
-               "standard_s": None, "standard_error_pct": None}
+               "personal_s": None, "personal_error_pct": None, "personal_k": None}
+        if used:
+            row.update({"estimate": used,
+                        "error_pct": round((used["realistic_s"] / actual - 1) * 100, 1),
+                        "within": used["optimistic_s"] <= actual <= used["prudent_s"]})
         if personal:
-            row.update({"estimate": personal,
-                        "error_pct": round((personal["realistic_s"] / actual - 1) * 100, 1),
-                        "within": personal["optimistic_s"] <= actual <= personal["prudent_s"]})
-        if standard:
-            row.update({"standard_s": standard["realistic_s"],
-                        "standard_error_pct": round((standard["realistic_s"] / actual - 1) * 100, 1)})
+            row.update({"personal_s": personal["realistic_s"], "personal_k": personal["exponent"]["value"],
+                        "personal_error_pct": round((personal["realistic_s"] / actual - 1) * 100, 1)})
         rows.append(row)
     rows.sort(key=lambda r: r["date"], reverse=True)
     summary = _error_summary(rows, "error_pct")
     if summary:
         summary["within"] = sum(1 for r in rows if r["within"])
-    return {"version": ESTIMATE_VERSION, "races": rows, "personal": summary,
-            "standard": _error_summary(rows, "standard_error_pct")}
+    return {"version": ESTIMATE_VERSION, "races": rows, "used": summary,
+            "personal": _error_summary(rows, "personal_error_pct")}

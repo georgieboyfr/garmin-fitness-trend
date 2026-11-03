@@ -213,4 +213,5 @@ def estimateur(request: Request, distance: str = "", gain: str = ""):
                   profile=estimator.current_form(acts, efforts, today, lthr),
                   table=estimator.road_table(efforts, today), estimate=estimate,
                   validation=estimator.validate_road(acts, efforts, confirmed),
+                  personal_exponent=estimator.personal_exponent(efforts, today),
                   query={"distance": distance, "gain": gain})
