@@ -356,6 +356,18 @@ a.act-name { color: inherit; text-decoration: none; }
 a.act-name:hover { color: var(--accent); text-decoration: underline; }
 
 /* ---------- fiche d'une sortie ---------- */
+.efficiency { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 28px; }
+@media (max-width: 720px) { .efficiency { grid-template-columns: 1fr; } }
+.eff-item h3 { font-size: 14px; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 6px; }
+.eff-item p { margin: 4px 0 0; }
+.eff-value { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.map { position: relative; }
+.map-hint {
+  position: absolute; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.35); color: #fff; font-weight: 600; font-size: 16px;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.map-hint.show { opacity: 1; }
 .back { margin: 0 0 6px; font-size: 14px; }
 .back a { color: var(--muted); text-decoration: none; }
 .back a:hover { color: var(--accent); }
@@ -411,3 +423,9 @@ table.bests td.ranks { text-align: left; white-space: normal; }
 table.intervals tr.iv-effort td { font-weight: 600; }
 table.intervals tr.iv-effort td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 table.intervals tr.iv-other td { color: var(--muted); }
+
+/* icône du choix des fonds de carte (les images de Leaflet ne sont pas embarquées) */
+.map .leaflet-control-layers-toggle, .leaflet-retina .map .leaflet-control-layers-toggle {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23333' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M12 3 2 8l10 5 10-5-10-5Z'/%3E%3Cpath d='m2 13 10 5 10-5'/%3E%3C/svg%3E");
+  background-size: 22px 22px;
+}

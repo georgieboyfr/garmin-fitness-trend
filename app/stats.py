@@ -226,6 +226,33 @@ def pace_s_per_km(moving_s, distance_km):
     return moving_s / distance_km if moving_s and distance_km and distance_km > 0.2 else None
 
 
+EF_REFERENCE_DAYS = 365
+EF_REFERENCE_MIN = 5
+
+
+def ef_reference(acts, activity) -> dict | None:
+    """Repère de l'Efficiency Factor d'une sortie : médiane des sorties de même terrain dans les
+    12 mois qui la précèdent (au moins 5), et écart en pourcentage."""
+    if not activity.get("ef"):
+        return None
+    start = activity["start"]
+    since = start - timedelta(days=EF_REFERENCE_DAYS)
+    values = [a["ef"] for a in acts
+              if a.get("ef") and a["id"] != activity["id"] and a.get("terrain") == activity.get("terrain")
+              and since <= a["start"] < start]
+    if len(values) < EF_REFERENCE_MIN:
+        return None
+    median = _median(values)
+    return {"median": round(median, 2), "n": len(values),
+            "diff_pct": round((activity["ef"] - median) / median * 100, 1)}
+
+
+def decoupling_applies(a) -> bool:
+    """Le découplage n'a de sens que sur le plat (route, peu de D+) : ailleurs la pente fausse l'allure."""
+    return (a.get("decoupling_pct") is not None and a.get("terrain") == "road"
+            and a["distance_km"] > 0 and a["gain_m"] / a["distance_km"] < FLAT_MAX_GAIN_PER_KM)
+
+
 def route_comparison(acts) -> dict[int, dict]:
     """Pour chaque sortie d'un parcours couru plusieurs fois : écart (temps en mouvement) à la
     moyenne des autres passages, rang et record du parcours."""
@@ -519,8 +546,7 @@ def forme(acts, today: date, lthr: float) -> dict:
     decoupling = [{"date": a["start"].date().isoformat(), "pct": round(a["decoupling_pct"], 1),
                    "name": a["name"], "id": a.get("id"),
                    "hours": round((a["moving_duration_s"] or 0) / 3600, 1)}
-                  for a in acts if a.get("decoupling_pct") is not None and a.get("terrain") == "road"
-                  and a["distance_km"] > 0 and a["gain_m"] / a["distance_km"] < FLAT_MAX_GAIN_PER_KM]
+                  for a in acts if decoupling_applies(a)]
 
     zones = {}
     for a in acts:

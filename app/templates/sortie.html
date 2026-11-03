@@ -37,19 +37,40 @@
     <footer class="muted">{% if d.max_hr %}max {{ d.max_hr }}{% endif %}</footer></article>
   <article class="kpi"><header>Charge {{ tip("HRSS : charge cardiaque de la sortie, 100 = une heure à la LTHR.") }}</header>
     <div class="kpi-value">{{ d.hrss if d.hrss is not none else "—" }}</div>
-    <footer class="muted">{% if d.ef %}EF {{ ('%.2f' % d.ef) | replace('.', ',') }}{% endif %}{% if d.decoupling_pct is not none %} · découplage {{ ('%.1f' % d.decoupling_pct) | replace('.', ',') }} %{% endif %}</footer></article>
+    <footer class="muted">{% if d.hrss_per_h is not none %}{{ d.hrss_per_h }} par heure{% endif %}</footer></article>
 </section>
 
-{% if d.route %}
-<section class="card route-card">
-  <div class="card-head">
-    <h2>Ce parcours {{ tip("Les sorties qui suivent le même tracé, dans le même sens, à quelques dizaines de mètres près. Comparaison sur le temps en mouvement.") }}</h2>
-    <span class="delta {{ 'up' if d.route.diff_s < 0 else 'down' }}">{{ '−' if d.route.diff_s < 0 else '+' }}<span data-duration="{{ d.route.diff_s | abs }}"></span>
-      ({{ ('%+.1f' % d.route.diff_pct) | replace('.', ',') | replace('-', '−') }} %)</span>
+{% if d.ef or d.decoupling_pct is not none %}
+{% macro dec(v, fmt) %}{{ (fmt % v) | replace('.', ',') | replace('-', '−') }}{% endmacro %}
+<section class="card efficiency">
+  {% if d.ef %}
+  <div class="eff-item">
+    <h3>Efficiency Factor {{ tip("Vitesse divisée par la FC moyenne : mètres parcourus par minute pour chaque battement. Plus il est haut, plus tu vas vite pour un même effort cardiaque. Il baisse naturellement avec le dénivelé, le fractionné, la chaleur ou la fatigue : à comparer surtout entre sorties semblables. Sa tendance sur les sorties faciles et plates est sur la page Forme.") }}</h3>
+    <p class="eff-value">{{ dec(d.ef, '%.2f') }} <span class="muted small">m/min par battement</span></p>
+    {% set r = d.ef_ref %}
+    {% if r %}
+    <p class="muted small">
+      {% if r.diff_pct | abs < 2 %}<span class="delta">dans ta moyenne</span>
+      {% else %}<span class="delta {{ 'up' if r.diff_pct > 0 else 'down' }}">{{ dec(r.diff_pct, '%+.1f') }} %</span>{% endif %}
+      par rapport à ta médiane des 12 mois précédents sur {{ {"road": "route", "trail": "trail", "indoor": "tapis"}.get(d.terrain, "ce terrain") }}
+      ({{ dec(r.median, '%.2f') }}, {{ r.n }} sorties)</p>
+    {% endif %}
   </div>
-  <p class="muted">{{ d.route.rank }}e temps sur {{ d.route.n }} passages · moyenne des autres passages
-    <span data-duration="{{ d.route.mean_others_s }}"></span> · record <span data-duration="{{ d.route.best_s }}"></span></p>
-  <div class="chart chart-small" id="chart-route" role="img" aria-label="Temps de chaque passage sur ce parcours"></div>
+  {% endif %}
+  <div class="eff-item">
+    <h3>Découplage cardiaque {{ tip("Dérive de la FC par rapport à l'allure entre la première et la seconde moitié de la sortie (baisse de l'Efficiency Factor). Calculé seulement sur les sorties plates, route avec moins de 10 m de D+ par km, d'au moins une heure en mouvement : ailleurs, le relief et les changements d'allure faussent la mesure.") }}</h3>
+    {% if d.decoupling_pct is not none and d.profiles.intervals %}
+    <p class="eff-value muted">{{ dec(d.decoupling_pct, '%.1f') }} %</p>
+    <p class="muted small">Séance fractionnée : l'allure n'est pas constante, le découplage ne dit rien de l'endurance ici.</p>
+    {% elif d.decoupling_pct is not none %}
+    <p class="eff-value">{{ dec(d.decoupling_pct, '%.1f') }} %</p>
+    <p class="muted small">{% if d.decoupling_pct < -5 %}<span class="delta up">FC en baisse</span> : la seconde moitié a coûté moins cher que la première (départ prudent ou fin plus lente), l'endurance n'a pas été mise en défaut.
+      {% elif d.decoupling_pct < 5 %}<span class="delta up">FC stable</span> : sous 5 %, l'endurance est solide pour cette durée.
+      {% else %}<span class="delta down">FC en dérive</span> : au-delà de 5 %, la FC a monté en seconde moitié à allure égale (fatigue, chaleur, hydratation, ou durée encore longue pour ton endurance).{% endif %}</p>
+    {% else %}
+    <p class="muted small">Non calculé : seulement sur les sorties plates (route, moins de 10 m de D+ par km) d'au moins une heure.</p>
+    {% endif %}
+  </div>
 </section>
 {% endif %}
 
@@ -105,7 +126,7 @@
         <thead><tr><th>Km</th><th>Temps</th><th>Allure</th><th>FC</th><th>D+</th><th>D−</th></tr></thead>
         <tbody>
           {% for s in d.profiles.splits %}
-          <tr><td>{{ s.km }}{% if s.distance_m < 990 %} <span class="muted small">({{ s.distance_m }} m)</span>{% endif %}</td>
+          <tr><td>{% if s.distance_m < 990 %}<span class="muted">{{ s.distance_m }} m</span>{% else %}{{ s.km }}{% endif %}</td>
             <td data-chrono="{{ s.time_s }}"></td><td data-pace="{{ s.pace_s_km }}"></td>
             <td>{{ s.avg_hr or "—" }}</td><td>{{ s.gain_m if s.gain_m is not none else "—" }}</td>
             <td>{{ s.loss_m if s.loss_m is not none else "—" }}</td></tr>
@@ -140,6 +161,19 @@
     {% endif %}
   </article>
 </section>
+
+{% if d.route %}
+<section class="card route-card">
+  <div class="card-head">
+    <h2>Ce parcours {{ tip("Les sorties qui suivent le même tracé, dans le même sens, à quelques dizaines de mètres près. Comparaison sur le temps en mouvement.") }}</h2>
+    <span class="delta {{ 'up' if d.route.diff_s < 0 else 'down' }}">{{ '−' if d.route.diff_s < 0 else '+' }}<span data-duration="{{ d.route.diff_s | abs }}"></span>
+      ({{ ('%+.1f' % d.route.diff_pct) | replace('.', ',') | replace('-', '−') }} %)</span>
+  </div>
+  <p class="muted">{{ d.route.rank }}e temps sur {{ d.route.n }} passages · moyenne des autres passages
+    <span data-duration="{{ d.route.mean_others_s }}"></span> · record <span data-duration="{{ d.route.best_s }}"></span></p>
+  <div class="chart chart-small" id="chart-route" role="img" aria-label="Temps de chaque passage sur ce parcours"></div>
+</section>
+{% endif %}
 
 <script type="application/json" id="page-data">{{ {"profiles": d.profiles, "zones": d.zones_s, "passages": d.passages, "id": d.id} | tojson }}</script>
 {% endblock %}

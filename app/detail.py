@@ -11,7 +11,14 @@ from .elevation import median_filter, resample, series_distance
 from .elevation_job import dem_profile_path
 from .metrics import _seconds
 from .series import read_series
-from .stats import DISTANCE_LABELS, DURATION_LABELS, pace_s_per_km, route_comparison
+from .stats import (
+    DISTANCE_LABELS,
+    DURATION_LABELS,
+    decoupling_applies,
+    ef_reference,
+    pace_s_per_km,
+    route_comparison,
+)
 
 PROFILE_POINTS = 800        # points des profils et du tracé envoyés à la page
 PACE_WINDOW_M = 200.0       # allure lissée sur 200 m
@@ -178,7 +185,10 @@ def activity_detail(config, conn, activity_id: int, acts, efforts=None) -> dict 
         "max_hr": round(a["max_hr"]) if a["max_hr"] else None,
         "hrss": round(a["hrss"]) if a.get("hrss") is not None else None,
         "ef": round(m["ef"], 2) if m and m["ef"] else None,
-        "decoupling_pct": round(m["decoupling_pct"], 1) if m and m["decoupling_pct"] is not None else None,
+        "ef_ref": ef_reference(acts, a),
+        "decoupling_pct": round(a["decoupling_pct"], 1) if decoupling_applies(a) else None,
+        "hrss_per_h": round(a["hrss"] / (a["moving_duration_s"] / 3600))
+        if a.get("hrss") is not None and a["moving_duration_s"] else None,
         "zones_s": zones,
         "bests": {
             "distance": [{"label": DISTANCE_LABELS[k], "time_s": best[("distance", k)],

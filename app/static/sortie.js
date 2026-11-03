@@ -44,6 +44,28 @@
     hoverMarker = dot(P.track[0], accent);
     map.fitBounds(line.getBounds(), { padding: [16, 16] });
     window.__map = map;
+
+    // zoom à la molette avec Ctrl (ou au pincement du pavé tactile) : la molette seule fait défiler la page
+    const box = map.getContainer();
+    const hint = L.DomUtil.create("div", "map-hint", box);
+    hint.textContent = "Ctrl + molette pour zoomer";
+    let hintTimer = null, wheelSum = 0;
+    box.addEventListener("wheel", (e) => {
+      if (!e.ctrlKey && !e.metaKey) {
+        hint.classList.add("show");
+        clearTimeout(hintTimer);
+        hintTimer = setTimeout(() => hint.classList.remove("show"), 1200);
+        return;
+      }
+      e.preventDefault();
+      hint.classList.remove("show");
+      // un cran de molette vaut environ 100 ; le pincement envoie de petits pas, cumulés
+      wheelSum += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+      if (Math.abs(wheelSum) < 60) return;
+      const step = wheelSum < 0 ? 1 : -1;
+      wheelSum = 0;
+      map.setZoomAround(map.mouseEventToContainerPoint(e), map.getZoom() + step);
+    }, { passive: false });
   }
 
   // ---------- profils : altitude, allure, FC ----------

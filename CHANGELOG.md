@@ -24,12 +24,18 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Fiche de sortie : intervalles de la séance (tours de la montre si séance structurée ou tours manuels, sinon blocs d'effort détectés sur l'allure, route seulement), résumé « N × durée à allure », efforts surlignés sur le profil d'allure.
 - Fiche de sortie : classement de chaque meilleur effort dans l'année et sur toute la période (même terrain ; VAM route et trail confondus).
 - Liste des sorties : curseurs de distance et de D+ (minimum et maximum, bornés par l'historique), nombre de sorties par page au choix (25, 50, 100 ou 200, 50 par défaut, mémorisé), position (« 51–100 sur 659 ») et navigation en haut et en bas de la liste, ligne entière cliquable, jour de la semaine dans la date.
+- Fiche de sortie : bloc « Efficiency Factor » et « Découplage cardiaque » expliqués (unité, médiane de l'EF des 12 mois précédents sur le même terrain, lecture du découplage, conditions de calcul) ; zoom de la carte avec Ctrl + molette ou au pincement du pavé tactile ; charge par heure.
 
 ### Modifié
 - Liste des sorties : colonne « vs parcours » retirée (l'écart au parcours reste sur la fiche de la sortie) ; temps en mouvement et temps écoulé réunis dans une colonne « Temps » (l'écoulé n'apparaît que s'il diffère d'au moins une minute) ; FC et charge en retrait, description sur une ligne.
+- Fiche de sortie : bloc « Ce parcours » déplacé en bas de la fiche ; dernier kilomètre incomplet affiché par sa seule distance (« 682 m »).
 - Hors de France, le D+ de Strava remplace celui du MNT Copernicus (qui compte les bâtiments) quand l'activité est appariée.
 - Le terrain d'une sortie est recalculé quand son D+ change.
 - Le cookie de session couvre tout le site (et plus seulement `/admin`) ; après connexion, retour à la page demandée.
+
+### Corrigé
+- Fiche de sortie : le découplage n'est plus affiché sur les sorties vallonnées ou trail (comme sur la page Forme), et il est signalé comme non pertinent sur une séance fractionnée.
+- Carte : icône du choix des fonds de carte, absente faute des images de Leaflet.
 
 ## [0.1.1] - 2026-11-03
 

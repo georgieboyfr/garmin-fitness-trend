@@ -269,3 +269,28 @@ def test_effort_ranks():
               for i, (v, t) in enumerate([(900, "trail"), (950, "road")])]
     assert effort_ranks(climbs, 0, "climb", 0, "trail", 2026, higher_is_better=True)["all_time"]["rank"] == 2
     assert effort_ranks(efforts, 99, "distance", 5000, "road", 2026) is None
+
+
+def test_ef_reference():
+    acts = []
+    for i in range(8):
+        a = act(f"2026-0{1 + i // 4}-{10 + i:02d}", 10)
+        a.update(id=i, terrain="road", ef=1.0 + i * 0.02)
+        acts.append(a)
+    trail = dict(act("2026-03-01", 10), id=50, terrain="trail", ef=0.8)
+    old = dict(act("2024-01-01", 10), id=51, terrain="road", ef=2.0)          # plus d'un an avant : ignorée
+    current = dict(act("2026-04-01", 10), id=99, terrain="road", ef=1.12)
+    ref = stats.ef_reference(acts + [trail, old, current], current)
+    assert ref == {"median": 1.07, "n": 8, "diff_pct": 4.7}
+    assert stats.ef_reference(acts[:4] + [current], current) is None        # moins de 5 sorties
+    assert stats.ef_reference(acts, dict(current, ef=None)) is None
+    later = dict(act("2026-01-01", 10), id=98, terrain="road", ef=1.0)      # pas de sortie antérieure
+    assert stats.ef_reference(acts, later) is None
+
+
+def test_decoupling_applies_only_on_flat_road():
+    flat = dict(act("2026-01-01", 15, gain=60), terrain="road", decoupling_pct=3.0)
+    assert stats.decoupling_applies(flat)
+    assert not stats.decoupling_applies(dict(flat, gain_m=200))             # route vallonnée
+    assert not stats.decoupling_applies(dict(flat, terrain="trail"))
+    assert not stats.decoupling_applies(dict(flat, decoupling_pct=None))
