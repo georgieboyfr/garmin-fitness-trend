@@ -1,18 +1,20 @@
 """
-Routes de l'admin : session (connexion / déconnexion), compte Garmin, synchro, D+.
+Routes de l'admin : session (connexion / déconnexion), compte Garmin, synchro, D+, Strava.
 
 Les actions exigent la session de l'admin ET, hors GET, l'en-tête
 X-Requested-With: admin-ui, qu'une page tierce ne peut pas envoyer (protection CSRF).
 """
 import logging
 import threading
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
-from . import db, elevation_job, settings
+from . import db, elevation_job, settings, strava
 from .auth import SESSION_COOKIE
 from .garmin_sync import SyncAlreadyRunning
 from .sports import RUNNING_TYPES
@@ -233,10 +235,10 @@ def elevation_status(request: Request):
     conn = db.connect(request.app.state.config.db_path)
     try:
         by_source = conn.execute(
-            "SELECT source, dem_provider, COUNT(*) AS n, ROUND(SUM(gain_m)) AS gain_m,"
+            "SELECT e.source, e.dem_provider, COUNT(*) AS n, ROUND(SUM(e.gain_m)) AS gain_m,"
             " ROUND(SUM(a.garmin_elevation_gain_m)) AS garmin_gain_m"
             " FROM activity_elevation e JOIN activities a ON a.id = e.activity_id"
-            " GROUP BY source, dem_provider ORDER BY n DESC"
+            " GROUP BY e.source, e.dem_provider ORDER BY n DESC"
         ).fetchall()
         return {
             "settings": settings.get(conn, "elevation"),
@@ -260,6 +262,80 @@ def elevation_settings(values: dict, request: Request):
         raise HTTPException(400, str(e)) from None
     finally:
         conn.close()
+
+
+# ---------- Strava ----------
+
+MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
+
+
+@protected.get("/strava")
+def strava_status(request: Request):
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        running = tuple(strava.RUNNING_TYPES)
+        marks = ",".join("?" * len(running))
+        counts = conn.execute(
+            "SELECT COUNT(*) AS total,"
+            " COALESCE(SUM(activity_id > 0), 0) AS matched,"
+            " COALESCE(SUM(activity_id > 0 AND generic_name = 0), 0) AS named,"
+            " COALESCE(SUM(activity_id < 0), 0) AS imported,"
+            " MAX(start_time_utc) AS last_activity"
+            " FROM strava_activities").fetchone()
+        unmatched = conn.execute(
+            "SELECT start_time_utc, name, activity_type, distance_m FROM strava_activities"
+            f" WHERE activity_id IS NULL AND activity_type IN ({marks})"
+            " ORDER BY start_time_utc DESC LIMIT 20", running).fetchall()
+        # sorties Garmin plus récentes que le dernier export : leur nom Strava viendra au prochain
+        waiting = conn.execute(
+            "SELECT COUNT(*) FROM activities a WHERE a.source = 'garmin' AND a.deleted_in_garmin = 0"
+            " AND a.start_time_utc > COALESCE((SELECT MAX(start_time_utc) FROM strava_activities), '')"
+        ).fetchone()[0]
+        imports = conn.execute(
+            "SELECT filename, kind, status, activities, last_activity_utc, error, imported_at"
+            " FROM strava_imports ORDER BY id DESC LIMIT 10").fetchall()
+        return {"counts": {**dict(counts), "waiting_next_export": waiting},
+                "unmatched_runs": [dict(r) for r in unmatched],
+                "imports": [dict(r) for r in imports]}
+    finally:
+        conn.close()
+
+
+@protected.post("/strava/upload")
+async def strava_upload(request: Request, name: str):
+    """Envoi de l'export Strava (zip complet ou activities.csv), corps brut de la requête."""
+    cfg = request.app.state.config
+    filename = Path(name).name
+    if Path(filename).suffix.lower() not in (".zip", ".csv"):
+        raise HTTPException(400, "Fichier attendu : l'archive .zip de l'export Strava ou activities.csv")
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = cfg.strava_dir / f"{stamp}-{filename}"
+    tmp = target.with_name(target.name + ".part")
+    size = 0
+    try:
+        with open(tmp, "wb") as f:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(413, "Fichier trop volumineux (1 Go au plus)")
+                f.write(chunk)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    tmp.replace(target)
+
+    def process():
+        conn = db.connect(cfg.db_path)
+        try:
+            return strava.import_file(cfg, conn, target)
+        finally:
+            conn.close()
+
+    result = await run_in_threadpool(process)
+    if result["status"] == "ok" and not request.app.state.garmin_sync.running:
+        # lecture des traces importées et calcul de leur D+, en tâche de fond
+        _start_background(request, kind="strava", local_only=True)
+    return {"file": target.name, **result}
 
 
 @protected.post("/sync/settings")

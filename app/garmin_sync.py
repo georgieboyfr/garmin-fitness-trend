@@ -244,7 +244,7 @@ class GarminSync:
             start = date.fromisoformat(settings.get(conn, "garmin_sync")["history_start"])
         else:
             last = conn.execute(
-                "SELECT MAX(start_time_local) FROM activities WHERE deleted_in_garmin=0"
+                "SELECT MAX(start_time_local) FROM activities WHERE deleted_in_garmin=0 AND source='garmin'"
             ).fetchone()[0]
             start = (date.fromisoformat(last[:10]) if last else today) - timedelta(days=RECENT_WINDOW_DAYS)
         return month_ranges(min(start, today), today)
@@ -288,7 +288,7 @@ class GarminSync:
                 )
             # activités connues de la période qui n'apparaissent plus dans Garmin
             known = conn.execute(
-                "SELECT id FROM activities WHERE deleted_in_garmin=0"
+                "SELECT id FROM activities WHERE deleted_in_garmin=0 AND source='garmin'"
                 " AND substr(start_time_local, 1, 10) BETWEEN ? AND ?",
                 (a.isoformat(), b.isoformat()),
             ).fetchall()
@@ -303,7 +303,7 @@ class GarminSync:
 
         statuses = ("pending", "error") if retry_errors else ("pending",)
         rows = conn.execute(
-            f"SELECT id FROM activities WHERE deleted_in_garmin=0"
+            f"SELECT id FROM activities WHERE deleted_in_garmin=0 AND source='garmin'"
             f" AND fit_status IN ({','.join('?' * len(statuses))}) ORDER BY start_time_utc",
             statuses,
         ).fetchall()

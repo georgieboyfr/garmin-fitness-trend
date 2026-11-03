@@ -1,5 +1,5 @@
 """
-Synchro Garmin quotidienne, dans le conteneur.
+Synchro Garmin quotidienne et dossier Strava surveillé, dans le conteneur.
 
 Toutes les minutes, le planificateur regarde si la synchro du jour est due : synchro
 activée, heure réglée atteinte, pas encore lancée aujourd'hui, compte Garmin
@@ -10,7 +10,7 @@ import threading
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from . import db, settings
+from . import db, settings, strava
 
 log = logging.getLogger("scheduler")
 
@@ -40,10 +40,28 @@ class DailyScheduler:
 
     def _loop(self):
         while not self._stop.wait(self.interval_s):
+            for job in (self.scan_strava, self.tick):
+                try:
+                    job()
+                except Exception:
+                    log.exception("Planificateur : erreur")
+
+    def scan_strava(self) -> list[dict]:
+        """Importe un export Strava déposé dans le dossier surveillé, puis lit les traces
+        des sorties importées et calcule leur D+ (sans appel à Garmin)."""
+        if self.sync.running:
+            return []   # la synchro en cours écrit dans la base : on repassera dans une minute
+        conn = db.connect(self.config.db_path)
+        try:
+            results = strava.scan_folder(self.config, conn)
+        finally:
+            conn.close()
+        if any(r["status"] == "ok" for r in results):
             try:
-                self.tick()
+                self.sync.run(kind="strava", local_only=True)
             except Exception:
-                log.exception("Planificateur : erreur")
+                pass  # déjà journalisée et enregistrée dans sync_runs
+        return results
 
     def tick(self, now=None) -> bool:
         """Lance la synchro du jour si elle est due. Retourne True si elle a été lancée."""

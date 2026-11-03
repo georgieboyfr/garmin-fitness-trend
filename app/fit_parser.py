@@ -63,7 +63,8 @@ def _number(value):
 def parse_fit(path) -> FitData:
     product = None
     cols = {name: [] for name in SCHEMA.names}
-    with fitdecode.FitReader(str(path), check_crc=fitdecode.CrcCheck.DISABLED) as reader:
+    source = path if hasattr(path, "read") else str(path)   # chemin ou fichier déjà ouvert
+    with fitdecode.FitReader(source, check_crc=fitdecode.CrcCheck.DISABLED) as reader:
         for frame in reader:
             if not isinstance(frame, fitdecode.FitDataMessage):
                 continue

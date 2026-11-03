@@ -1,11 +1,13 @@
 """
-Traitements locaux après la synchro, à partir des FIT stockés (aucun appel à Garmin).
+Traitements locaux après la synchro, à partir des traces stockées (aucun appel à Garmin).
 
-1. Lecture des FIT : chaque activité dont le FIT est stocké et qui n'a pas encore été
-lue avec la version courante du lecteur est lue, sa série écrite en Parquet et le
-modèle de montre enregistré. Une lecture en échec n'est retentée qu'à la version
-suivante du lecteur. Les lectures sont réparties sur plusieurs processus.
-2. D+ / D− (elevation_job.py).
+1. Appariement Strava (strava.match_all).
+2. Lecture des traces (FIT Garmin, ou trace de l'archive Strava pour une sortie importée
+   de Strava) : chaque activité pas encore lue avec la version courante du lecteur est
+   lue, sa série écrite en Parquet et le modèle de montre enregistré. Une lecture en
+   échec n'est retentée qu'à la version suivante du lecteur. Les lectures sont réparties
+   sur plusieurs processus.
+3. D+ / D− (elevation_job.py).
 """
 import logging
 import os
@@ -13,8 +15,10 @@ from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from datetime import UTC, datetime
 
-from .fit_parser import PARSER_VERSION, parse_fit
+from .fit_parser import PARSER_VERSION
 from .series import write_series
+from .strava import trace_path
+from .track_parser import parse_track
 
 log = logging.getLogger("processing")
 
@@ -24,10 +28,10 @@ def _now_iso() -> str:
 
 
 def _parse_one(args):
-    """Exécuté dans un processus séparé : lit le FIT et écrit la série."""
-    activity_id, fit_path, series_dir = args
+    """Exécuté dans un processus séparé : lit la trace et écrit la série."""
+    activity_id, trace, series_dir = args
     try:
-        data = parse_fit(fit_path)
+        data = parse_track(trace)
         write_series(series_dir, activity_id, data.table)
         return activity_id, {
             "status": "ok", "garmin_product": data.garmin_product, "n_points": data.n_points,
@@ -38,13 +42,26 @@ def _parse_one(args):
         return activity_id, {"status": "error", "error": f"{e.__class__.__name__}: {e}"[:1000]}
 
 
-def pending_parse(conn) -> list[int]:
-    return [r[0] for r in conn.execute(
-        "SELECT a.id FROM activities a LEFT JOIN activity_series s ON s.activity_id = a.id"
+def _pending_rows(conn):
+    return conn.execute(
+        "SELECT a.id, a.source, st.strava_id, st.filename FROM activities a"
+        " LEFT JOIN activity_series s ON s.activity_id = a.id"
+        " LEFT JOIN strava_activities st ON st.activity_id = a.id AND a.source = 'strava'"
         " WHERE a.fit_status = 'stored' AND (s.activity_id IS NULL OR s.parser_version < ?)"
         " ORDER BY a.start_time_utc",
         (PARSER_VERSION,),
-    )]
+    ).fetchall()
+
+
+def pending_parse(conn) -> list[int]:
+    return [r[0] for r in _pending_rows(conn)]
+
+
+def _trace(config, row) -> str:
+    """FIT Garmin, ou trace de l'archive Strava pour une activité importée de Strava."""
+    if row["source"] == "strava":
+        return str(trace_path(config, row["strava_id"], row["filename"]))
+    return str(config.fit_dir / f"{row['id']}.fit")
 
 
 def _store_result(conn, activity_id, r):
@@ -66,11 +83,12 @@ def _store_result(conn, activity_id, r):
 
 def parse_pending(config, conn, progress=None, workers=None) -> Counter:
     """Lit les FIT en attente. progress(stage, index, total, detail) est appelé au fil de l'eau."""
-    ids = pending_parse(conn)
+    rows = _pending_rows(conn)
+    ids = [r["id"] for r in rows]
     counts = Counter()
     if not ids:
         return counts
-    jobs = [(i, str(config.fit_dir / f"{i}.fit"), str(config.series_dir)) for i in ids]
+    jobs = [(r["id"], _trace(config, r), str(config.series_dir)) for r in rows]
     workers = workers or min(4, os.cpu_count() or 1)
     log.info("Lecture de %d FIT (%d processus)", len(ids), workers)
 
@@ -94,9 +112,12 @@ def parse_pending(config, conn, progress=None, workers=None) -> Counter:
 
 
 def run_all(config, conn, dem, progress=None) -> Counter:
-    """Enchaîne tous les traitements locaux : lecture des FIT, puis D+."""
-    from . import elevation_job
+    """Enchaîne tous les traitements locaux : appariement Strava (une nouvelle activité
+    Garmin peut remplacer une sortie importée de Strava), lecture des traces, puis D+."""
+    from . import elevation_job, strava
 
-    counts = parse_pending(config, conn, progress)
+    counts = Counter({f"strava_{k}": v for k, v in strava.match_all(config, conn).items()
+                      if k in ("imported_new", "replaced")})
+    counts.update(parse_pending(config, conn, progress))
     counts.update(elevation_job.compute_pending(config, conn, dem, progress))
     return counts

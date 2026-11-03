@@ -170,6 +170,10 @@ table.runs { width: 100%; border-collapse: collapse; font-size: 14px; }
 .runs .status-error { color: var(--error); }
 .runs .status-running { color: var(--warn); }
 
+details { margin-top: 12px; }
+details summary { cursor: pointer; font-size: 14px; color: var(--muted); padding: 4px 0; }
+input[type="file"] { font: inherit; font-size: 14px; max-width: 100%; }
+
 footer { text-align: center; padding: 0 16px 24px; }
 
 @media (max-width: 480px) {

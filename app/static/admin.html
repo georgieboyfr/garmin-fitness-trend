@@ -158,6 +158,41 @@
     </section>
 
     <section class="card">
+      <div class="card-head">
+        <h2>Noms Strava</h2>
+        <span class="pill" id="strava-pill"></span>
+      </div>
+      <p class="muted small">Dépose l'export de compte Strava (l'archive .zip, ou seulement son fichier
+        <code>activities.csv</code>, bien plus léger) dans le dossier <code>strava/</code> du NAS, ou envoie-le ici.
+        Le zip complet est nécessaire une fois pour importer les sorties courues sans montre.</p>
+      <div class="stats" id="strava-stats"></div>
+      <form id="strava-form" class="row">
+        <input type="file" id="strava-file" accept=".zip,.csv" required>
+        <button class="btn" type="submit" id="strava-send">Envoyer</button>
+      </form>
+      <p class="muted small" id="strava-result" hidden></p>
+      <p class="error-text" id="strava-error" hidden></p>
+      <details id="strava-unmatched-box" hidden>
+        <summary>Sorties Strava sans activité Garmin</summary>
+        <div class="table-wrap">
+          <table class="runs">
+            <thead><tr><th>Date</th><th>Nom</th><th>Distance</th></tr></thead>
+            <tbody id="strava-unmatched"></tbody>
+          </table>
+        </div>
+      </details>
+      <details>
+        <summary>Fichiers traités</summary>
+        <div class="table-wrap">
+          <table class="runs">
+            <thead><tr><th>Fichier</th><th>Résultat</th><th>Dernière activité</th></tr></thead>
+            <tbody id="strava-imports"></tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+
+    <section class="card">
       <h2>Dernières synchros</h2>
       <div class="table-wrap">
         <table class="runs">

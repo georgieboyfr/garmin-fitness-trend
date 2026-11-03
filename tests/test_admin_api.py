@@ -161,6 +161,32 @@ def test_elevation_status_settings_and_recompute(client):
     assert run["kind"] == "recalcul" and run["status"] == "ok"
 
 
+def test_strava_upload_and_status(client):
+    from .test_strava import FR_HEADER, row
+
+    login(client)
+    st = client.get("/admin/api/strava").json()
+    assert st["counts"]["total"] == 0 and st["imports"] == []
+    body = (FR_HEADER + row(1, "7 nov. 2020, 15:54:37", "Bastille")).encode()
+    r = client.post("/admin/api/strava/upload?name=activities.csv", headers=UI, content=body)
+    assert r.status_code == 200 and r.json()["status"] == "ok" and r.json()["activities"] == 1
+    wait_idle(client)
+    st = client.get("/admin/api/strava").json()
+    assert st["counts"]["total"] == 1 and st["imports"][0]["status"] == "ok"
+    assert st["unmatched_runs"][0]["name"] == "Bastille"   # pas d'activité Garmin à cette date
+    # même contenu renvoyé : reconnu
+    r = client.post("/admin/api/strava/upload?name=activities.csv", headers=UI, content=body)
+    assert r.json()["status"] == "duplicate"
+
+
+def test_strava_upload_rejects_other_files(client):
+    login(client)
+    r = client.post("/admin/api/strava/upload?name=photo.jpg", headers=UI, content=b"x")
+    assert r.status_code == 400
+    r = client.post("/admin/api/strava/upload?name=a.csv", content=b"x")   # sans en-tête anti-CSRF
+    assert r.status_code == 403
+
+
 def test_garmin_remember_then_forget(client):
     login(client)
     st = client.post("/admin/api/garmin/login", headers=UI,

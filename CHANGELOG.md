@@ -14,6 +14,8 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Lecture des FIT (fitdecode) après chaque synchro : modèle de montre et séries de points (temps, distance, position, altitude, FC, vitesse, cadence) dans `series/<id>.parquet`, version du lecteur enregistrée, lecture répartie sur plusieurs processus.
 - D+ / D− recalculés : altimètre pour les montres à baromètre (Forerunner 255), sinon MNT le long de la trace GPS (IGN RGE ALTI en France, Copernicus GLO-30 ailleurs, profil mis en cache), D+ = 0 sans GPS. Rééchantillonnage tous les 10 m, filtre médian (3 points), seuil d'hystérésis par source (baromètre 1 m, MNT 3,5 m) ; version de l'algorithme et réglages enregistrés avec chaque résultat. Calibré pour coller au D+ de la montre à baromètre (0,4 % du D+ Garmin) et MNT recalé sur le baromètre (0,2 % au total).
 - Admin : carte « Dénivelé » (D+ par source comparé à Garmin, réglages, recalcul sans appel à Garmin).
+- Import de l'export Strava (zip complet ou `activities.csv` seul, en français ou en anglais) depuis le dossier surveillé `strava/` ou l'admin : noms et descriptions donnés dans Strava (les noms génériques sont ignorés), appariés aux activités Garmin par heure de départ ; sorties de course sans montre importées depuis leur trace (GPX ou FIT) ; seul l'export le plus récent compte.
+- Admin : carte « Noms Strava » (envoi du fichier, noms repris, sorties sans activité Garmin, fichiers traités).
 - Nouvelle base `trend.db` (l'ancienne `fitness.db` n'est pas touchée).
 - Tests unitaires (pytest) et lint (ruff).
 - Dockerfile multi-étapes, utilisateur non root, healthcheck, version injectée au build.

@@ -13,7 +13,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 - Tests unitaires pour chaque calcul (D+, records, charge, détection des courses, estimations).
 - Course à pied uniquement (`running`, `trail_running`, tapis) dans les statistiques et la charge.
 - Le FIT brut est la source de vérité ; chaque étape est idempotente ; les calculs sont versionnés.
-- Le LLM ne calcule jamais rien ; aucun nom issu de Strava ne lui est envoyé.
+- Le LLM ne calcule jamais rien ; aucun nom ni description issus de Strava ne lui est envoyé (table `strava_activities`, vue `activity_names`).
 - Secrets uniquement dans `.env` (jamais commité), données dans `/data` (jamais commité).
 - En cas d'ambiguïté, poser la question à Greg plutôt que supposer.
 - « Terminé » = tests verts, image Docker construite, visible sur ordinateur et mobile, CHANGELOG à jour.
@@ -27,7 +27,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 3. Synchro : reprise des FIT existants, métadonnées, incrémental
   - [x] 4. Parsing FIT vers Parquet, modèle de montre
   - [x] 5. D+ altimètre ou MNT (calibration croisée MNT/baromètre, voir section 10 du brief)
-  - [ ] 6. Noms Strava (archive attendue dans `data/strava/`)
+  - [x] 6. Noms et descriptions Strava, sorties sans montre importées
   - [ ] 7. CI GitHub, image amd64/arm64 sur ghcr
 - [ ] Phase 2 — Statistiques
 - [ ] Phase 3 — Estimateur

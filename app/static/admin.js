@@ -47,6 +47,7 @@ async function init() {
     refreshGarmin();
     refreshSync(true);
     refreshElevation(true);
+    refreshStrava();
   }
 }
 
@@ -339,6 +340,73 @@ $("ev-recompute").addEventListener("click", (e) => {
       showError("ev-error", null);
     } catch (err) {
       showError("ev-error", err);
+    }
+  });
+});
+
+// ---------- Strava ----------
+
+const IMPORT_STATUS = {
+  ok: "importé", older: "ignoré : plus ancien que le dernier importé",
+  duplicate: "ignoré : déjà importé", error: "illisible",
+};
+
+function cells(tr, values) {
+  for (const v of values) {
+    const td = document.createElement("td"); td.textContent = v; tr.append(td);
+  }
+  return tr;
+}
+
+function renderStrava(st) {
+  const c = st.counts;
+  const pill = $("strava-pill");
+  pill.textContent = c.total ? `Export du ${fmtIso(c.last_activity).split(" ")[0]}` : "Aucun export";
+  pill.className = "pill " + (c.total ? "ok" : "off");
+  $("strava-stats").replaceChildren(
+    stat(c.named, "noms repris"), stat(c.matched, "activités appariées"),
+    stat(c.imported, "sorties sans montre importées"), stat(c.waiting_next_export, "en attente du prochain export"),
+  );
+  $("strava-unmatched-box").hidden = !st.unmatched_runs.length;
+  $("strava-unmatched").replaceChildren(...st.unmatched_runs.map((r) => cells(document.createElement("tr"),
+    [fmtIso(r.start_time_utc), r.name, r.distance_m == null ? "—" : `${(r.distance_m / 1000).toFixed(1)} km`])));
+  $("strava-imports").replaceChildren(...st.imports.map((r) => {
+    const tr = cells(document.createElement("tr"), [r.filename,
+      (IMPORT_STATUS[r.status] || r.status) + (r.activities ? ` (${r.activities} activités)` : "")
+        + (r.error ? ` : ${r.error}` : ""),
+      fmtIso(r.last_activity_utc)]);
+    tr.children[1].className = "status-" + (r.status === "error" ? "error" : "ok");
+    return tr;
+  }));
+}
+
+async function refreshStrava() {
+  try { renderStrava(await api("/strava")); } catch (err) { /* session gérée ailleurs */ }
+}
+
+$("strava-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const file = $("strava-file").files[0];
+  if (!file) return;
+  busy($("strava-send"), async () => {
+    showError("strava-error", null);
+    $("strava-result").hidden = false;
+    $("strava-result").textContent = `Envoi de ${file.name} (${(file.size / 1e6).toFixed(1)} Mo)…`;
+    try {
+      const r = await fetch("/admin/api/strava/upload?name=" + encodeURIComponent(file.name), {
+        method: "POST", body: file, headers: { "X-Requested-With": "admin-ui" },
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.detail || `Erreur ${r.status}`);
+      $("strava-result").textContent = `${IMPORT_STATUS[data.status] || data.status}`
+        + (data.activities ? ` : ${data.activities} activités, ${data.matched || 0} appariées` : "")
+        + (data.imported_new ? `, ${data.imported_new} sortie(s) sans montre ajoutée(s)` : "");
+      $("strava-file").value = "";
+      refreshStrava();
+      refreshSync(false);
+    } catch (err) {
+      $("strava-result").hidden = true;
+      showError("strava-error", err);
     }
   });
 });
