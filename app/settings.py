@@ -30,7 +30,10 @@ DEFAULTS = {
     "estimator": {"correction_road": None, "correction_trail": None},
     # coach : disponibilités saisies (7 jours) et habitudes confirmées, vérifiées par
     # coach.clean_profile ; None = déduites de l'historique
-    "coach": {"availability": None, "habits": None, "max_sessions": None},
+    "coach": {"availability": None, "habits": None, "max_sessions": None,
+              # réglages du plan posés au coureur : montée du volume (% par semaine) et sorties
+              # longues allongées en phase spécifique au-delà du jour le plus long
+              "ramp_pct": 10, "long_extension": True},
 }
 
 CORRECTION_LIMITS = (0.8, 1.2)
@@ -134,7 +137,13 @@ def _validate_coach(values: dict) -> dict:
     for key, value in values.items():
         if key not in DEFAULTS["coach"]:
             raise ValueError(f"réglage inconnu : {key}")
-        if key == "max_sessions":
+        if key == "ramp_pct":
+            if isinstance(value, bool) or not isinstance(value, int) or value not in (10, 15):
+                raise ValueError("ramp_pct doit valoir 10 ou 15")
+        elif key == "long_extension":
+            if not isinstance(value, bool):
+                raise ValueError("long_extension doit valoir true ou false")
+        elif key == "max_sessions":
             invalid = isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 7
             if value is not None and invalid:
                 raise ValueError("max_sessions doit être un entier de 1 à 7, ou null")

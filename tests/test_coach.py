@@ -160,3 +160,10 @@ def test_coach_races_are_stored(tmp_path):
     assert coach.all_races(conn)[0]["priority"] == "B"
     coach.delete(conn, rid)
     assert coach.get(conn, rid) is None
+
+
+def test_clean_profile_takes_the_two_plan_questions():
+    assert coach.clean_profile({"ramp_pct": 15, "long_extension": False}) == {"ramp_pct": 15,
+                                                                               "long_extension": False}
+    with pytest.raises(ValueError):
+        coach.clean_profile({"ramp_pct": 30})

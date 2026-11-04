@@ -558,13 +558,14 @@ def coach_page(request: Request, vue: str = ""):
     if cal["main"]:
         physio_now = physio.physiology(data["efforts"], today, lthr_est, hr_max, data["trend"])
         plan = coach.plan_for(cfg, cal["main"], today, data, availability, profile["max_sessions"], habits,
-                              physio_now)
+                              physio_now, {"ramp_pct": profile["ramp_pct"],
+                                           "long_extension": profile["long_extension"]})
     if vue not in ("plan", "echeances", "reglages"):
         vue = "plan" if cal["main"] else "echeances"
     return render(request, "coach.html", "/coach", calendar=cal, vue=vue,
                   availability=availability, plan=plan,
                   inferred=inferred, availability_saved=profile["availability"] is not None,
-                  max_sessions=profile["max_sessions"],
+                  max_sessions=profile["max_sessions"], plan_options=profile,
                   habits=habits,
                   priorities=coach.PRIORITIES, gpx_recent=gpx_store.recent(cfg),
                   tracked_races=upcoming_tracked,

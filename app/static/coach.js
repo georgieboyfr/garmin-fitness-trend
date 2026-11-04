@@ -111,6 +111,15 @@
                                                           "disponibilites"));
   }
 
+  // réglages du plan : montée du volume, sorties longues allongées
+  const opts = document.querySelector("form.coach-plan-options");
+  if (opts) opts.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    send(opts.dataset.url, { ramp_pct: Number(opts.querySelector("[name=ramp_pct]").value),
+                             long_extension: opts.querySelector("[name=long_extension]").checked },
+         opts.querySelector("[role=status]"), "reglages-plan");
+  });
+
   // habitudes gardées
   const habits = document.querySelector("form.coach-habits");
   if (habits) habits.addEventListener("submit", (ev) => {

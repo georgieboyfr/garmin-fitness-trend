@@ -359,8 +359,10 @@ def easy_run(minutes: float, p: dict, hilly: bool, km: bool = True) -> dict:
     if hilly:
         gain = round(p.get("easy_vam", 0) * minutes / 60 * 0.5, -1)
         text = f"{_minutes(minutes)} en endurance sur un parcours vallonné{_gain_text(gain)}"
-        return _easy_session("footing vallonné", "Footing vallonné", [step("steady", text, minutes,
-                             target(EASY, lthr))], f"Il faut {WALK} : c'est voulu.")
+        s = _easy_session("footing vallonné", "Footing vallonné", [step("steady", text, minutes,
+                          target(EASY, lthr))], f"Il faut {WALK} : c'est voulu.")
+        s["gain_m"] = gain
+        return s
     return _easy_session("footing", "Footing", easy_steps(minutes, p, km),
                          "En aisance respiratoire : tu peux parler.")
 
@@ -379,6 +381,7 @@ def long_run(variant: str, minutes: float, p: dict, km: bool = True, steady_fini
                                target(STEADY, lthr)))
         s["minutes"] = round5(minutes)
         s["label"] += " et fin soutenue"
+        s["gain_m"] = round(s.get("gain_m", 0) + gain * end / minutes, -1) if not km else s.get("gain_m", 0)
         s["description"] += " Finir soutenu, sans forcer : apprendre à accélérer fatigué."
         return s
     if variant == "progressive":
@@ -391,25 +394,31 @@ def long_run(variant: str, minutes: float, p: dict, km: bool = True, steady_fini
     if variant == "vallonnée":
         steps = [step("steady", f"{_minutes(minutes)} en endurance sur sentier{_gain_text(gain)}", minutes,
                       target(EASY, lthr))]
-        return _easy_session("sortie longue", "Sortie longue vallonnée", steps,
-                             f"Le D+ correspond à ta vitesse de montée habituelle en endurance : {WALK}.")
+        s = _easy_session("sortie longue", "Sortie longue vallonnée", steps,
+                          f"Le D+ correspond à ta vitesse de montée habituelle en endurance : {WALK}.")
+        s["gain_m"] = gain
+        return s
     if variant == "spécifique":
         climb = 15 if minutes < 100 else 20
         steps = [step("steady", f"{_minutes(minutes - climb)} en endurance sur sentier"
                       f"{_gain_text(round(gain * 0.8, -1))}", minutes - climb, target(EASY, lthr)),
                  step("work", f"au milieu, une montée de {climb} min à l'effort de course", climb,
                       target(RACE_TRAIL, lthr))]
-        return _easy_session("sortie longue", "Sortie longue spécifique", steps,
-                             f"Le reste du temps en endurance ({WALK}) ; descentes relâchées, pour garder "
-                             "des cuisses pour la fin de course.")
+        s = _easy_session("sortie longue", "Sortie longue spécifique", steps,
+                          f"Le reste du temps en endurance ({WALK}) ; descentes relâchées, pour garder "
+                          "des cuisses pour la fin de course.")
+        s["gain_m"] = round(gain * 0.8 + climb / 60 * p.get("easy_vam", 0) * CLIMB_EFFORT_FACTOR, -1)
+        return s
     if variant == "descentes":
         steps = [step("steady", f"{_minutes(minutes)} en endurance sur sentier{_gain_text(gain)}", minutes,
                       target(EASY, lthr)),
                  step("work", "dans 3 ou 4 descentes, 2 à 3 min plus vite, relâché", 0,
                       target({"hr": None, "rpe": "5 à 6"}, lthr))]
-        return _easy_session("sortie longue", "Sortie longue avec descentes", steps,
-                             f"En endurance le reste du temps ({WALK}) ; travailler les descentes sans "
-                             "se faire mal.")
+        s = _easy_session("sortie longue", "Sortie longue avec descentes", steps,
+                          f"En endurance le reste du temps ({WALK}) ; travailler les descentes sans "
+                          "se faire mal.")
+        s["gain_m"] = gain
+        return s
     return _easy_session("sortie longue", "Sortie longue", easy_steps(minutes, p, km),
                          "Régulière du début à la fin, en aisance respiratoire.")
 
@@ -448,14 +457,14 @@ def quality(phase: str, kind: str, rank: int, trail: bool, week_in_phase: int, p
     """Séance de qualité du créneau `rank` (0 : la séance clé), tournante, ramenée au temps du jour."""
     if kind in ("affûtage", "course"):
         s = reminder(trail, p)
-        return s if s["minutes"] <= day_max else reminder(trail, p, compact=True)
+        return with_gain(s if s["minutes"] <= day_max else reminder(trail, p, compact=True), p)
     if kind == "allégée":
         make, level = rotate(LIGHT, week_in_phase)
     elif rank == 0:
         make, level = rotate(QUALITY[(phase, trail)], week_in_phase)
     else:
         make, level = rotate(SECOND, week_in_phase)
-    return fit(lambda lv, compact=False: make(lv, p, compact), level, day_max)
+    return with_gain(fit(lambda lv, compact=False: make(lv, p, compact), level, day_max), p)
 
 
 def long_variant(phase: str, kind: str, trail: bool, week_in_phase: int) -> str:
@@ -463,3 +472,24 @@ def long_variant(phase: str, kind: str, trail: bool, week_in_phase: int) -> str:
         return "vallonnée" if trail else "classique"
     variant, _ = rotate(LONG[(phase, trail)], week_in_phase)
     return variant
+
+
+# ---------- D+ estimé d'une séance ----------
+
+CLIMB_EFFORT_FACTOR = 1.3   # en côte à l'effort, on monte plus vite qu'en endurance (approximation)
+CLIMB_STEP = {"côtes": "work", "vma en côte": "work", "côtes longues": "work", "montée au seuil": "work",
+              "marche en côte": "work", "rappel": "work", "descente": "recovery"}
+
+
+def with_gain(s: dict, p: dict) -> dict:
+    """Ajoute à une séance de côte son D+ estimé : minutes de montée à l'effort (ou de remontée en
+    marchant pour la descente) × vitesse de montée en endurance du coureur × 1,3."""
+    kind = CLIMB_STEP.get(s["type"])
+    if s["type"] == "rappel" and "côte" not in s["label"]:
+        kind = None                                     # rappel d'allure sur route : pas de D+
+    if kind and "gain_m" not in s:
+        minutes = sum(x["minutes"] for x in s["steps"] if x["kind"] == kind)
+        factor = 1.0 if kind == "recovery" else CLIMB_EFFORT_FACTOR
+        s["gain_m"] = round(minutes / 60 * p.get("easy_vam", 0) * factor, -1)
+    s.setdefault("gain_m", 0)
+    return s

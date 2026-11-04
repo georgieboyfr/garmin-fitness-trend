@@ -58,7 +58,7 @@
       <summary>
         <span class="strong">S{{ w.index }}</span> · semaine du <span data-short-date="{{ w.monday }}"></span>
         · {{ w.phase }}{% if w.kind not in ("charge", w.phase) %} ({{ w.kind }}){% endif %}
-        <span class="muted small">· {{ w.minutes }} min · charge {{ w.planned_load }} · fitness {{ w.fitness_end | string | replace(".", ",") }}</span>
+        <span class="muted small">· {{ w.minutes }} min{% if w.gain_m %} · D+ {{ w.gain_m | int }} m{% if w.gain_target %} (visé {{ w.gain_target | int }}){% endif %}{% endif %} · charge {{ w.planned_load }} · fitness {{ w.fitness_end | string | replace(".", ",") }}</span>{% if w.sessions | selectattr("extended") | list %} <span class="pill priority-C">sortie longue à caler</span>{% endif %}
       </summary>
       <ul class="coach-sessions-list">
         {% for x in w.sessions %}
@@ -198,6 +198,24 @@
     <div class="aid-actions">
       <button class="btn-primary" type="submit">Enregistrer</button>
       {% if availability_saved %}<button class="btn-ghost" type="button" data-reset="availability">Revenir à l'historique</button>{% endif %}
+      <span class="small muted" role="status"></span>
+    </div>
+  </form>
+</section>
+
+<section class="card" id="reglages-plan">
+  <div class="card-head">
+    <h2>Ton plan {{ tip("Deux choix qui dépendent de toi. Montée du volume : de combien la charge peut augmenter d'une semaine de charge à la suivante. 10 % est le repère prudent contre les blessures ; 15 % convient si tu as déjà couru ces volumes. Sorties longues allongées : en phase spécifique, une semaine de charge sur deux, la sortie longue dépasse ton temps maximal du jour, jusqu'à 90 % de la durée de la course (3 h au plus), pour préparer la durée ; elle est signalée « à caler ».") }}</h2>
+  </div>
+  <form class="coach-plan-options" data-url="/coach/profil">
+    <div class="filters">
+      <label>Montée du volume
+        <select name="ramp_pct" class="select">{% for v in (10, 15) %}<option value="{{ v }}" {% if plan_options.ramp_pct == v %}selected{% endif %}>+{{ v }} % par semaine{{ " (prudent)" if v == 10 }}</option>{% endfor %}</select>
+      </label>
+      <label><input type="checkbox" name="long_extension" {% if plan_options.long_extension %}checked{% endif %}> Allonger la sortie longue une semaine spécifique sur deux</label>
+    </div>
+    <div class="aid-actions">
+      <button class="btn-primary" type="submit">Enregistrer</button>
       <span class="small muted" role="status"></span>
     </div>
   </form>

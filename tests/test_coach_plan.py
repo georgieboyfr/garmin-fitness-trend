@@ -206,3 +206,61 @@ def test_long_runs_finish_steady_every_other_charge_week():
     assert finish["kind"] == "work" and "allure soutenue" in finish["text"]
     assert cp.session_load(labels[1], RATES) > labels[1]["minutes"] * RATES["easy"] / 60   # elle charge plus
 
+
+
+def test_volume_ramps_by_the_runner_choice_from_the_current_load():
+    acts = [run(TODAY - timedelta(days=i), 40, 60, 0.0) for i in range(1, 200, 3)]   # petite fitness
+    days = avail((0, "oui", 120), (1, "oui", 120), (3, "oui", 120), (5, "oui", 240), (6, "oui", 120))
+    race = {**RACE, "race_date": "2027-03-28"}
+    for pct in (10, 15):
+        plan = cp.build_plan(race, TODAY, acts, days, None, [], {}, 170, {"ramp_pct": pct})
+        assert plan["options"]["ramp_pct"] == pct
+        charge = [w["target_load"] for w in plan["weeks"] if w["kind"] == "charge"]
+        start = cp.weekly_load_for(plan["start_fitness"], plan["start_fitness"])
+        assert charge[0] <= start * (1 + pct / 100) + 1
+        assert all(b <= a * (1 + pct / 100) + 1 for a, b in zip(charge, charge[1:], strict=False))
+    slow = cp.build_plan(race, TODAY, acts, days, None, [], {}, 170, {"ramp_pct": 10})
+    fast = cp.build_plan(race, TODAY, acts, days, None, [], {}, 170, {"ramp_pct": 15})
+    assert fast["weeks"][2]["target_load"] > slow["weeks"][2]["target_load"]
+
+
+def test_long_runs_extend_every_other_specific_week_up_to_race_duration():
+    weeks = cp.skeleton(TODAY, date(2027, 5, 22), 3 * 3600)
+    days = cp.chosen_days(avail((1, "oui", 60), (3, "oui", 60), (5, "oui", 120)), 3)
+    ext = cp.long_extensions(weeks, days, {"duration_s": 3 * 3600}, True)
+    spec = [w["index"] for w in weeks if w["phase"] == "spécifique" and w["kind"] == "charge"]
+    assert ext and set(ext) <= set(spec) and max(ext) == spec[-1]         # la dernière avant l'affûtage
+    assert ext[spec[-1]] == 160                                            # 90 % de 3 h, arrondi à 5
+    assert sorted(ext.values()) == [ext[i] for i in sorted(ext)]           # progression régulière
+    assert all(b - a >= 2 for a, b in zip(sorted(ext), sorted(ext)[1:], strict=False))   # une sur deux
+    assert cp.long_extensions(weeks, days, {"duration_s": 3 * 3600}, False) == {}
+    assert cp.long_extensions(weeks, days, {"duration_s": 7200}, True) == {}      # 108 min < 120
+    assert cp.long_extensions(weeks, days, {"duration_s": 6 * 3600}, True)[spec[-1]] == 180   # 3 h au plus
+    w = cp.build_week({**week(phase="spécifique"), "index": spec[-1]}, days, 260, RATES, RACE, {}, [], 170, 0,
+                      160)
+    long = next(s for s in w["sessions"] if s["type"] == "sortie longue")
+    assert long["minutes"] == 160 and long.get("extended") and "à caler" in long["description"]
+
+
+def test_weekly_gain_is_summed_and_targets_race_gain_in_specific_trail_weeks():
+    acts = [run(TODAY - timedelta(days=i), 60, 90, 0.0) for i in range(1, 200, 2)]
+    days = avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 60), (5, "oui", 150))
+    plan = cp.build_plan({**RACE, "race_date": "2027-03-28"}, TODAY, acts, days, None, [], {}, 170)
+    spec = [w for w in plan["weeks"] if w["phase"] == "spécifique"]
+    assert spec and all(w["gain_target"] == 1500 for w in spec)
+    assert all("gain_target" not in w for w in plan["weeks"] if w["phase"] == "foncier")
+    for w in plan["weeks"]:
+        total = sum(s.get("gain_m") or 0 for s in w["sessions"] if s["type"] != "course")
+        assert w["gain_m"] == round(total, -1)
+    footings = [s for w in spec if w["kind"] == "charge" for s in w["sessions"]
+                if s["type"].startswith("footing")]
+    assert footings and all(s["type"] == "footing vallonné" for s in footings)   # tous vallonnés
+
+
+def test_race_week_reminder_three_or_four_days_before_never_the_day_before_yesterday_if_avoidable():
+    race = {**RACE, "race_date": "2027-01-30"}                              # samedi
+    wk = week(kind="course", phase="course", monday=date(2027, 1, 25))
+    for open_days, expected in (((0, 1, 2, 3), 2), ((0, 1, 3), 1)):
+        days = cp.chosen_days(avail(*[(d, "oui", 60) for d in open_days]), 4)
+        w = cp.build_week(wk, days, 80, RATES, race, {}, [], None, 0)
+        assert next(s["weekday"] for s in w["sessions"] if s["type"] == "rappel") == expected

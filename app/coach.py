@@ -32,6 +32,7 @@ OPTIONAL_SHARE = 0.25        # optionnel : une semaine sur quatre
 PLACE_CELL_M = 200.0         # case d'un lieu de passage, de l'ordre de la précision des tracés résumés
 PLACE_START_M = 2 * PLACE_CELL_M   # abords du départ, exclus (on y passe à chaque sortie)
 STATUSES = ("oui", "optionnel", "non")
+RAMP_CHOICES = (10, 15)      # montée du volume, % par semaine (repère courant contre les blessures : 10)
 PRIORITIES = {"A": "Objectif principal", "B": "Course importante", "C": "Préparation"}
 WEEKDAYS = ("Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche")
 MAX_DAY_MIN = 600
@@ -213,7 +214,8 @@ def clean_profile(values: dict) -> dict:
     séances par semaine, facultatif) et habitudes
     (lieu, nom, gardée ou non), seulement les champs envoyés (null : retour à l'historique) ;
     ValueError si invalide."""
-    if not isinstance(values, dict) or not set(values) & {"availability", "habits", "max_sessions"}:
+    fields = {"availability", "habits", "max_sessions", "ramp_pct", "long_extension"}
+    if not isinstance(values, dict) or not set(values) & fields:
         raise ValueError("Saisie invalide.")
     out = {}
     availability = values.get("availability")
@@ -235,6 +237,12 @@ def clean_profile(values: dict) -> dict:
         availability = cleaned
     if "availability" in values:
         out["availability"] = availability
+    if "ramp_pct" in values:
+        if values["ramp_pct"] not in RAMP_CHOICES:
+            raise ValueError("Montée du volume : 10 ou 15 % par semaine.")
+        out["ramp_pct"] = int(values["ramp_pct"])
+    if "long_extension" in values:
+        out["long_extension"] = bool(values["long_extension"])
     if "max_sessions" in values:
         n = values["max_sessions"]
         if n in (None, ""):
@@ -282,7 +290,7 @@ def proposed_target(cfg, race: dict, today: date, data: dict, factors: dict, dem
 # ---------- plan vers la course A ----------
 
 def plan_for(cfg, race: dict, today: date, data: dict, availability: list[dict], max_sessions: int | None,
-             habits: list[dict], physio_now: dict) -> dict | None:
+             habits: list[dict], physio_now: dict, options: dict | None = None) -> dict | None:
     """Plan périodisé vers la course A (coach_plan) : durée visée (objectif, sinon temps proposé),
     allures du coureur, habitudes non refusées."""
     duration = race.get("target_s") or (race.get("proposal") or {}).get("realistic_s")
@@ -308,4 +316,4 @@ def plan_for(cfg, race: dict, today: date, data: dict, availability: list[dict],
     full = {**race, "duration_s": duration, "target_text": target_text, "distance_m": distance,
             "gain_m": gain}
     return coach_plan.build_plan(full, today, data["acts"], availability, max_sessions, kept, paces,
-                                 data.get("lthr"))
+                                 data.get("lthr"), options)
