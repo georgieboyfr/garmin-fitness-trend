@@ -18,6 +18,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 - Secrets uniquement dans `.env` (jamais commité), données dans `/data` (jamais commité).
 - En cas d'ambiguïté, poser la question à Greg plutôt que supposer.
 - « Terminé » = tests verts, image Docker construite, visible sur ordinateur et mobile, CHANGELOG à jour.
+- Fin de chaque étape, avant de proposer de couper : serveur de test lancé sur les données locales et onglet Chrome ouvert pour Greg sur la page concernée (voir Commandes), demande de Greg du 4 novembre 2026.
 - Sessions courtes : une étape par session. Étape terminée = commit, suivi ci-dessous à jour, puis proposer à Greg de couper la session et lui donner la phrase de reprise : « Lis CLAUDE.md et reprends à la prochaine étape non cochée de la phase en cours. »
 - Toute idée de Greg non implémentée est notée, datée, dans la section 7 du brief (« Idées notées en cours de route »).
 - Les calculs s'adaptent aux données de chaque coureur et évoluent avec elles : pas de constante calée sur les données de Greg, tout doit marcher pour quelqu'un d'autre (principe de Greg du 4 novembre 2026, section 10 du brief).
@@ -101,6 +102,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 
 - Tests : `.venv/Scripts/python -m pytest -q` ; lint : `.venv/Scripts/python -m ruff check app tests`
 - Lancer en local : `DATA_DIR=./data-dev .venv/Scripts/python -m uvicorn app.main:app`
+- Serveur de test pour Greg : en arrière-plan, sur `0.0.0.0:8000` avec `DATA_DIR=./data` et les variables de `.env` ; identifiant `greg` et mot de passe temporaire généré à la session (`secrets.token_urlsafe`, haché par `app.auth.hash_password`), passé au seul processus via `ADMIN_USER` et `ADMIN_PASSWORD_HASH`, jamais écrit dans `.env` ni dans le dépôt ; le donner à Greg dans la conversation. Ouvrir l'onglet sur `http://192.168.87.163:8000/<page>` (adresse du poste de dev sur le réseau) et redémarrer le serveur après chaque modification du code Python.
 - Pas de Docker sur le poste de dev : l'image est construite par la CI (tag `vX.Y.Z`) ou sur le Synology.
 
 ## Structure
