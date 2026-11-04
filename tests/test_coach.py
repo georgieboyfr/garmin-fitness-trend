@@ -203,3 +203,17 @@ def test_clean_periods():
                 {"kind": "vacances", "start": "2027-07-01", "end": "2027-07-10", "sessions": 20}):
         with pytest.raises(ValueError):
             coach.clean_profile({"periods": [bad]})
+
+
+def test_clean_profile_takes_orientation_nuance_and_period_level():
+    out = coach.clean_profile({"orientation": "trail", "nuance": "côtes"})
+    assert out == {"orientation": "trail", "nuance": "côtes"}
+    assert coach.clean_profile({"orientation": None, "nuance": ""}) == {"orientation": None, "nuance": None}
+    with pytest.raises(ValueError):
+        coach.clean_profile({"orientation": "sprint"})
+    p = coach.clean_periods([{"kind": "noel", "start": "2026-12-24", "end": "2026-12-26", "level": "aucune"}])
+    assert p[0]["level"] == "aucune"
+    pain = coach.clean_periods([{"kind": "douleur", "start": "2026-12-01", "end": "2026-12-03"}])
+    assert pain[0]["level"] is None
+    with pytest.raises(ValueError):
+        coach.clean_periods([{"kind": "noel", "start": "2026-12-24", "end": "2026-12-26", "level": "un peu"}])

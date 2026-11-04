@@ -35,7 +35,10 @@ DEFAULTS = {
               # longues allongées en phase spécifique au-delà du jour le plus long
               "ramp_pct": 10, "long_extension": True,
               # périodes particulières (vacances, maladie...), vérifiées par coach.clean_profile
-              "periods": None},
+              "periods": None,
+              # orientation sans course (coach_plan.ORIENTATIONS, None : maintien) et nuance d'une
+              # préparation (coach_plan.NUANCES), vérifiées par coach.clean_profile
+              "orientation": None, "nuance": None},
     # notification du bilan du dimanche (ntfy, adresse dans le .env) : heure, et adresse publique
     # de l'application pour le lien de la notification (facultative)
     "notifications": {"review_enabled": True, "review_hour": 19, "public_url": None},
@@ -152,6 +155,9 @@ def _validate_coach(values: dict) -> dict:
             invalid = isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 7
             if value is not None and invalid:
                 raise ValueError("max_sessions doit être un entier de 1 à 7, ou null")
+        elif key in ("orientation", "nuance"):
+            if value is not None and not isinstance(value, str):
+                raise ValueError(f"{key} doit être un texte, ou null")
         elif value is not None and not isinstance(value, list):
             raise ValueError(f"{key} doit être une liste, ou null")
         out[key] = value

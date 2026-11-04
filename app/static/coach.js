@@ -132,7 +132,9 @@
   if (opts) opts.addEventListener("submit", (ev) => {
     ev.preventDefault();
     send(opts.dataset.url, { ramp_pct: Number(opts.querySelector("[name=ramp_pct]").value),
-                             long_extension: opts.querySelector("[name=long_extension]").checked },
+                             long_extension: opts.querySelector("[name=long_extension]").checked,
+                             orientation: opts.querySelector("[name=orientation]").value || null,
+                             nuance: opts.querySelector("[name=nuance]").value || null },
          opts.querySelector("[role=status]"), "reglages-plan");
   });
 
@@ -145,7 +147,8 @@
     per.addEventListener("submit", (ev) => {
       ev.preventDefault();
       const item = { kind: per.querySelector("[name=kind]").value, start: per.querySelector("[name=start]").value,
-                     end: per.querySelector("[name=end]").value, sessions: num("sessions"), max_min: num("max_min") };
+                     end: per.querySelector("[name=end]").value, sessions: num("sessions"), max_min: num("max_min"),
+                     level: per.querySelector("[name=level]").value || null };
       if ([item.sessions, item.max_min].some((v) => v !== null && !Number.isFinite(v))) {
         status.textContent = "Nombres attendus, par exemple 3 et 60."; return;
       }

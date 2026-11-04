@@ -264,7 +264,11 @@ def clean_periods(periods) -> list[dict] | None:
     out = []
     for p in periods:
         if not isinstance(p, dict) or p.get("kind") not in coach_plan.PERIOD_LABELS:
-            raise ValueError("Type de période : vacances, maladie, blessure, déplacement ou semaine chargée.")
+            raise ValueError("Type de période : vacances, Noël, déplacement, semaine chargée, maladie, "
+                             "blessure ou douleur.")
+        level = p.get("level") or None
+        if level is not None and level not in coach_plan.LEVELS:
+            raise ValueError("Niveau : pas de course à pied, minimum ou normal allégé.")
         try:
             start, end = date.fromisoformat(p.get("start") or ""), date.fromisoformat(p.get("end") or "")
         except ValueError:
@@ -277,7 +281,7 @@ def clean_periods(periods) -> list[dict] | None:
             bad = isinstance(v, bool) or not isinstance(v, int | float) or not lo <= v <= hi
             if v not in (None, "") and bad:
                 raise ValueError(msg)
-        out.append({"kind": p["kind"], "start": start.isoformat(), "end": end.isoformat(),
+        out.append({"kind": p["kind"], "start": start.isoformat(), "end": end.isoformat(), "level": level,
                     "sessions": int(sessions) if sessions not in (None, "") else None,
                     "max_min": int(minutes) if minutes not in (None, "") else None})
     return sorted(out, key=lambda p: p["start"]) or None
@@ -288,7 +292,8 @@ def clean_profile(values: dict) -> dict:
     séances par semaine, facultatif) et habitudes
     (lieu, nom, gardée ou non), seulement les champs envoyés (null : retour à l'historique) ;
     ValueError si invalide."""
-    fields = {"availability", "habits", "max_sessions", "ramp_pct", "long_extension", "periods"}
+    fields = {"availability", "habits", "max_sessions", "ramp_pct", "long_extension", "periods",
+              "orientation", "nuance"}
     if not isinstance(values, dict) or not set(values) & fields:
         raise ValueError("Saisie invalide.")
     out = {}
@@ -323,6 +328,11 @@ def clean_profile(values: dict) -> dict:
         if values["ramp_pct"] not in RAMP_CHOICES:
             raise ValueError("Montée du volume : 10 ou 15 % par semaine.")
         out["ramp_pct"] = int(values["ramp_pct"])
+    for key, allowed in (("orientation", coach_plan.ORIENTATIONS), ("nuance", coach_plan.NUANCES)):
+        if key in values:
+            if values[key] not in (None, "") and values[key] not in allowed:
+                raise ValueError(f"{key} : {', '.join(allowed)} ou rien.")
+            out[key] = values[key] or None
     if "long_extension" in values:
         out["long_extension"] = bool(values["long_extension"])
     if "max_sessions" in values:

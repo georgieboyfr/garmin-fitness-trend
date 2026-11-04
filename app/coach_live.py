@@ -13,6 +13,7 @@ la page Coach et le planificateur (notification du dimanche soir).
   soir, projeté sur la fitness que le plan du lundi donne le matin de la course, et enregistré ; à
   l'ajout d'une course, les semaines depuis le départ du plan sont rejouées (12 au plus).
 """
+import math
 from datetime import date, timedelta
 
 from . import (
@@ -73,6 +74,7 @@ class Coach:
             if (day - date.fromisoformat(r["race_date"])).days <= coach_plan.RECOVERY_LOOKBACK_DAYS]
         options = {"ramp_pct": self.profile["ramp_pct"], "long_extension": self.profile["long_extension"],
                    "periods": self.profile["periods"], "start": coach.plan_start(main, cal["past"]),
+                   "nuance": self.profile.get("nuance"),
                    "adjust": [a for a in adjust if a]}
         return coach.plan_for(self.cfg, main, day, self.data, self.availability,
                               self.profile["max_sessions"], self.habits, physio_now, options, others)
@@ -83,7 +85,8 @@ class Coach:
         recent = [r for r in cal["past"]
                   if (day - date.fromisoformat(r["race_date"])).days <= coach_plan.RECOVERY_LOOKBACK_DAYS]
         options = {"ramp_pct": self.profile["ramp_pct"], "periods": self.profile["periods"],
-                   "start": coach.maintenance_start(cal["past"]), "adjust": [a for a in adjust if a]}
+                   "start": coach.maintenance_start(cal["past"]), "adjust": [a for a in adjust if a],
+                   "orientation": self.profile.get("orientation")}
         return coach.maintenance_for(self.cfg, day, self.data, self.availability,
                                      self.profile["max_sessions"], self.habits, physio_now, options, recent)
 
@@ -121,6 +124,44 @@ class Coach:
         zone, label = coach_plan._race_form(pct)
         return {"fitness": round(fitness, 1), "form": round(form, 1), "pct": round(pct),
                 "zone": zone, "label": label}
+
+    def period_effects(self) -> dict[int, dict]:
+        """Effet de chaque période particulière à venir (index dans le profil) : plan recalculé sans
+        elle, écart de fitness le jour J de la course principale et de temps prévu (relation
+        personnelle entre fitness et niveau) ; sans course, écart de fitness au bout des semaines
+        du maintien."""
+        periods = self.profile["periods"] or []
+        future = [i for i, p in enumerate(periods) if p["end"] >= self.today.isoformat()]
+        if not future:
+            return {}
+        main = self.main_on(self.today)
+        estimate = None
+        if main:
+            estimate = coach.proposed_target(self.cfg, main, self.today, self.data, self.factors, self.dem)
+            if not main.get("target_s") and estimate:
+                main = {**main, "proposal": estimate}
+
+        def fitness_of(plan):
+            if not plan:
+                return None
+            return coach.race_fitness_in_plan(plan, main) if main else plan.get("end_fitness")
+        with_all = fitness_of(self.plan_on(self.today, main))
+        saved, out = self.profile, {}
+        slope = self.slope(self.today)["value"]
+        try:
+            for i in future:
+                self.profile = {**saved, "periods": [p for j, p in enumerate(periods) if j != i] or None}
+                without = fitness_of(self.plan_on(self.today, main))
+                if with_all is None or without is None:
+                    continue
+                delta = with_all - without
+                row = {"fitness_delta": round(delta, 1), "race": main["name"] if main else None}
+                if estimate:
+                    row["time_delta_s"] = round(estimate["realistic_s"] * (math.exp(slope * delta) - 1))
+                out[i] = row
+        finally:
+            self.profile = saved
+        return out
 
     # ---------- temps prévu le jour J ----------
 

@@ -487,7 +487,17 @@ QUALITY = {
     # reprise : de l'intensité courte et légère, le volume revient d'abord
     ("reprise", False): [_q(fartlek), _q(hill_sprints)],
     ("reprise", True): [_q(hill_sprints), _q(fartlek)],
+    # orientations sans course (étape 8) : vitesse (10 km et moins), route longue (semi, marathon), trail
+    ("vitesse", False): [_q(vma), _q(seuil), _q(pyramid, 1), _q(fartlek, 1), _q(vma, 2), _q(tempo)],
+    ("route longue", False): [_q(seuil), _q(tempo), _q(seuil, 2), _q(tempo, 1), _q(vma, 2)],
+    ("trail", True): [_q(hills_short), _q(uphill_tempo), _q(hills_medium), _q(power_hike), _q(downhill),
+                      _q(seuil)],
 }
+# nuance d'une préparation (« plus de côtes », « plus de vitesse ») : une semaine de charge sur deux,
+# la séance clé devient une séance de ce type, adaptée à la phase
+NUANCE = {"côtes": {"foncier": _q(hills_short), "développement": _q(hills_medium),
+                    "spécifique": _q(hills_long)},
+          "vitesse": {"foncier": _q(fartlek), "développement": _q(vma), "spécifique": _q(vma, 2)}}
 SECOND = [_q(vma), _q(seuil, 2)]
 LIGHT = [_q(hill_sprints), _q(fartlek)]
 LONG = {("foncier", False): ["classique"], ("développement", False): ["classique", "progressive"],
@@ -495,7 +505,9 @@ LONG = {("foncier", False): ["classique"], ("développement", False): ["classiqu
         ("foncier", True): ["vallonnée"], ("développement", True): ["vallonnée", "descentes"],
         ("spécifique", True): ["spécifique", "vallonnée", "descentes"],
         ("maintien", False): ["classique", "progressive"], ("maintien", True): ["vallonnée", "descentes"],
-        ("reprise", False): ["classique"], ("reprise", True): ["vallonnée"]}
+        ("reprise", False): ["classique"], ("reprise", True): ["vallonnée"],
+        ("vitesse", False): ["classique"], ("route longue", False): ["progressive", "classique"],
+        ("trail", True): ["vallonnée", "descentes", "spécifique"]}
 
 
 def rotate(options: list, week_in_phase: int, shift: int = 0):
@@ -506,13 +518,16 @@ def rotate(options: list, week_in_phase: int, shift: int = 0):
 
 
 def quality(phase: str, kind: str, rank: int, trail: bool, week_in_phase: int, p: dict,
-            day_max: float) -> dict:
-    """Séance de qualité du créneau `rank` (0 : la séance clé), tournante, ramenée au temps du jour."""
+            day_max: float, nuance: str | None = None) -> dict:
+    """Séance de qualité du créneau `rank` (0 : la séance clé), tournante, ramenée au temps du jour ;
+    nuance du coureur une semaine de charge sur deux."""
     if kind in ("affûtage", "course"):
         s = reminder(trail, p)
         return with_gain(s if s["minutes"] <= day_max else reminder(trail, p, compact=True), p)
     if kind == "allégée":
         make, level = rotate(LIGHT, week_in_phase)
+    elif rank == 0 and nuance in NUANCE and phase in NUANCE[nuance] and week_in_phase % 2 == 1:
+        make, level = NUANCE[nuance][phase], week_in_phase // 4
     elif rank == 0:
         make, level = rotate(QUALITY[(phase, trail)], week_in_phase)
     else:

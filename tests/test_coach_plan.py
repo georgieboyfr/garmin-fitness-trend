@@ -621,3 +621,79 @@ def test_maintenance_follows_the_runner_orientation_on_trail():
     assert cp.trail_oriented(acts, TODAY)
     plan = cp.build_maintenance(TODAY, acts, MAINT_DAYS, None, [], {}, 170)
     assert plan["trail"]
+
+
+# ---------- orientation et semaines particulières (étape 8) ----------
+
+def test_period_levels_set_sessions_and_easy_days():
+    a = avail((0, "oui", 50), (1, "oui", 60), (3, "oui", 80), (5, "oui", 120))
+    days = cp.chosen_days(a, None)
+    mon = date(2026, 12, 21)
+    week_long = {"start": "2026-12-21", "end": "2026-12-27", "sessions": None}
+    minimum = cp.period_days(days, mon, [{**week_long, "kind": "noel"}], a)       # niveau par défaut
+    assert len(minimum) == cp.MINIMUM_SESSIONS and all(d["easy_only"] for d in minimum)
+    none = cp.period_days(days, mon, [{**week_long, "kind": "vacances", "level": "aucune"}], a)
+    assert none == []
+    light = cp.period_days(days, mon, [{**week_long, "kind": "chargee"}], a)
+    assert [d["weekday"] for d in light] == [0, 1, 3, 5] and not any(d["easy_only"] for d in light)
+    pain = cp.period_days(days, mon, [{**week_long, "kind": "douleur"}], a)
+    assert len(pain) == 4 and all(d["easy_only"] for d in pain)
+
+
+def test_pain_suspends_progression_and_a_break_is_followed_by_a_reprise():
+    acts = [run(TODAY - timedelta(days=i), 60, 90, 0.0) for i in range(1, 200, 2)]
+    days = avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 60), (5, "oui", 150))
+    race = {**RACE, "race_date": "2027-03-28"}
+    alone = {w["monday"]: w for w in cp.build_plan(race, TODAY, acts, days, None, [], {}, 170)["weeks"]}
+    pain = {"kind": "douleur", "start": "2026-11-30", "end": "2026-12-06", "sessions": None}
+    plan = {w["monday"]: w for w in cp.build_plan(race, TODAY, acts, days, None, [], {}, 170,
+                                                  {"periods": [pain]})["weeks"]}
+    w = plan["2026-11-30"]
+    assert not any(s["hard"] for s in w["sessions"]) and w["periods"][0]["suspend"]
+    assert w["target_load"] <= plan["2026-11-23"]["target_load"] + 1            # pas de hausse
+    assert plan["2026-12-07"]["periods"][0]["kind"] == "reprise"
+    holiday = {"kind": "vacances", "level": "aucune", "start": "2026-12-14", "end": "2026-12-25",
+               "sessions": None}
+    plan = {w["monday"]: w for w in cp.build_plan(race, TODAY, acts, days, None, [], {}, 170,
+                                                  {"periods": [holiday]})["weeks"]}
+    assert plan["2026-12-14"]["sessions"] == []
+    eve = [s for s in plan["2026-12-07"]["sessions"] if s["date"] == "2026-12-13"]
+    assert not any(s["hard"] for s in eve)                       # pas de séance dure la veille
+    assert any(e["kind"] == "reprise" for e in plan["2026-12-28"]["periods"])
+    assert plan["2026-12-28"]["target_load"] < alone["2026-12-28"]["target_load"]
+
+
+def test_nuance_brings_more_hills_and_warns_when_it_strays_from_the_race():
+    acts = [run(TODAY - timedelta(days=i), 60, 90, 0.0) for i in range(1, 200, 2)]
+    days = avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 60), (5, "oui", 150))
+    road = {**RACE, "race_date": "2027-03-28", "gain_m": 50, "distance_m": 21100, "duration_s": 6000}
+    base = cp.build_plan(road, TODAY, acts, days, None, [], {}, 170)
+    hills = cp.build_plan(road, TODAY, acts, days, None, [], {}, 170, {"nuance": "côtes"})
+    count = lambda p: sum(1 for w in p["weeks"] for s in w["sessions"] if s["type"] in cp.HILL_TYPES)  # noqa: E731
+    assert count(hills) > count(base)
+    assert hills["nuance_warning"] and "plate" in hills["nuance_warning"]
+    assert base["nuance_warning"] is None
+    assert cp.nuance_warning("vitesse", {**RACE, "duration_s": 4 * 3600})
+    assert cp.nuance_warning("endurance", {**RACE, "duration_s": 1500, "gain_m": 0})
+    six = avail(*[(d, "oui", 60) for d in range(6)])
+    endurance = cp.build_plan(road, TODAY, acts, six, None, [], {}, 170, {"nuance": "endurance"})
+    assert all(sum(1 for s in w["sessions"] if s["hard"] and s["type"] != "course") <= 1
+               for w in endurance["weeks"])
+
+
+def test_orientation_changes_what_maintenance_works_on():
+    acts = steady_runner(TODAY)
+    five = avail((0, "oui", 60), (1, "oui", 60), (2, "oui", 60), (3, "oui", 60), (5, "oui", 120))
+    plan = cp.build_maintenance(TODAY, [{**a, "terrain": "trail"} for a in acts], five, None, [], {}, 170,
+                                {"orientation": "vitesse"})
+    assert not plan["trail"] and plan["orientation_label"].startswith("Vitesse")
+    keys = {s["type"] for w in plan["weeks"] if w["kind"] == "charge" for s in w["sessions"] if s["hard"]}
+    assert keys <= {"vma", "seuil", "pyramide", "fartlek", "tempo", "test"} and "vma" in keys
+    longue = cp.build_maintenance(TODAY, acts, MAINT_DAYS, None, [], {}, 170, {"orientation": "route_longue"})
+    longest = max(s["minutes"] for w in longue["weeks"] for s in w["sessions"]
+                  if s["type"] == "sortie longue")
+    assert longest > longue["long_usual"]
+    reprise = cp.build_maintenance(TODAY, acts, MAINT_DAYS, None, [], {}, 170, {"orientation": "reprise"})
+    assert reprise["weeks"][0]["phase"] == "reprise" or reprise["start_fitness"] >= reprise["band"]["center"]
+    trail = cp.build_maintenance(TODAY, acts, MAINT_DAYS, None, [], {}, 170, {"orientation": "trail"})
+    assert trail["trail"] and {w["phase"] for w in trail["weeks"]} == {"trail"}

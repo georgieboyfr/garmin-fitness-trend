@@ -398,3 +398,28 @@ def test_coach_without_race_offers_maintenance(client, config):
     assert r.status_code == 200 and 'id="maintien"' in r.text
     r = client.get("/coach?vue=plan")
     assert r.status_code == 200 and "prochaines semaines" in r.text
+
+
+def test_coach_settings_show_orientation_and_period_effect(client, config):
+    from datetime import date, timedelta
+
+    from app import coach, settings
+    conn = db.connect(config.db_path)
+    with conn:
+        day = (date.today() + timedelta(weeks=12)).isoformat()
+        coach.create(conn, {"name": "Semi du lac", "race_date": day, "priority": "A", "gpx_id": None,
+                            "distance_m": 21100.0, "gain_m": 0.0, "target_s": 6300.0})
+    start = date.today() + timedelta(weeks=3)
+    settings.update(conn, "coach", {"periods": [{"kind": "noel", "start": start.isoformat(),
+                                                 "end": (start + timedelta(days=6)).isoformat(),
+                                                 "sessions": None, "max_min": None, "level": None}],
+                                    "nuance": "côtes"})
+    conn.close()
+    login(client)
+    r = client.get("/coach?vue=reglages")
+    assert r.status_code == 200 and "Sans course, orientation" in r.text and "minimum" in r.text
+    r = client.post("/coach/profil", json={"orientation": "trail", "nuance": None})
+    assert r.status_code == 200
+    assert client.post("/coach/profil", json={"orientation": "sprint"}).status_code == 400
+    r = client.get("/coach?vue=plan")
+    assert r.status_code == 200

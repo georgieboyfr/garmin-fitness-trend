@@ -57,7 +57,7 @@ LONG_STEP_SHARE = 0.10          # sortie : au plus +10 % sur la plus longue des 
 TAPER_MIN_EASY = 20             # affûtage : footings raccourcis plutôt que supprimés, la fréquence est
                                 # gardée (Bosquet 2007 ; méta-analyse de 2023 sur l'endurance)
 STRENGTH = {"foncier": 2, "développement": 2, "spécifique": 1, "allégée": 1,
-            "maintien": 1, "reprise": 1}
+            "maintien": 1, "reprise": 1, "vitesse": 1, "route longue": 1, "trail": 1}
                                 # renforcement par semaine (2 à 3 séances sur 8 à 12 semaines
                                 # améliorent l'économie de course, Balsalobre-Fernández 2016 ;
                                 # entretien ensuite)
@@ -195,6 +195,7 @@ def _run_kind(a: dict) -> str | None:
 
 SPIKE_WEEKS = 52                # pics de charge : semaines comparées aux 52 précédentes
 SPIKE_MIN_WEEKS = 8
+_SPIKES: dict = {}              # mémo : mêmes sorties, même jour (une page recalcule plusieurs plans)
 
 
 def load_spikes(acts, today: date) -> dict:
@@ -203,20 +204,31 @@ def load_spikes(acts, today: date) -> dict:
     valeurs aberrantes, sans seuil à régler, qui suit l'évolution du coureur) ; un séjour de
     plusieurs grosses sorties d'affilée en fait un, pas une longue sortie isolée. {lundi : facteur
     qui ramène la semaine à la borne}."""
+    key = (today, len(acts), round(sum(a.get("hrss") or 0 for a in acts), 3),
+           max((a["start"] for a in acts), default=None))       # empreinte des sorties
+    if key in _SPIKES:
+        return _SPIKES[key]
     weekly = {}
     for a in acts:
         if a.get("hrss") and a["start"].date() < today:
             m = monday(a["start"].date())
             weekly[m] = weekly.get(m, 0.0) + a["hrss"]
+    weeks = sorted(weekly)
     out = {}
-    for m, load in weekly.items():
-        ref = [v for w, v in weekly.items() if m - timedelta(weeks=SPIKE_WEEKS) <= w <= m]
+    lo = 0
+    for i, m in enumerate(weeks):                    # fenêtre glissante des 52 semaines précédentes
+        while weeks[lo] < m - timedelta(weeks=SPIKE_WEEKS):
+            lo += 1
+        ref = [weekly[w] for w in weeks[lo:i + 1]]
         if len(ref) < SPIKE_MIN_WEEKS:
             continue
         q1, _, q3 = quantiles(ref, n=4)
         fence = q3 + 1.5 * (q3 - q1)
-        if load > fence > 0:
-            out[m] = fence / load
+        if weekly[m] > fence > 0:
+            out[m] = fence / weekly[m]
+    if len(_SPIKES) > 32:
+        _SPIKES.clear()
+    _SPIKES[key] = out
     return out
 
 
@@ -360,6 +372,7 @@ def week_days(days: list[dict], index: int) -> list[dict]:
 
 # ---------- séances ----------
 
+STRIDE_PHASES = ("foncier", "développement", "maintien", "vitesse", "route longue")   # lignes droites
 HILL_TYPES = {"côtes", "côtes longues", "vma en côte", "montée au seuil", "marche en côte", "descente",
               "sprints en côte", "rappel"}
 
@@ -494,7 +507,7 @@ def _pick_day(candidates, long_day, picked, kind, race_wd, habit_by_day, hills: 
 def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dict, paces: dict,
                habits: list[dict], lthr: float | None, week_in_phase: int,
                long_override: int | None = None, cal: dict | None = None, n_steady: int = 0,
-               long_cap: float | None = None, max_quality: int = 2) -> dict:
+               long_cap: float | None = None, max_quality: int = 2, nuance: str | None = None) -> dict:
     """Séances d'une semaine pour une charge visée : sortie longue, qualité, footings, prises dans
     le catalogue de coach_workouts et variées d'une semaine à l'autre. Durées rondes (5 min) ; un
     footing dure au moins MIN_EASY_MIN, sinon un jour de footing saute. long_override : sortie
@@ -519,6 +532,7 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
     no_hard = easy_wd | {wd + k for wd in side_wd for k in (-1, 1)}
     usable = [d for d in usable if d["weekday"] not in side_wd
               and on[d["weekday"]] not in cal["rest"]]
+    no_hard |= {d["weekday"] for d in usable if d.get("easy_only")}     # période minimale, douleur...
     if kind == "course":
         sessions.append(_race_session(race))
         usable = [d for d in usable if d["weekday"] < race_wd - 1]      # veille au repos
@@ -555,12 +569,12 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
     q_sessions, quality_days = [], [{"weekday": wd} for wd in side_wd]
     q_pool = [d for d in others if d["weekday"] not in no_hard]
     for rank in range(n_quality):
-        proto = wk.quality(phase, kind, rank, trail, week_in_phase, paces, 999)
+        proto = wk.quality(phase, kind, rank, trail, week_in_phase, paces, 999, nuance)
         hills = proto["type"] in HILL_TYPES
         d = _pick_day(q_pool, long_day, quality_days, kind, race_wd, habit_by_day, hills)
         if d is None:
             break
-        q = wk.quality(phase, kind, rank, trail, week_in_phase, paces, d["max_min"])
+        q = wk.quality(phase, kind, rank, trail, week_in_phase, paces, d["max_min"], nuance)
         if kind == "charge" and q["hard"] and rates.get("quality_min"):
             q = _fill(q, min(d["max_min"], rates["quality_min"]), paces)
         cost = q["minutes"] * (rates["quality"] if q["hard"] else rates["easy"]) / rates["easy"]
@@ -625,7 +639,7 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
             ratio = rates["easy"] / (rates["easy"] + (rates["steady"] - rates["easy"]) * 0.6)
             s = wk.steady_run(max(MIN_EASY_MIN + 10, wk.floor5(minutes * ratio + 2.5)), paces, hilly)
             n_steady -= 1
-        elif (not habit and kind == "charge" and phase in ("foncier", "développement", "maintien")
+        elif (not habit and kind == "charge" and phase in STRIDE_PHASES
                 and d["weekday"] not in easy_wd
                 and i == len(easy_days) - 1 and week["index"] % 2 == 0 and not before_hard):
             s = wk.strides(max(MIN_EASY_MIN, minutes - 10), paces)
@@ -775,18 +789,39 @@ def _race_form(pct: float) -> tuple[str, str]:
     return key, "Très frais, bien reposé" if key == "transition" else label
 
 
-PERIOD_LABELS = {"vacances": "Vacances", "maladie": "Maladie", "blessure": "Blessure",
-                 "deplacement": "Déplacement", "chargee": "Semaine chargée"}
+PERIOD_LABELS = {"vacances": "Vacances", "noel": "Noël", "deplacement": "Déplacement",
+                 "chargee": "Semaine chargée", "maladie": "Maladie", "blessure": "Blessure",
+                 "douleur": "Douleur"}
 PERIOD_REST = ("maladie", "blessure")   # sans séance par défaut, reprise progressive ensuite
-REPRISE_DAYS = 7                        # semaine de reprise après une maladie ou une blessure
+REPRISE_DAYS = 7                        # semaine de reprise après une période sans course ou minimale
+# semaines particulières à trois niveaux (étape 8) : le coureur choisit, sinon celui du type
+LEVELS = {"aucune": "Pas de course à pied", "minimum": "Minimum (1 ou 2 footings)",
+          "allégé": "Normal allégé"}
+DEFAULT_LEVEL = {"vacances": "minimum", "noel": "minimum", "deplacement": "minimum", "chargee": "allégé",
+                 "maladie": "aucune", "blessure": "aucune", "douleur": "allégé"}
+MINIMUM_SESSIONS = 2                    # minimum : 2 footings par semaine (au prorata des jours)
+LIGHT_PERIOD_CUT = 0.3                  # normal allégé : charge −30 % sur les jours de la période
+SUSPEND = ("maladie", "blessure", "douleur")   # progression suspendue, que des séances faciles
+REPRISE_MIN_DAYS = 7                    # reprise après une période sans course ou minimale d'une semaine
+
+
+def period_level(p: dict) -> str:
+    return p.get("level") or DEFAULT_LEVEL.get(p["kind"], "allégé")
+
+
+def _needs_reprise(p: dict) -> bool:
+    long_break = (date.fromisoformat(p["end"]) - date.fromisoformat(p["start"])).days + 1 >= REPRISE_MIN_DAYS
+    return p["kind"] in SUSPEND or (period_level(p) in ("aucune", "minimum") and long_break)
 
 
 def period_days(days: list[dict], monday_: date, periods: list[dict], availability: list[dict]) -> list[dict]:
     """Jours d'une semaine avec les périodes particulières du coureur (vacances, maladie...) : les
     jours d'une période remplacent les disponibilités, avec le nombre de séances prévu par semaine
-    (au prorata des jours de la période dans la semaine ; aucune pour une maladie ou une blessure
-    sans nombre), placées d'abord sur les jours habituels, jamais deux jours de suite si possible,
-    chacune avec la durée maximale saisie (sinon celle du jour, sinon la plus longue des jours)."""
+    (au prorata des jours de la période dans la semaine), sinon selon son niveau : aucune séance
+    (pas de course à pied), 2 footings par semaine au prorata (minimum), les jours habituels (normal
+    allégé) ; placées d'abord sur les jours habituels, jamais deux jours de suite si possible,
+    chacune avec la durée maximale saisie (sinon celle du jour, sinon la plus longue des jours).
+    Jours en séances faciles seulement (easy_only) : niveau minimum, maladie, blessure, douleur."""
     if not periods:
         return days
     by_wd = {d["weekday"]: d for d in availability}
@@ -798,12 +833,14 @@ def period_days(days: list[dict], monday_: date, periods: list[dict], availabili
         if not inside:
             continue
         out = [d for d in out if d["weekday"] not in inside]
-        n = p.get("sessions")
-        if n is None:
-            n = 0 if p["kind"] in PERIOD_REST else len([d for d in days if d["weekday"] in inside])
-            share = 1.0
-        else:
-            share = len(inside) / 7
+        n, level = p.get("sessions"), period_level(p)
+        share = len(inside) / 7
+        if n is None and level == "aucune":
+            n = 0
+        elif n is None and level == "minimum":
+            n = MINIMUM_SESSIONS
+        elif n is None:
+            n, share = len([d for d in days if d["weekday"] in inside]), 1.0
         n = min(len(inside), int(n * share + 0.5))
         order = sorted(inside, key=lambda wd: (by_wd.get(wd, {}).get("status", "non") == "non",
                                                -(by_wd.get(wd, {}).get("max_min") or 0), wd))
@@ -816,7 +853,8 @@ def period_days(days: list[dict], monday_: date, periods: list[dict], availabili
                 picked.append(wd)
         for wd in picked:
             minutes = p.get("max_min") or by_wd.get(wd, {}).get("max_min") or longest
-            out.append({"weekday": wd, "status": "oui", "every": 1, "max_min": minutes, "period": p["kind"]})
+            out.append({"weekday": wd, "status": "oui", "every": 1, "max_min": minutes, "period": p["kind"],
+                        "easy_only": level == "minimum" or p["kind"] in SUSPEND})
     return sorted(out, key=lambda d: d["weekday"])
 
 
@@ -826,12 +864,46 @@ def _period_events(monday_: date, periods: list[dict]) -> list[dict]:
     for p in periods or []:
         start, end = date.fromisoformat(p["start"]), date.fromisoformat(p["end"])
         if start <= end_week and end >= monday_:
+            level = period_level(p)
             out.append({"kind": p["kind"], "label": PERIOD_LABELS.get(p["kind"], p["kind"]),
-                        "start": p["start"], "end": p["end"], "sessions": p.get("sessions")})
-        elif p["kind"] in PERIOD_REST and end < monday_ <= end + timedelta(days=REPRISE_DAYS):
+                        "start": p["start"], "end": p["end"], "sessions": p.get("sessions"),
+                        "level": level, "level_label": LEVELS[level], "suspend": p["kind"] in SUSPEND})
+        elif _needs_reprise(p) and end < monday_ <= end + timedelta(days=REPRISE_DAYS):
             out.append({"kind": "reprise", "label": f"Reprise après {PERIOD_LABELS[p['kind']].lower()}",
-                        "start": p["start"], "end": p["end"], "sessions": None})
+                        "start": p["start"], "end": p["end"], "sessions": None, "level": None,
+                        "suspend": False})
     return out
+
+
+def _period_load(load: float, monday_: date, periods: list[dict], cap: float,
+                 ref_before: float | None) -> tuple[float, list[dict], bool]:
+    """Charge d'une semaine avec les périodes particulières : bornée par les séances prévues,
+    −30 % sur les jours d'une période « normal allégé », −30 % la semaine de reprise ; progression
+    suspendue (maladie, blessure, douleur) : jamais plus que la charge d'avant. Retourne la charge,
+    les évènements de la semaine et si la progression est suspendue."""
+    events = _period_events(monday_, periods)
+    if not events:
+        return load, events, False
+    load = min(load, cap)
+    light = 0
+    for k in range(7):
+        d = monday_ + timedelta(days=k)
+        if any(date.fromisoformat(p["start"]) <= d <= date.fromisoformat(p["end"])
+               and period_level(p) == "allégé" for p in periods):
+            light += 1
+    load *= 1 - LIGHT_PERIOD_CUT * light / 7
+    if any(e["kind"] == "reprise" for e in events):
+        load *= RECOVERY_LOAD
+    suspended = any(e.get("suspend") for e in events)
+    if suspended and ref_before:
+        load = min(load, ref_before)
+    return load, events, suspended
+
+
+def period_eves(periods: list[dict]) -> set[date]:
+    """Veilles des périodes sans course ou minimales : pas de séance dure juste avant."""
+    return {date.fromisoformat(p["start"]) - timedelta(days=1) for p in periods or []
+            if period_level(p) in ("aucune", "minimum") or p["kind"] in SUSPEND}
 
 
 def _core_max(days: list[dict]) -> float:
@@ -941,6 +1013,8 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
     options = options or {}
     ramp_pct = options.get("ramp_pct") or DEFAULT_RAMP_PCT
     extend = options.get("long_extension", True)
+    nuance = options.get("nuance")
+    endurance = nuance == "endurance"            # plus d'endurance : une seule séance de qualité
     race_date = date.fromisoformat(race["race_date"])
     if race_date < today:
         return None
@@ -994,6 +1068,7 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
                    if a["start"].date() >= monday(today) - timedelta(weeks=LONG_START_WEEKS)]
     long_hist = [max(recent_long, default=0) or DEFAULT_DAY_MIN]   # plus longues sorties, semaine par semaine
     cal = race_calendar(others or [], weeks[0]["monday"], race_date)
+    cal["easy"] |= period_eves(periods)
     for w in weeks:
         key = (w["phase"], w["kind"])
         if w["monday"] < this_monday:
@@ -1008,6 +1083,7 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
             # charge ; la progression est décalée (la semaine suivante repart du niveau d'avant)
             w = {**w, "kind": "allégée"}
             key = (w["phase"], w["kind"])
+        ref_before = last_charge
         if w["kind"] == "charge":
             target = fitness + RAMP_PER_WEEK
             if cap_fitness:
@@ -1033,13 +1109,11 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
                 load *= RACE_WEEK_LOAD.get(cal["races"][d]["priority"], RACE_WEEK_LOAD["B"])
         recovering = [d for d in dates_ if d in cal["recovery"]]
         load *= 1 - RECOVERY_LOAD_CUT * len(recovering) / 7
-        # périodes particulières : la charge tient dans les séances prévues ; reprise progressive
-        # la semaine après une maladie ou une blessure
-        events = _period_events(w["monday"], periods)
-        if events:
-            load = min(load, week_cap(w))
-            if any(e["kind"] == "reprise" for e in events):
-                load *= RECOVERY_LOAD
+        # périodes particulières : la charge tient dans les séances prévues, allégée selon le niveau,
+        # reprise progressive ensuite ; progression suspendue en cas de maladie, blessure ou douleur
+        load, events, suspended = _period_load(load, w["monday"], periods, week_cap(w), ref_before)
+        if suspended:
+            last_charge = ref_before
         # en avance sur le plan : progression maintenue, sans accélérer (jamais plus que la charge
         # que prévoyait pour cette semaine le plan du lundi précédent)
         capped_by_plan = bool(adj.get("cap_load") and load > adj["cap_load"])
@@ -1062,7 +1136,8 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
                            week_in_phase,
                            extended.get(w["index"]), cal,
                            _spread(w["index"], steady_per_week),
-                           _long_step(max(long_hist[-LONG_START_WEEKS:])))
+                           _long_step(max(long_hist[-LONG_START_WEEKS:])),
+                           max_quality=1 if endurance else 2, nuance=nuance)
         long_hist.append(max([0] + [x.get("level_min", x["minutes"]) for x in built["sessions"]
                                     if x["type"] == "sortie longue" and not x.get("optional")]))
         if any(x["hard"] and x["type"] != "course" for x in built["sessions"]) or w["kind"] != "charge":
@@ -1116,12 +1191,55 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
             "readiness": readiness(ordinary(acts, today, race_ids, keep_races=True), today, out, race,
                                    len([d for d in days if d.get("status") != "optionnel"])),
             "steady_runs": sum(1 for w in out for x in w["sessions"] if x["type"] == "footing soutenu"),
-            "options": {"ramp_pct": ramp_pct, "long_extension": extend},
+            "options": {"ramp_pct": ramp_pct, "long_extension": extend, "nuance": nuance},
+            "nuance_warning": nuance_warning(nuance, race),
             "race_form_label": form_label, "peak_12m": state["peak_12m"],
             "capacity_limited": bool(capped), "capacity_fitness": round(max_load / 7, 1),
             "cap_fitness": round(cap_fitness, 1) if cap_fitness else None, "rates": rates,
             "days": days, "capacity_min": capacity_min, "weeks": out,
             "race_fitness": round(sim["race_fitness"], 1), "trail": is_trail(race)}
+
+
+# ---------- orientation et nuance (étape 8) ----------
+
+NUANCES = {"côtes": "Plus de côtes", "vitesse": "Plus de vitesse", "endurance": "Plus d'endurance"}
+SHORT_RACE_S = 2700             # course courte : moins de 45 min, la vitesse y compte beaucoup
+LONG_RACE_S = 7200              # course longue : plus de 2 h, le seuil et la durée y comptent davantage
+
+
+def nuance_warning(nuance: str | None, race: dict) -> str | None:
+    """Le coach signale, une fois, quand la nuance choisie éloigne de la course visée."""
+    duration = race.get("duration_s") or 0
+    km = (race.get("distance_m") or 0) / 1000
+    flat = not is_trail(race) and (not km or (race.get("gain_m") or 0) / km < stats.FLAT_MAX_GAIN_PER_KM)
+    if nuance == "côtes" and flat:
+        return ("Plus de côtes pour une course plate : bon pour la force en foncier, mais en phase "
+                "spécifique, l'allure de course reste la priorité.")
+    if nuance == "vitesse" and duration > LONG_RACE_S:
+        return ("Plus de vitesse pour une course de plus de 2 h : un peu moins de seuil et de travail "
+                "spécifique, qui comptent davantage sur cette durée.")
+    if nuance == "endurance" and duration and duration < SHORT_RACE_S:
+        return ("Plus d'endurance pour une course courte : une seule séance de qualité par semaine, "
+                "alors que la vitesse compte beaucoup sur cette distance.")
+    return None
+
+
+# orientation sans course : phase des séances (catalogue), route ou trail (None : selon
+# l'historique), fitness visée dans la plage, sortie longue au plus (part de la sortie habituelle),
+# séances de qualité au plus par semaine
+ORIENTATIONS = {
+    "maintien": {"label": "Maintien", "phase": "maintien", "trail": None, "goal": "center", "long": 1.0,
+                 "quality": 1},
+    "reprise": {"label": "Reprise", "phase": "reprise", "trail": None, "goal": "center", "long": 1.0,
+                "quality": 1},
+    "foncier": {"label": "Foncier", "phase": "foncier", "trail": None, "goal": "high", "long": 1.25,
+                "quality": 1},
+    "vitesse": {"label": "Vitesse (10 km et moins)", "phase": "vitesse", "trail": False, "goal": "center",
+                "long": 1.0, "quality": 2},
+    "route_longue": {"label": "Route longue (semi, marathon)", "phase": "route longue", "trail": False,
+                     "goal": "high", "long": 1.5, "quality": 1},
+    "trail": {"label": "Trail", "phase": "trail", "trail": True, "goal": "high", "long": 1.25, "quality": 1},
+}
 
 
 # ---------- maintien de forme, sans course prévue (étape 7) ----------
@@ -1235,7 +1353,9 @@ def build_maintenance(today: date, acts, availability: list[dict], max_sessions:
     paces = {**paces, "lthr": lthr, "easy": rates["easy_pace"], "easy_vam": rates["easy_vam"], "race": None}
     state = fitness_state(acts, today)
     band = fitness_band(acts, today, race_ids)
-    trail = options["trail"] if options.get("trail") is not None else trail_oriented(acts, today)
+    orient = ORIENTATIONS[options.get("orientation") or "maintien"]
+    forced = orient["trail"] if orient["trail"] is not None else options.get("trail")
+    trail = forced if forced is not None else trail_oriented(acts, today)
     pseudo = {"name": "Maintien", "race_date": date.max.isoformat(), "trail": trail}
     this_monday = monday(today)
     anchor = monday(options.get("start") or MAINT_EPOCH)
@@ -1259,6 +1379,7 @@ def build_maintenance(today: date, acts, availability: list[dict], max_sessions:
     long_hist = [max(recent_long, default=0) or DEFAULT_DAY_MIN]
     end = this_monday + timedelta(weeks=MAINT_WEEKS)
     cal = race_calendar(others or [], this_monday, end)
+    cal["easy"] |= period_eves(periods)
     recovery_until = max(cal["recovery_end"].values(), default=None)
 
     def days_of(w: dict) -> list[dict]:
@@ -1273,20 +1394,24 @@ def build_maintenance(today: date, acts, availability: list[dict], max_sessions:
         return j % CYCLE == CYCLE - 1 and j >= MIN_CHARGE_BEFORE_LIGHT
 
     fitness = state["fitness"]
-    reprise = bool(band and band["below"])
+    reprise = bool(band and band["below"]) or orient["phase"] == "reprise"
     last_charge = None
     level = fitness                                  # fitness au bout de la dernière semaine normale
     out = []
     for k in range(MAINT_WEEKS):
         m = this_monday + timedelta(weeks=k)
         i = max(0, (m - anchor).days // 7)          # rang dans le cycle, depuis la dernière course
-        in_reprise = reprise and fitness < band["low"]
-        phase = "reprise" if in_reprise else "maintien"
+        if orient["phase"] == "reprise":
+            in_reprise = not band or fitness < band["center"]
+        else:
+            in_reprise = reprise and fitness < band["low"]
+        phase = "reprise" if in_reprise else orient["phase"]
         w = {"phase": phase, "kind": "allégée" if is_light(i) else "charge", "monday": m, "index": i + 1}
         adj = adjusts.get(m.isoformat()) or {}
         if adj.get("light") and w["kind"] == "charge":
             w["kind"] = "allégée"
         hold = weekly_load_for(fitness, fitness)
+        ref_before = last_charge
         if w["kind"] == "charge":
             if not band:
                 wanted = hold                        # pas assez d'historique : on garde la fitness
@@ -1295,8 +1420,11 @@ def build_maintenance(today: date, acts, availability: list[dict], max_sessions:
                 # redescend doucement d'elle-même, sans semaine creuse pour l'y ramener
                 wanted = weekly_load_for(band["high"], band["high"])
             else:
-                # le niveau d'avant la dernière semaine allégée : le cycle tient la fitness
-                goal = band["low"] if in_reprise else max(fitness, min(level, band["high"]), band["center"])
+                # le niveau d'avant la dernière semaine allégée : le cycle tient la fitness ; une
+                # orientation de développement (foncier, route longue, trail) vise le haut de la plage
+                aim = band["high"] if orient["goal"] == "high" else band["center"]
+                floor = band["center"] if orient["phase"] == "reprise" else band["low"]
+                goal = floor if in_reprise else max(fitness, min(level, band["high"]), aim)
                 wanted = weekly_load_for(fitness, min(goal, fitness + RAMP_PER_WEEK))
             ref = last_charge or hold
             if wanted > ref:                         # montée progressive, jamais d'à-coup
@@ -1311,11 +1439,9 @@ def build_maintenance(today: date, acts, availability: list[dict], max_sessions:
                 load *= RACE_WEEK_LOAD.get(cal["races"][d]["priority"], RACE_WEEK_LOAD["B"])
         recovering = sum(d in cal["recovery"] for d in dates_)
         load *= 1 - RECOVERY_LOAD_CUT * recovering / 7
-        events = _period_events(m, periods)
-        if events:
-            load = min(load, week_cap(w))
-            if any(e["kind"] == "reprise" for e in events):
-                load *= RECOVERY_LOAD
+        load, events, suspended = _period_load(load, m, periods, week_cap(w), ref_before)
+        if suspended:
+            last_charge = ref_before
         capped_by_plan = bool(adj.get("cap_load") and load > adj["cap_load"])
         if capped_by_plan:
             load = adj["cap_load"]
@@ -1332,10 +1458,11 @@ def build_maintenance(today: date, acts, availability: list[dict], max_sessions:
                            key=lambda d: d["weekday"])
         cap = _long_step(max(long_hist[-LONG_START_WEEKS:]))
         if long_usual:
-            cap = min(cap, max(long_usual, MIN_LONG_MIN))
+            cap = min(cap, max(long_usual * orient["long"], MIN_LONG_MIN), LONG_MAX_MIN)
         built = build_week(w, wdays, load, rates, pseudo, paces, habits, lthr, week_in_phase, None, cal,
-                           _spread(w["index"], steady_per_week), cap, max_quality=1)
-        if (w["kind"] == "charge" and phase == "maintien" and i % TEST_EVERY == 1 and not events
+                           _spread(w["index"], steady_per_week), cap,
+                           max_quality=1 if phase == "reprise" else orient["quality"])
+        if (w["kind"] == "charge" and phase != "reprise" and i % TEST_EVERY == 1 and not events
                 and not recovering):
             _maintenance_test(built, trail, paces, rates)
         long_hist.append(max([0] + [x.get("level_min", x["minutes"]) for x in built["sessions"]
@@ -1364,7 +1491,7 @@ def build_maintenance(today: date, acts, availability: list[dict], max_sessions:
     now = sim["today_fitness"]
     if recovery_until and recovery_until >= today.isoformat():
         mode = "récupération"
-    elif reprise:
+    elif reprise and out and out[0]["phase"] == "reprise":
         mode = "reprise"
     else:
         mode = "maintien"
@@ -1377,4 +1504,5 @@ def build_maintenance(today: date, acts, availability: list[dict], max_sessions:
             "days": days, "trail": trail, "capacity_min": capacity_min,
             "capacity_limited": any(w.get("capped") for w in out),
             "capacity_fitness": round(capacity_min / 60 * blended / 7, 1), "long_usual": long_usual,
-            "history": history, "options": {"ramp_pct": ramp_pct}}
+            "history": history, "options": {"ramp_pct": ramp_pct},
+            "orientation": options.get("orientation") or "maintien", "orientation_label": orient["label"]}

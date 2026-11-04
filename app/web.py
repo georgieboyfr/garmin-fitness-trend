@@ -566,6 +566,7 @@ def coach_page(request: Request, vue: str = ""):
                 r["target_review"]["since"] = recent_past["name"] if recent_past else None
         upcoming_tracked = [r for r in co.tracked_races
                             if not r["race_date"] or r["race_date"] >= today.isoformat()]
+        effects = co.period_effects() if vue == "reglages" else {}
         plan = week = bilan = next_week = maintenance = None
         week_races, suggestions = [], []
         if vue in ("semaine", "plan"):
@@ -620,7 +621,9 @@ def coach_page(request: Request, vue: str = ""):
                   next_week_choices=coach_review.NEXT_WEEK, feeling_choices=coach_review.FEELINGS,
                   inferred=co.inferred, availability_saved=co.profile["availability"] is not None,
                   max_sessions=co.profile["max_sessions"], plan_options=co.profile,
-                  period_labels=coach_plan.PERIOD_LABELS,
+                  period_labels=coach_plan.PERIOD_LABELS, levels=coach_plan.LEVELS,
+                  default_levels=coach_plan.DEFAULT_LEVEL, effects=effects,
+                  orientations=coach_plan.ORIENTATIONS, nuances=coach_plan.NUANCES,
                   habits=co.habits,
                   priorities=coach.PRIORITIES, gpx_recent=gpx_store.recent(cfg),
                   tracked_races=upcoming_tracked,
