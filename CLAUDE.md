@@ -102,7 +102,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 
 - Tests : `.venv/Scripts/python -m pytest -q` ; lint : `.venv/Scripts/python -m ruff check app tests`
 - Lancer en local : `DATA_DIR=./data-dev .venv/Scripts/python -m uvicorn app.main:app`
-- Serveur de test pour Greg : en arrière-plan, sur `0.0.0.0:8000` avec `DATA_DIR=./data` et les variables de `.env` ; identifiant `greg` et mot de passe temporaire généré à la session (`secrets.token_urlsafe`, haché par `app.auth.hash_password`), passé au seul processus via `ADMIN_USER` et `ADMIN_PASSWORD_HASH`, jamais écrit dans `.env` ni dans le dépôt ; le donner à Greg dans la conversation. Ouvrir l'onglet sur `http://192.168.87.163:8000/<page>` (adresse du poste de dev sur le réseau) et redémarrer le serveur après chaque modification du code Python.
+- Serveur de test pour Greg : en arrière-plan, sur `127.0.0.1:8000` avec `DATA_DIR=./data` et les variables de `.env` ; identifiant `greg` et mot de passe temporaire généré à la session (`secrets.token_urlsafe`, haché par `app.auth.hash_password`), passé au seul processus via `ADMIN_USER` et `ADMIN_PASSWORD_HASH`, jamais écrit dans `.env` ni dans le dépôt ; le donner à Greg dans la conversation. Ouvrir l'onglet sur `http://localhost:8000/<page>` et redémarrer le serveur après chaque modification du code Python.
 - Pas de Docker sur le poste de dev : l'image est construite par la CI (tag `vX.Y.Z`) ou sur le Synology.
 
 ## Structure
