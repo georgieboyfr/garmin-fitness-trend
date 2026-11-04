@@ -24,7 +24,8 @@ Course à pied uniquement (route, trail, tapis) : les autres sports sont ignoré
   sans montre Garmin sont importées depuis l'archive.
 - Métriques versionnées, recalculées automatiquement quand l'algorithme ou les réglages
   changent : temps en mouvement, charge (TRIMP, HRSS), zones de FC sur la LTHR, Efficiency
-  Factor, découplage cardiaque, meilleurs efforts en fenêtre glissante, VAM, VAP.
+  Factor, découplage cardiaque, meilleurs efforts en fenêtre glissante, VAM, VAP (allure
+  ajustée à la pente, selon la courbe de la GAP de Strava calée sur la FC).
 
 **Pages** (protégées par la connexion de l'admin, ordinateur et mobile, thème clair ou sombre)
 
@@ -43,10 +44,12 @@ Course à pied uniquement (route, trail, tapis) : les autres sports sont ignoré
   écart cumulé ou en temps de passage le long du parcours.
 - **Performance** : records route et trail sur 1 km à marathon (top 10, par année), courbe
   allure-durée, VAM, meilleures montées par palier de D+.
-- **Forme** : fitness, fatigue et forme (modèle de Banister) situées dans l'historique, temps
-  par zone de FC, Efficiency Factor et découplage cardiaque.
+- **Forme** : VMA, VO2max estimée, FC au seuil (en % de la FC max) et allure au seuil ;
+  fitness, fatigue et forme (modèle de Banister) situées dans l'historique, temps par zone de
+  FC, Efficiency Factor et découplage cardiaque.
 - **Courses** : détection automatique des courses, validation en un clic, forme le jour J.
-- **Estimateur** : temps de course « si je courais maintenant », avec une fourchette.
+- **Estimateur** : temps de course « si je courais maintenant », avec une fourchette et un
+  indice de confiance (élevée, moyenne, faible) qui en donne les raisons.
   - Route : formule de Riegel depuis tes meilleurs efforts des 4 derniers mois, chacun ramené
     à ta forme du jour par l'évolution de ta vitesse à FC égale.
   - Trail sur un GPX importé : altitude du MNT, distance équivalente plat selon ton modèle
@@ -54,7 +57,8 @@ Course à pied uniquement (route, trail, tapis) : les autres sports sont ignoré
     habituels en course ou saisis aux ravitaillements ; tronçons (montée, descente,
     vallonné…), temps de passage et profil.
   - Tes courses passées les plus proches, effet de la forme (plus ou moins de fitness le
-    jour J), précision rejouée sur tes courses passées.
+    jour J), précision rejouée sur tes courses passées : erreur moyenne, biais et limites à
+    95 % (l'écart dans lequel finissent 95 % des courses).
   - **Courses suivies** : prédiction enregistrée chaque semaine, courbe avec fourchette et
     objectif, puis résultat une fois la course courue et reliée à sa sortie.
 
@@ -128,7 +132,7 @@ Seul l'export le plus récent compte ; un fichier déjà traité n'est pas relu.
 | --- | --- | --- |
 | 1. Socle | Synchro Garmin, lecture des FIT, D+, import Strava, admin, image Docker | Terminée (v0.1) |
 | 2. Statistiques | Pages Volume, Sorties, Performance, Forme, Courses ; fiche de sortie ; détection des courses | Terminée (v0.2) |
-| 3. Estimateur | Temps de course estimé depuis un GPX ou une distance et la forme actuelle (route : Riegel, références ajustées par la FC ; trail : modèle allure-pente personnel par tronçon, fatigue, arrêts), validé sur les courses passées, courses suivies semaine après semaine | Terminée (v0.3) |
+| 3. Estimateur | Temps de course estimé depuis un GPX ou une distance et la forme actuelle (route : Riegel, références ajustées par la FC ; trail : modèle allure-pente personnel par tronçon, fatigue, arrêts), validé sur les courses passées, courses suivies semaine après semaine | Terminée (v0.3, compléments en v0.4 : confiance, limites à 95 %, repères de la page Forme) |
 | 4. Coach | Plan d'entraînement adaptatif autour des courses prévues (ou maintien de forme), séances détectées, bilan du dimanche, réajustement ; coach conversationnel qui propose sans imposer | À venir |
 | 5. Extensions | Temps par tronçon en trail, envoi des séances vers la montre, idées en attente (météo, carte de toutes les traces, suivi des chaussures…) | À venir |
 
@@ -163,4 +167,9 @@ construit l'image pour amd64 et arm64 et la publie sur
   coureur : l'erreur affichée sur ces courses est flatteuse. La page sépare la vraie
   précision, mesurée sur les prédictions enregistrées avant le départ des courses suivies.
   Avec peu de courses dans l'historique, elle n'est pas mesurable au début.
+- La VAP et le modèle allure-pente ignorent la technicité du terrain.
+- Les repères de la page Forme sont des estimations de terrain : la VMA vient du meilleur
+  effort de 5 min sur route et reste sous-estimée sans effort de 5 min couru à fond
+  récemment (la VO2max en découle) ; la FC au seuil est la meilleure heure de course, qui
+  peut être gonflée par la chaleur ou la dérive cardiaque.
 - Un seul utilisateur.
