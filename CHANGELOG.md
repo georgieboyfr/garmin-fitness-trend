@@ -5,7 +5,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 ## [Non publié]
 
 ### Ajouté
-- Coach (nouvel onglet, phase 4, étape 1) : calendrier des échéances séparé des courses suivies (date et priorité A, B ou C obligatoires, parcours GPX ou distance et D+, pré-remplissage depuis une course suivie), objectif proposé par l'estimateur (temps réaliste et fourchette avec la forme du jour) à accepter ou modifier ; disponibilités par jour et habitudes (parcours récurrents d'un jour), facultatives et pré-remplies depuis les 12 dernières semaines. Au premier démarrage, la base passe en version 16 (calendrier du coach).
+- Coach (nouvel onglet, phase 4, étape 1) : calendrier des échéances séparé des courses suivies (date et priorité A, B ou C obligatoires, parcours GPX ou distance et D+, pré-remplissage depuis une course suivie), objectif proposé par l'estimateur (temps réaliste et fourchette avec la forme du jour) à accepter ou modifier ; disponibilités par jour (oui, optionnel ou non, durée maximale) et habitudes (lieu de passage récurrent d'un jour, quel que soit le tracé, sur 26 semaines, à nommer), facultatives et pré-remplies depuis l'historique. Au premier démarrage, la base passe en version 16 (calendrier du coach).
 
 ## [0.4.0] - 2026-11-04
 

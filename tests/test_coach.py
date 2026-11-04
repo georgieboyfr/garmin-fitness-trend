@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta
 
+import numpy as np
 import pytest
 
 from app import coach
@@ -18,54 +19,103 @@ def mondays(weeks):
     return [first + timedelta(weeks=w) for w in range(weeks)]
 
 
-def test_availability_marks_days_run_at_least_one_week_in_two():
+def test_availability_marks_days_yes_optional_or_no():
     acts = []
     for i, monday in enumerate(mondays(12)):
-        acts.append(run(monday, 50, route=7))                        # lundi : 12 semaines sur 12
+        acts.append(run(monday, 50))                                 # lundi : 12 semaines sur 12
         if i % 2 == 0:
             acts.append(run(monday + timedelta(days=2), 40))         # mercredi : 6 sur 12
         if i % 3 == 0:
             acts.append(run(monday + timedelta(days=5), 120))        # samedi : 4 sur 12
+        if i == 0:
+            acts.append(run(monday + timedelta(days=1), 30))         # mardi : 1 sur 12
     acts.append(run(TODAY, 30))                                      # semaine en cours : ignorée
     a = coach.availability_from_history(acts, TODAY)
     by = {d["weekday"]: d for d in a["days"]}
-    assert by[0]["habitual"] and by[0]["weeks"] == 12 and by[0]["usual_min"] == 50
-    assert by[2]["habitual"] and by[2]["share"] == 0.5                # une semaine sur deux : habituel
-    assert not by[5]["habitual"] and by[5]["usual_min"] == 120
-    assert not by[1]["habitual"] and by[1]["usual_min"] is None
+    assert by[0]["status"] == "oui" and by[0]["weeks"] == 12 and by[0]["usual_min"] == 50
+    assert by[2]["status"] == "oui" and by[2]["share"] == 0.5         # une semaine sur deux
+    assert by[5]["status"] == "optionnel" and by[5]["usual_min"] == 120   # une sur trois
+    assert by[1]["status"] == "non" and by[6]["usual_min"] is None
     assert a["sessions_per_week"] == 2
 
 
-def test_habits_need_a_route_making_half_the_runs_of_a_habitual_day():
-    acts = []
-    for i, monday in enumerate(mondays(12)):
-        acts.append(run(monday, 50, route=7 if i % 4 else 9))         # lundi : parcours 7 trois fois sur 4
-        acts.append(run(monday + timedelta(days=3), 45, route=i))     # jeudi : parcours toujours différent
-    habits = coach.habits_from_history(acts, TODAY)
-    assert [(h["weekday"], h["route_id"], h["count"], h["runs"]) for h in habits] == [(0, 7, 9, 12)]
+# tracés résumés autour d'un départ commun (45,19 ; 5,73) : 0,001° de latitude ≈ 111 m
+HOME = (45.19, 5.73)
+
+
+def track(*points):
+    return np.array([HOME] + [(HOME[0] + dy, HOME[1] + dx) for dy, dx in points] + [HOME])
+
+
+def test_habit_is_the_farthest_place_most_runs_of_the_day_go_through():
+    acts, tracks = [], {}
+    summit = (0.008, -0.009)                                         # environ 1,1 km du départ
+    for i, monday in enumerate(mondays(26)):
+        a = run(monday, 50)
+        a["id"] = i
+        acts.append(a)
+        if i % 4 == 3:
+            tracks[i] = track((-0.004, 0.006), (-0.008, 0.012))        # une sur 4 : ailleurs
+        elif i % 2:
+            tracks[i] = track((0.004, 0.0), summit, (0.0, -0.005))   # montée d'un côté
+        else:
+            tracks[i] = track((0.0, -0.006), summit, (0.005, 0.002))   # et de l'autre
+    habits = coach.habits_from_history(acts, tracks, TODAY)
+    assert len(habits) == 1
+    h = habits[0]
+    assert h["weekday"] == 0 and h["runs"] == 26 and h["count"] >= 19
+    assert coach._distance_m(h["place"], (HOME[0] + summit[0], HOME[1] + summit[1])) < 200
+    assert h["from_start_m"] > coach.PLACE_START_M
+
+
+def test_no_habit_when_runs_only_share_the_start():
+    acts, tracks = [], {}
+    for i, monday in enumerate(mondays(26)):
+        a = run(monday, 50)
+        a["id"] = i
+        acts.append(a)
+        angle = i * 0.7
+        tracks[i] = track((0.01 * np.sin(angle), 0.01 * np.cos(angle)))   # chaque fois une autre direction
+    assert coach.habits_from_history(acts, tracks, TODAY) == []
+
+
+def test_effective_habits_keep_greg_choice_and_name_for_a_nearby_place():
+    detected = [{"weekday": 0, "place": [45.1985, 5.7254], "name": "Grenoble Trail"}]
+    stored = [{"weekday": 0, "place": [45.1990, 5.7260], "name": "Bastille", "keep": True}]
+    h = coach.effective_habits(stored, detected)[0]
+    assert h["keep"] is True and h["confirmed"] and h["label_name"] == "Bastille"
+    far = coach.effective_habits([{**stored[0], "place": [45.21, 5.75]}], detected)[0]
+    assert not far["confirmed"] and far["label_name"] == "Grenoble Trail"
 
 
 def test_effective_availability_prefers_what_greg_entered():
     inferred = coach.availability_from_history([run(m, 50) for m in mondays(12)], TODAY)
     auto = coach.effective_availability(None, inferred)
-    assert auto[0]["available"] and auto[0]["max_min"] == 50 and auto[0]["source"] == "historique"
-    assert not auto[1]["available"] and auto[1]["max_min"] is None
-    stored = [{"weekday": d, "available": d == 1, "max_min": 45 if d == 1 else None} for d in range(7)]
+    assert auto[0]["status"] == "oui" and auto[0]["max_min"] == 50 and auto[0]["source"] == "historique"
+    assert auto[1]["status"] == "non" and auto[1]["max_min"] is None
+    stored = [{"weekday": d, "status": "optionnel" if d == 1 else "non", "max_min": 45 if d == 1 else None}
+              for d in range(7)]
     mine = coach.effective_availability(stored, inferred)
-    assert not mine[0]["available"] and mine[1]["available"] and mine[1]["max_min"] == 45
+    assert mine[0]["status"] == "non" and mine[1]["status"] == "optionnel" and mine[1]["max_min"] == 45
     assert mine[1]["source"] == "saisie"
+    legacy = [{"weekday": d, "available": d == 0, "max_min": 50 if d == 0 else None} for d in range(7)]
+    old = coach.effective_availability(legacy, inferred)
+    assert old[0]["status"] == "oui" and old[1]["status"] == "non"
 
 
 def test_clean_profile_validates_and_only_returns_sent_fields():
-    days = [{"weekday": d, "available": True, "max_min": 60} for d in range(7)]
-    assert coach.clean_profile({"availability": days})["availability"][0] == \
-        {"weekday": 0, "available": True, "max_min": 60}
+    days = [{"weekday": d, "status": "oui", "max_min": 60} for d in range(7)]
+    first = coach.clean_profile({"availability": days})["availability"][0]
+    assert first == {"weekday": 0, "status": "oui", "max_min": 60}
     assert "habits" not in coach.clean_profile({"availability": days})
     assert coach.clean_profile({"availability": None}) == {"availability": None}
-    assert coach.clean_profile({"habits": [{"weekday": 0, "route_id": 7, "keep": True}]}) == \
-        {"habits": [{"weekday": 0, "route_id": 7, "keep": True}]}
+    habit = {"weekday": 0, "place": [45.1985, 5.7254], "name": " Bastille ", "keep": True}
+    cleaned = coach.clean_profile({"habits": [habit]})["habits"][0]
+    assert cleaned == {"weekday": 0, "place": [45.1985, 5.7254], "name": "Bastille", "keep": True}
     with pytest.raises(ValueError):
         coach.clean_profile({"availability": days[:6]})
+    with pytest.raises(ValueError):
+        coach.clean_profile({"availability": [{**d, "status": "peut-être"} for d in days]})
     with pytest.raises(ValueError):
         coach.clean_profile({"availability": [{**d, "max_min": 0} for d in days]})
     with pytest.raises(ValueError):

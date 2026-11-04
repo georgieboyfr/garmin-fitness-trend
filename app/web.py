@@ -540,6 +540,7 @@ def coach_page(request: Request):
         profile = settings.get(conn, "coach")
         factors = tracked.corrections(conn)
         tracked_races = tracked.all_races(conn)
+        tracks = queries.track_signatures(conn)
     finally:
         conn.close()
     cal = coach.calendar(races, today)
@@ -548,7 +549,7 @@ def coach_page(request: Request):
         r["proposal"] = coach.proposed_target(cfg, r, today, data, factors, dem)
         r["route"] = tracked._route_label(cfg, r)
     inferred = coach.availability_from_history(data["acts"], today)
-    habits = coach.effective_habits(profile["habits"], coach.habits_from_history(data["acts"], today))
+    habits = coach.effective_habits(profile["habits"], coach.habits_from_history(data["acts"], tracks, today))
     upcoming_tracked = [r for r in tracked_races if not r["race_date"] or r["race_date"] >= today.isoformat()]
     return render(request, "coach.html", "/coach", calendar=cal,
                   availability=coach.effective_availability(profile["availability"], inferred),

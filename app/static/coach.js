@@ -95,7 +95,7 @@
       ev.preventDefault();
       const days = [...avail.querySelectorAll("tr[data-weekday]")].map((tr) => {
         const minutes = tr.querySelector("[name=max_min]").value.trim();
-        return { weekday: Number(tr.dataset.weekday), available: tr.querySelector("[name=available]").checked,
+        return { weekday: Number(tr.dataset.weekday), status: tr.querySelector("[name=status]").value,
                  max_min: minutes ? Number(minutes) : null };
       });
       if (days.some((d) => d.max_min !== null && !Number.isFinite(d.max_min))) {
@@ -113,8 +113,8 @@
   if (habits) habits.addEventListener("submit", (ev) => {
     ev.preventDefault();
     const list = [...habits.querySelectorAll("li[data-weekday]")].map((li) => ({
-      weekday: Number(li.dataset.weekday), route_id: Number(li.dataset.route),
-      keep: li.querySelector("[name=keep]").checked }));
+      weekday: Number(li.dataset.weekday), place: JSON.parse(li.dataset.place),
+      name: li.querySelector("[name=name]").value, keep: li.querySelector("[name=keep]").checked }));
     send(habits.dataset.url, { habits: list }, habits.querySelector("[role=status]"), "habitudes");
   });
 })();

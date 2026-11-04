@@ -1,6 +1,8 @@
 """Lecture des activités de course à pied pour les pages de statistiques."""
 from datetime import datetime
 
+import numpy as np
+
 from .sports import RUNNING_TYPES
 
 
@@ -75,3 +77,8 @@ def steady_blocks(conn) -> list[tuple[str, float, float]]:
         " WHERE m.steady_blocks IS NOT NULL AND m.terrain != 'indoor' AND x.deleted_in_garmin = 0")
         for v, h in json.loads(r[1])]
 
+
+def track_signatures(conn) -> dict:
+    """Tracé résumé (routes.signature : points lat, lon) de chaque sortie."""
+    return {r[0]: np.frombuffer(r[1], dtype=np.float64).reshape(-1, 2)
+            for r in conn.execute("SELECT activity_id, signature FROM activity_tracks")}

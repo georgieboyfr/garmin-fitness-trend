@@ -6,20 +6,31 @@ Calendrier séparé des courses suivies de l'estimateur (choix de Greg) : chaque
 date et une priorité A (objectif principal, plan périodisé pour elle), B (course importante,
 mini-affûtage) ou C (préparation, semaine allégée).
 
-Disponibilités et habitudes, facultatives, déduites des HISTORY_WEEKS dernières semaines quand
-elles ne sont pas saisies : règles de majorité générales, aucune constante calée sur un coureur.
-- jour habituel : une sortie ce jour-là au moins une semaine sur deux ;
-- durée habituelle : médiane du temps en mouvement des sorties de ce jour ;
-- habitude : parcours (routes.py) qui fait au moins la moitié des sorties d'un jour habituel.
+Disponibilités et habitudes, facultatives, déduites de l'historique quand elles ne sont pas
+saisies : règles de majorité générales, aucune constante calée sur un coureur.
+- jour possible : une sortie ce jour-là au moins une semaine sur deux (HISTORY_WEEKS dernières
+  semaines) ; optionnel : au moins une semaine sur quatre ; durée habituelle : médiane du temps en
+  mouvement des sorties de ce jour ;
+- habitude : lieu de passage d'un jour possible (case de PLACE_CELL_M de côté) traversé par au
+  moins la moitié des sorties de ce jour sur les HABIT_WEEKS dernières semaines, le plus éloigné du
+  départ (hors de ses abords) : le but de la sortie, quel que soit le chemin pris pour y aller.
 """
+import math
 from datetime import date, datetime, timedelta
 from statistics import median
+
+import numpy as np
 
 from . import tracked
 
 COACH_VERSION = 1
 HISTORY_WEEKS = 12
+HABIT_WEEKS = 26             # habitudes : une demi-année, pour voir revenir un lieu
 HABIT_SHARE = 0.5            # majorité : une semaine sur deux, une sortie sur deux
+OPTIONAL_SHARE = 0.25        # optionnel : une semaine sur quatre
+PLACE_CELL_M = 200.0         # case d'un lieu de passage, de l'ordre de la précision des tracés résumés
+PLACE_START_M = 2 * PLACE_CELL_M   # abords du départ, exclus (on y passe à chaque sortie)
+STATUSES = ("oui", "optionnel", "non")
 PRIORITIES = {"A": "Objectif principal", "B": "Course importante", "C": "Préparation"}
 WEEKDAYS = ("Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche")
 MAX_DAY_MIN = 600
@@ -104,8 +115,8 @@ def _recent(acts, today: date, weeks: int) -> tuple[list[dict], date]:
 
 def availability_from_history(acts, today: date, weeks: int = HISTORY_WEEKS) -> dict:
     """Pour chaque jour de la semaine : part des semaines avec une sortie ce jour-là, durée
-    habituelle (médiane du temps en mouvement), jour habituel ou non ; séances par semaine
-    (médiane des semaines pleines)."""
+    habituelle (médiane du temps en mouvement), statut oui, optionnel ou non ; séances par
+    semaine (médiane des semaines pleines)."""
     recent, start = _recent(acts, today, weeks)
     days = []
     for wd in range(7):
@@ -113,52 +124,93 @@ def availability_from_history(acts, today: date, weeks: int = HISTORY_WEEKS) -> 
         week_set = {(a["start"].date() - start).days // 7 for a in runs}
         durations = [a["moving_duration_s"] for a in runs if a.get("moving_duration_s")]
         share = len(week_set) / weeks
+        status = "oui" if share >= HABIT_SHARE else "optionnel" if share >= OPTIONAL_SHARE else "non"
         days.append({"weekday": wd, "label": WEEKDAYS[wd], "weeks": len(week_set), "share": round(share, 2),
-                     "habitual": share >= HABIT_SHARE,
+                     "habitual": status == "oui", "status": status,
                      "usual_min": round(median(durations) / 60) if durations else None})
     per_week = [sum(1 for a in recent if (a["start"].date() - start).days // 7 == w) for w in range(weeks)]
     return {"weeks": weeks, "days": days, "sessions_per_week": median(per_week) if recent else 0}
 
 
-def habits_from_history(acts, today: date, weeks: int = HISTORY_WEEKS) -> list[dict]:
-    """Parcours récurrents d'un jour habituel : au moins la moitié des sorties de ce jour."""
+def _cells(track, lat0: float) -> set[tuple[int, int]]:
+    """Cases traversées par un tracé (lat, lon), densifié pour n'en sauter aucune."""
+    kx = 111320 * math.cos(math.radians(lat0))
+    xs, ys = track[:, 1] * kx, track[:, 0] * 111320
+    cells = {(int(ys[0] // PLACE_CELL_M), int(xs[0] // PLACE_CELL_M))}
+    for i in range(len(xs) - 1):
+        n = max(1, math.ceil(math.hypot(xs[i + 1] - xs[i], ys[i + 1] - ys[i]) / (PLACE_CELL_M / 2)))
+        for t in np.linspace(0, 1, n + 1)[1:]:
+            cells.add((int((ys[i] + t * (ys[i + 1] - ys[i])) // PLACE_CELL_M),
+                       int((xs[i] + t * (xs[i + 1] - xs[i])) // PLACE_CELL_M)))
+    return cells
+
+
+def _distance_m(a, b) -> float:
+    return math.hypot((a[0] - b[0]) * 111320, (a[1] - b[1]) * 111320 * math.cos(math.radians(a[0])))
+
+
+def habits_from_history(acts, tracks: dict, today: date, weeks: int = HABIT_WEEKS,
+                        days_weeks: int = HISTORY_WEEKS) -> list[dict]:
+    """Lieu de passage habituel de chaque jour possible : la case traversée par au moins la moitié
+    des sorties de ce jour, la plus éloignée du départ. tracks : tracé résumé (lat, lon) de chaque
+    sortie (activity_tracks)."""
     recent, _ = _recent(acts, today, weeks)
-    habitual = {d["weekday"] for d in availability_from_history(acts, today, weeks)["days"] if d["habitual"]}
+    days = availability_from_history(acts, today, days_weeks)["days"]
     out = []
-    for wd in sorted(habitual):
-        runs = [a for a in recent if a["start"].weekday() == wd]
-        by_route = {}
+    for wd in (d["weekday"] for d in days if d["habitual"]):
+        runs = [a for a in recent if a["start"].weekday() == wd and a["id"] in tracks]
+        if len(runs) < 2:
+            continue
+        start = tuple(float(v) for v in np.median(np.array([tracks[a["id"]][0] for a in runs]), axis=0))
+        passing = {}
         for a in runs:
-            if a.get("route_id") is not None:
-                by_route.setdefault(a["route_id"], []).append(a)
-        for route_id, rows in by_route.items():
-            if len(rows) >= 2 and len(rows) / len(runs) >= HABIT_SHARE:
-                last = max(rows, key=lambda a: a["start"])
-                out.append({"weekday": wd, "label": WEEKDAYS[wd], "route_id": route_id,
-                            "name": last.get("name"), "activity_id": last["id"], "count": len(rows),
-                            "runs": len(runs),
-                            "distance_km": round(median(a["distance_km"] for a in rows), 1),
-                            "gain_m": round(median(a["gain_m"] for a in rows)),
-                            "moving_min": round(median(a["moving_duration_s"] or 0 for a in rows) / 60)})
+            for c in _cells(tracks[a["id"]], start[0]):
+                passing.setdefault(c, []).append(a)
+        kx = 111320 * math.cos(math.radians(start[0]))
+        best, best_d = None, PLACE_START_M
+        for c, rows in passing.items():
+            if len(rows) / len(runs) < HABIT_SHARE:
+                continue
+            centre = ((c[0] + 0.5) * PLACE_CELL_M / 111320, (c[1] + 0.5) * PLACE_CELL_M / kx)
+            d = _distance_m(centre, start)
+            if d > best_d:
+                best, best_d = (c, centre), d
+        if best is None:
+            continue
+        rows = passing[best[0]]
+        last = max(rows, key=lambda a: a["start"])
+        out.append({"weekday": wd, "label": WEEKDAYS[wd],
+                    "place": [round(best[1][0], 5), round(best[1][1], 5)],
+                    "from_start_m": round(best_d, -1), "name": last.get("name"), "activity_id": last["id"],
+                    "count": len(rows), "runs": len(runs), "weeks": weeks,
+                    "distance_km": round(median(a["distance_km"] for a in rows), 1),
+                    "gain_m": round(median(a["gain_m"] for a in rows)),
+                    "moving_min": round(median(a["moving_duration_s"] or 0 for a in rows) / 60)})
     return out
+
+
+def _status(saved: dict) -> str:
+    """Statut d'un jour saisi ; les premières saisies n'avaient qu'une case possible / pas possible."""
+    return saved.get("status") or ("oui" if saved.get("available") else "non")
 
 
 def effective_availability(stored: list | None, inferred: dict) -> list[dict]:
     """Disponibilités par jour : saisies par Greg si elles existent, sinon déduites de l'historique
-    (jour habituel, durée habituelle)."""
+    (statut, durée habituelle)."""
     by_day = {d["weekday"]: d for d in (stored or [])}
     out = []
     for d in inferred["days"]:
         s = by_day.get(d["weekday"])
         out.append({**d, "source": "saisie" if s else "historique",
-                    "available": s["available"] if s else d["habitual"],
-                    "max_min": s["max_min"] if s else (d["usual_min"] if d["habitual"] else None)})
+                    "status": _status(s) if s else d["status"],
+                    "max_min": s["max_min"] if s else (d["usual_min"] if d["status"] != "non" else None)})
     return out
 
 
 def clean_profile(values: dict) -> dict:
-    """Disponibilités saisies (7 jours) et habitudes gardées, seulement les champs envoyés (null :
-    retour à l'historique) ; ValueError si invalide."""
+    """Disponibilités saisies (7 jours : oui, optionnel ou non, durée maximale) et habitudes
+    (lieu, nom, gardée ou non), seulement les champs envoyés (null : retour à l'historique) ;
+    ValueError si invalide."""
     if not isinstance(values, dict) or not set(values) & {"availability", "habits"}:
         raise ValueError("Saisie invalide.")
     out = {}
@@ -168,13 +220,15 @@ def clean_profile(values: dict) -> dict:
             raise ValueError("Disponibilités attendues pour les 7 jours.")
         cleaned = []
         for d in sorted(availability, key=lambda d: d["weekday"]):
+            if d.get("status") not in STATUSES:
+                raise ValueError("Chaque jour : oui, optionnel ou non.")
             minutes = d.get("max_min")
             if minutes in (None, ""):
                 minutes = None
             elif (isinstance(minutes, bool) or not isinstance(minutes, int | float)
                   or not 0 < minutes <= MAX_DAY_MIN):
                 raise ValueError(f"Durée maximale de 1 à {MAX_DAY_MIN} min.")
-            cleaned.append({"weekday": d["weekday"], "available": bool(d.get("available")),
+            cleaned.append({"weekday": d["weekday"], "status": d["status"],
                             "max_min": int(minutes) if minutes is not None else None})
         availability = cleaned
     if "availability" in values:
@@ -183,18 +237,25 @@ def clean_profile(values: dict) -> dict:
     if habits is not None:
         if not isinstance(habits, list):
             raise ValueError("Habitudes invalides.")
-        habits = [{"weekday": int(h["weekday"]), "route_id": int(h["route_id"]), "keep": bool(h.get("keep"))}
-                  for h in habits]
+        habits = [{"weekday": int(h["weekday"]), "place": [float(h["place"][0]), float(h["place"][1])],
+                   "name": str(h.get("name") or "").strip()[:tracked.NAME_MAX] or None,
+                   "keep": bool(h.get("keep"))} for h in habits]
     if "habits" in values:
         out["habits"] = habits
     return out
 
 
 def effective_habits(stored: list | None, detected: list[dict]) -> list[dict]:
-    """Habitudes détectées, avec le choix de Greg (gardée ou non) ; non confirmées par défaut."""
-    choice = {(h["weekday"], h["route_id"]): h["keep"] for h in (stored or [])}
-    return [{**h, "keep": choice.get((h["weekday"], h["route_id"])),
-             "confirmed": (h["weekday"], h["route_id"]) in choice} for h in detected]
+    """Habitudes détectées, avec le choix de Greg (gardée ou non, nom) : une habitude enregistrée
+    vaut pour le même jour et un lieu à moins de deux cases (le centre de la case bouge un peu
+    d'une période à l'autre)."""
+    out = []
+    for h in detected:
+        match = next((s for s in (stored or []) if s["weekday"] == h["weekday"]
+                      and _distance_m(s["place"], h["place"]) <= 2 * PLACE_CELL_M), None)
+        out.append({**h, "keep": match["keep"] if match else None, "confirmed": match is not None,
+                    "label_name": (match or {}).get("name") or h["name"]})
+    return out
 
 
 # ---------- objectif proposé ----------

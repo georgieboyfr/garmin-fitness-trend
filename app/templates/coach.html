@@ -14,32 +14,32 @@
     <h2>Tes échéances {{ tip("Le calendrier du coach, séparé des courses suivies de l'estimateur. Priorité A : objectif principal, le plan entier est construit pour elle, avec un affûtage complet. B : course importante, mini-affûtage de quelques jours puis récupération. C : course de préparation, courue comme une grosse séance, juste une semaine un peu allégée.") }}</h2>
   </div>
   {% if cal.upcoming %}
-  <div class="table-wrap">
-    <table class="data">
-      <thead><tr><th>Priorité</th><th>Course</th><th>Date</th><th>Parcours</th><th>Objectif</th><th>Proposé {{ tip("Temps réaliste de l'estimateur avec ta forme d'aujourd'hui (fourchette optimiste à prudent), correction de l'admin comprise. Accepte-le comme objectif ou saisis le tien.") }}</th><th></th></tr></thead>
-      <tbody>
-        {% for r in cal.upcoming %}
-        <tr>
-          <td><span class="pill priority-{{ r.priority }}" title="{{ r.priority_label }}">{{ r.priority }}</span></td>
-          <td class="strong">{{ r.name }}</td>
-          <td><span data-short-date="{{ r.race_date }}"></span> <span class="muted">· {% if r.days_left == 0 %}aujourd'hui{% elif r.days_left < 14 %}dans {{ r.days_left }} j{% else %}dans {{ r.weeks_left }} sem.{% endif %}</span></td>
-          <td class="muted">{{ r.route }}</td>
-          <td>
-            <form class="coach-target" data-url="/coach/courses/{{ r.id }}/objectif">
-              <input name="target" inputmode="numeric" size="8" value="{{ chrono_text(r.target_s) }}" placeholder="—" aria-label="Objectif de {{ r.name }}">
-              <button class="btn-ghost" type="submit">Enregistrer</button>
-              <span class="small muted" role="status"></span>
-            </form>
-          </td>
-          <td>{% if r.proposal %}<b data-chrono="{{ r.proposal.realistic_s }}"></b> <span class="muted small">(<span data-chrono="{{ r.proposal.optimistic_s }}"></span> à <span data-chrono="{{ r.proposal.prudent_s }}"></span>)</span>
-            {% if r.target_s != r.proposal.realistic_s %}<button class="btn-ghost" type="button" data-accept="/coach/courses/{{ r.id }}/objectif" data-value="{{ r.proposal.realistic_s }}">Accepter</button>{% endif %}
-            {% else %}<span class="muted small">estimation impossible</span>{% endif %}</td>
-          <td><button class="btn-ghost" type="button" data-coach-delete="/coach/courses/{{ r.id }}/supprimer" aria-label="Retirer {{ r.name }}">Retirer</button></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <ul class="coach-races">
+    {% for r in cal.upcoming %}
+    <li class="coach-race-item">
+      <div class="coach-race-head">
+        <span class="pill priority-{{ r.priority }}" title="{{ r.priority_label }}">{{ r.priority }}</span>
+        <div>
+          <b>{{ r.name }}</b>
+          <div class="muted small"><span data-short-date="{{ r.race_date }}"></span> · {% if r.days_left == 0 %}aujourd'hui{% elif r.days_left < 14 %}dans {{ r.days_left }} j{% else %}dans {{ r.weeks_left }} sem.{% endif %} · {{ r.priority_label | lower }} · <span class="coach-route">{{ r.route }}</span></div>
+        </div>
+        <button class="btn-ghost coach-remove" type="button" data-coach-delete="/coach/courses/{{ r.id }}/supprimer" aria-label="Retirer {{ r.name }}">Retirer</button>
+      </div>
+      <div class="coach-race-goal">
+        <form class="coach-target" data-url="/coach/courses/{{ r.id }}/objectif">
+          <label class="muted small" for="target-{{ r.id }}">Objectif</label>
+          <input id="target-{{ r.id }}" name="target" inputmode="numeric" size="8" value="{{ chrono_text(r.target_s) }}" placeholder="—">
+          <button class="btn-ghost" type="submit">Enregistrer</button>
+          <span class="small muted" role="status"></span>
+        </form>
+        <div class="small">{% if r.proposal %}<span class="muted">Proposé {{ tip("Temps réaliste de l'estimateur avec ta forme d'aujourd'hui (fourchette optimiste à prudent), correction de l'admin comprise. Accepte-le comme objectif ou saisis le tien.") }}</span>
+          <b data-chrono="{{ r.proposal.realistic_s }}"></b> <span class="muted">(<span data-chrono="{{ r.proposal.optimistic_s }}"></span> à <span data-chrono="{{ r.proposal.prudent_s }}"></span>)</span>
+          {% if r.target_s != r.proposal.realistic_s %}<button class="btn-ghost" type="button" data-accept="/coach/courses/{{ r.id }}/objectif" data-value="{{ r.proposal.realistic_s }}">Accepter</button>{% else %}<span class="muted">· accepté</span>{% endif %}
+          {% else %}<span class="muted">estimation impossible</span>{% endif %}</div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
   {% if not cal.main %}<p class="small muted">Aucune course A : le plan suivra le maintien de forme, en intégrant tes courses B et C.</p>{% endif %}
   {% else %}
   <p class="muted">Aucune course à venir : le coach te proposera un maintien de forme. Ajoute une course pour qu'il prépare un plan vers elle.</p>
@@ -70,7 +70,7 @@
           {% for g in gpx_recent %}<option value="{{ g.id }}">GPX : {{ g.name }}</option>{% endfor %}
           <option value="distance" selected>Distance et D+</option>
         </select></label>
-      <span class="coach-road filters">
+      <span class="coach-road">
         <label class="filter">Distance (km) <input name="distance_km" inputmode="decimal"></label>
         <label class="filter">D+ (m) <input name="gain_m" inputmode="numeric" placeholder="0"></label>
       </span>
@@ -90,18 +90,18 @@
 
 <section class="card" id="disponibilites">
   <div class="card-head">
-    <h2>Disponibilités <span class="muted small">facultatif</span> {{ tip("Les jours où tu peux courir et le temps maximal de chaque jour. Sans saisie, le coach les déduit de tes 12 dernières semaines : un jour est habituel si tu y as couru au moins une semaine sur deux, avec ta durée habituelle (médiane) ce jour-là.") }}</h2>
+    <h2>Disponibilités <span class="muted small">facultatif</span> {{ tip("Pour chaque jour : oui (le coach peut y placer une séance), optionnel (seulement si la semaine le demande, une séance qui peut sauter) ou non, et le temps maximal. Sans saisie, le coach les déduit de tes 12 dernières semaines : oui si tu y as couru au moins une semaine sur deux, optionnel au moins une semaine sur quatre, avec ta durée habituelle (médiane) ce jour-là.") }}</h2>
   </div>
   <p class="small muted">{% if availability_saved %}Tes disponibilités saisies.{% else %}Déduites de tes 12 dernières semaines : environ {{ inferred.sessions_per_week | string | replace(".0", "") | replace(".", ",") }} sortie{{ "s" if inferred.sessions_per_week > 1 }} par semaine.{% endif %}</p>
   <form class="coach-availability" data-url="/coach/profil">
     <div class="table-wrap">
       <table class="data">
-        <thead><tr><th>Jour</th><th>Possible</th><th>Durée max (min)</th><th>Ton historique</th></tr></thead>
+        <thead><tr><th>Jour</th><th>Course</th><th>Durée max (min)</th><th>Ton historique</th></tr></thead>
         <tbody>
           {% for d in availability %}
           <tr data-weekday="{{ d.weekday }}">
             <td class="strong">{{ d.label }}</td>
-            <td><input type="checkbox" name="available" aria-label="{{ d.label }} possible" {% if d.available %}checked{% endif %}></td>
+            <td><select name="status" class="select" aria-label="Course le {{ d.label | lower }}">{% for st in ("oui", "optionnel", "non") %}<option value="{{ st }}" {% if d.status == st %}selected{% endif %}>{{ st }}</option>{% endfor %}</select></td>
             <td><input name="max_min" inputmode="numeric" size="4" value="{{ d.max_min or '' }}" aria-label="Durée maximale le {{ d.label | lower }}"></td>
             <td class="muted small">{{ d.weeks }} semaine{{ "s" if d.weeks > 1 }} sur {{ inferred.weeks }}{% if d.usual_min %}, {{ d.usual_min }} min d'habitude{% endif %}</td>
           </tr>
@@ -119,17 +119,18 @@
 
 <section class="card" id="habitudes">
   <div class="card-head">
-    <h2>Habitudes <span class="muted small">facultatif</span> {{ tip("Les sorties qui reviennent : un parcours qui fait au moins la moitié de tes sorties d'un jour habituel, sur les 12 dernières semaines. Une habitude gardée reste à sa place dans le plan ; le coach lui donnera un rôle selon la phase (footing, côtes, sortie plus longue).") }}</h2>
+    <h2>Habitudes <span class="muted small">facultatif</span> {{ tip("Le but de tes sorties d'un jour habituel, quel que soit le chemin : le lieu (case de 200 m) par où passe au moins la moitié de tes sorties de ce jour sur les 26 dernières semaines, le plus éloigné du départ. Donne-lui un nom ; une habitude gardée reste à sa place dans le plan, le coach lui donnera un rôle selon la phase (footing, côtes, sortie plus longue).") }}</h2>
   </div>
   {% if habits %}
   <form class="coach-habits" data-url="/coach/profil">
     <ul class="coach-habit-list">
       {% for h in habits %}
-      <li data-weekday="{{ h.weekday }}" data-route="{{ h.route_id }}">
-        <label><input type="checkbox" name="keep" {% if h.keep or not h.confirmed %}checked{% endif %}>
-          <b>{{ h.label }}</b> : <a href="/sorties/{{ h.activity_id }}">{{ h.name or "parcours" }}</a>
-          <span class="muted small">({{ h.count }} sorties sur {{ h.runs }} ce jour-là, {{ h.distance_km | string | replace(".", ",") }} km, {{ h.gain_m }} m D+, {{ h.moving_min }} min)</span>
+      <li data-weekday="{{ h.weekday }}" data-place="{{ h.place | tojson | forceescape }}">
+        <label class="coach-habit"><input type="checkbox" name="keep" {% if h.keep or not h.confirmed %}checked{% endif %} aria-label="Garder l'habitude du {{ h.label | lower }}">
+          <b>{{ h.label }}</b>
+          <input name="name" maxlength="120" value="{{ h.label_name or '' }}" aria-label="Nom de l'habitude du {{ h.label | lower }}">
           {% if not h.confirmed %}<span class="pill">à confirmer</span>{% endif %}</label>
+        <p class="muted small">{{ h.count }} de tes {{ h.runs }} sorties du {{ h.label | lower }} sur {{ h.weeks }} semaines passent par le même lieu, à {{ ('%.1f' % (h.from_start_m / 1000)) | replace(".", ",") }} km du départ · {{ h.distance_km | string | replace(".", ",") }} km, {{ h.gain_m }} m D+, {{ h.moving_min }} min d'habitude · dernière : <a href="/sorties/{{ h.activity_id }}">{{ h.name or "sortie" }}</a></p>
       </li>
       {% endfor %}
     </ul>
@@ -139,7 +140,7 @@
     </div>
   </form>
   {% else %}
-  <p class="muted">Aucune habitude nette sur tes 12 dernières semaines : aucun parcours ne fait la moitié des sorties d'un même jour.</p>
+  <p class="muted">Aucune habitude nette sur tes 26 dernières semaines : aucun lieu n'est traversé par la moitié des sorties d'un même jour habituel.</p>
   {% endif %}
 </section>
 
