@@ -187,7 +187,8 @@ def test_split_summary_separates_tuning_races_from_later_ones():
             {"date": "2027-03-14", "e": 8.0}]
     s = estimator.split_summary(rows, "e")
     assert s["tuned"]["n"] == 2 and s["tuned"]["mae_pct"] == 3.0
-    assert s["fresh"] == {"n": 1, "mae_pct": 8.0, "bias_pct": 8.0}
+    fresh = {k: s["fresh"][k] for k in ("n", "mae_pct", "bias_pct")}
+    assert fresh == {"n": 1, "mae_pct": 8.0, "bias_pct": 8.0}
 
 
 # ---------- modèle allure-pente ----------
@@ -369,3 +370,15 @@ def test_predict_road_adjusts_references_with_the_trend():
     assert r["reference"]["raw_time_s"] == 3000 and r["reference"]["time_s"] == pytest.approx(2880)
     assert r["reference"]["adjust_pct"] == -4.0 and base["reference"]["adjust_pct"] == 0.0
 
+
+
+def test_error_summary_gives_bland_altman_limits():
+    s = estimator.error_summary([{"e": e} for e in (2.0, -4.0, 1.0, 5.0)], "e")
+    assert s["bias_pct"] == 1.0 and s["sd_pct"] == pytest.approx(3.7, abs=0.05)
+    assert s["loa_low_pct"] == pytest.approx(1.0 - 1.96 * 3.742, abs=0.05)
+    assert s["loa_high_pct"] == pytest.approx(1.0 + 1.96 * 3.742, abs=0.05)
+    assert s["loa_reliable"] is False                                  # 4 courses : indicatif
+    one = estimator.error_summary([{"e": 3.0}], "e")
+    assert one["sd_pct"] is None and one["loa_low_pct"] is None        # écart-type à partir de 2 courses
+    many = estimator.error_summary([{"e": float(i % 3)} for i in range(estimator.LOA_MIN_RACES)], "e")
+    assert many["loa_reliable"] is True

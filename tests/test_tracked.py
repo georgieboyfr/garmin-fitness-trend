@@ -253,4 +253,4 @@ def test_ahead_errors_only_count_predictions_recorded_before_the_race():
         return {"result": {"error_pct": err, "prediction": {"replayed": replayed}}}
     assert tracked.ahead_errors([race(5.0, 1), {"result": None}]) is None
     s = tracked.ahead_errors([race(5.0, 1), race(-3.0, 0), race(1.0, 0)])
-    assert s == {"n": 2, "mae_pct": 2.0, "bias_pct": -1.0}
+    assert {k: s[k] for k in ("n", "mae_pct", "bias_pct")} == {"n": 2, "mae_pct": 2.0, "bias_pct": -1.0}

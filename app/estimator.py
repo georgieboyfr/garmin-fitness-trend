@@ -75,6 +75,8 @@ EXPONENT_SPREAD = 0.03
 CLIMB_GRADE = 0.05
 CLIMB_EQUIVALENT = (float(grade.minetti_cost(CLIMB_GRADE)) / grade.FLAT_COST - 1) / CLIMB_GRADE
 STANDARD_DISTANCES_M = (5000, 10000, 21097.5, 42195)
+LOA_Z = 1.96                   # limites à 95 % de Bland-Altman : biais ± 1,96 écart-type
+LOA_MIN_RACES = 10             # en dessous, l'écart-type de quelques courses est trop incertain
 
 
 def _in_window(day_iso: str, start: date, end: date) -> bool:
@@ -302,11 +304,22 @@ def split_summary(rows, key) -> dict:
 
 
 def error_summary(rows, key) -> dict | None:
+    """Erreur moyenne (valeur absolue), biais et, à partir de 2 courses, limites à 95 % de
+    Bland-Altman (biais ± 1,96 écart-type) : l'écart dans lequel tombent 95 % des courses.
+    Indicatives sous LOA_MIN_RACES courses (règle statistique générale, pas un réglage)."""
     errors = [r[key] for r in rows if r.get(key) is not None]
     if not errors:
         return None
-    return {"n": len(errors), "mae_pct": round(sum(abs(e) for e in errors) / len(errors), 1),
-            "bias_pct": round(sum(errors) / len(errors), 1) + 0.0}     # + 0.0 : pas de « −0,0 »
+    n = len(errors)
+    bias = sum(errors) / n
+    out = {"n": n, "mae_pct": round(sum(abs(e) for e in errors) / n, 1),
+           "bias_pct": round(bias, 1) + 0.0,     # + 0.0 : pas de « −0,0 »
+           "sd_pct": None, "loa_low_pct": None, "loa_high_pct": None, "loa_reliable": n >= LOA_MIN_RACES}
+    if n >= 2:
+        sd = math.sqrt(sum((e - bias) ** 2 for e in errors) / (n - 1))
+        out.update({"sd_pct": round(sd, 1), "loa_low_pct": round(bias - LOA_Z * sd, 1) + 0.0,
+                    "loa_high_pct": round(bias + LOA_Z * sd, 1) + 0.0})
+    return out
 
 
 def validate_road(acts, efforts, confirmed_ids, window_days: int = WINDOW_DAYS, trend=None) -> dict:

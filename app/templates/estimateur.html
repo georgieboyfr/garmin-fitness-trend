@@ -235,6 +235,18 @@
   <p class="small muted">Choisis le GPX d'une course : il est gardé sur le serveur pour pouvoir y revenir.</p>
   {% endif %}
 </section>
+{% macro loa_kpi(e) %}
+    <article class="kpi">
+      <header>Limites à 95 % {{ tip("95 % de tes courses devraient finir dans cet écart autour de l'estimation (biais ± 1,96 écart-type des écarts, méthode de Bland-Altman). Une erreur moyenne faible peut cacher une course très loin de l'estimation : ces limites la montrent. Avec moins de 10 courses, l'écart-type est très incertain : les limites sont indicatives et se préciseront avec tes prochaines courses.") }}</header>
+      {% if e.sd_pct is not none %}
+      <div class="kpi-value">{{ ('%+.0f' % e.loa_low_pct) | replace('-', '−') }} à {{ ('%+.0f' % e.loa_high_pct) | replace('-', '−') }}<span class="kpi-unit">%</span></div>
+      <footer class="muted">écart-type {{ e.sd_pct | string | replace(".", ",") }} %{% if not e.loa_reliable %}, indicatif sous 10 courses{% endif %}</footer>
+      {% else %}
+      <div class="kpi-value">—</div>
+      <footer class="muted">à partir de 2 courses</footer>
+      {% endif %}
+    </article>
+{% endmacro %}
 <section class="card" id="precision">
   <div class="card-head">
     <h2>Précision sur tes courses passées</h2>
@@ -242,7 +254,7 @@
   <p class="small">{% set s1, s2 = validation.split, trail_validation.split %}
     Les réglages de l'estimateur (fenêtres, exposants, arrêts, ajustement par la FC) ont été choisis en le rejouant sur tes courses jusqu'au <span data-short-date="{{ s1.tuned_until }}"></span> : sur ces courses, l'erreur est flatteuse. {{ tip("Choisir une méthode parce qu'elle colle le mieux à des courses, puis mesurer son erreur sur ces mêmes courses, donne une erreur trop optimiste (surajustement), surtout avec peu de courses. Les réglages sont désormais figés : les courses courues ensuite, et surtout les prédictions de tes courses suivies enregistrées avant le départ, mesurent la vraie précision.") }}
     <b>Vraie précision</b> :
-    {% if ahead %}{{ ahead.mae_pct | string | replace(".", ",") }} % d'erreur sur {{ ahead.n }} course{{ "s" if ahead.n > 1 }} suivie{{ "s" if ahead.n > 1 }}, prédite{{ "s" if ahead.n > 1 }} avant le départ{% else %}pas encore de course suivie courue avec une prédiction enregistrée avant le départ{% endif %}
+    {% if ahead %}{{ ahead.mae_pct | string | replace(".", ",") }} % d'erreur sur {{ ahead.n }} course{{ "s" if ahead.n > 1 }} suivie{{ "s" if ahead.n > 1 }}, prédite{{ "s" if ahead.n > 1 }} avant le départ{% if ahead.sd_pct is not none %} (95 % entre {{ ('%+.0f' % ahead.loa_low_pct) | replace('-', '−') }} et {{ ('%+.0f' % ahead.loa_high_pct) | replace('-', '−') }} %{% if not ahead.loa_reliable %}, indicatif{% endif %}){% endif %}{% else %}pas encore de course suivie courue avec une prédiction enregistrée avant le départ{% endif %}
     {%- if s1.fresh or s2.fresh %} ; rejeu des courses suivantes : {% if s1.fresh %}route {{ s1.fresh.mae_pct | string | replace(".", ",") }} % ({{ s1.fresh.n }}){% endif %}{% if s1.fresh and s2.fresh %}, {% endif %}{% if s2.fresh %}trail {{ s2.fresh.mae_pct | string | replace(".", ",") }} % ({{ s2.fresh.n }}){% endif %}{% endif %}.</p>
   <p class="small muted">Mesurée sans correction.{% if factors.road != 1 or factors.trail != 1 %} Correction en vigueur : route {{ ('%+.1f' % ((factors.road - 1) * 100)) | replace('-', '−') | replace('.', ',') }} %, trail {{ ('%+.1f' % ((factors.trail - 1) * 100)) | replace('-', '−') | replace('.', ',') }} %.{% endif %} La correction proposée se règle dans <a href="/admin">l'admin</a>.</p>
   <h3>Route {{ tip("L'estimateur route est rejoué sur chacune de tes courses route confirmées, avec uniquement les sorties jusqu'à la veille (forme de la veille), puis comparé à ton temps réel (temps écoulé). Écart positif : estimation trop lente. L'erreur moyenne est la moyenne des écarts en valeur absolue ; le biais, leur moyenne signée. La colonne « Exposant personnel » montre ce qu'aurait donné l'exposant calé sur tes meilleurs efforts route des 2 années précédant la course.") }}</h3>
@@ -263,6 +275,7 @@
       <div class="kpi-value">{{ v.used.within }}<span class="kpi-unit">/ {{ v.used.n }}</span></div>
       <footer class="muted">entre optimiste et prudent</footer>
     </article>
+    {{ loa_kpi(v.used) }}
     <article class="kpi">
       <header>Avec ton exposant personnel</header>
       <div class="kpi-value">{% if v.personal %}{{ v.personal.mae_pct | string | replace(".", ",") }}<span class="kpi-unit">%</span>{% else %}—{% endif %}</div>
@@ -318,6 +331,7 @@
       <div class="kpi-value">{{ tv.total.within }}<span class="kpi-unit">/ {{ tv.total.n }}</span></div>
       <footer class="muted">entre optimiste et prudent</footer>
     </article>
+    {{ loa_kpi(tv.total) }}
     <article class="kpi">
       <header>En mouvement</header>
       <div class="kpi-value">{% if tv.moving %}{{ tv.moving.mae_pct | string | replace(".", ",") }}<span class="kpi-unit">%</span>{% else %}—{% endif %}</div>

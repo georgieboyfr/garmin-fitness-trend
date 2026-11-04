@@ -4,6 +4,9 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 
 ## [Non publié]
 
+### Ajouté
+- Précision de l'estimateur (page Estimateur) : limites à 95 % de Bland-Altman (biais ± 1,96 écart-type) et écart-type des écarts, pour la route, le trail et la vraie précision des courses suivies ; indicatives sous 10 courses.
+
 ### Modifié
 - VAP selon la courbe de la GAP de Strava (calée sur la FC) au lieu de la formule de Minetti : en descente raide, l'effort remonte au lieu de baisser (facteur 0,88 à −9 %, 1,08 à −20 %, 1,50 à −30 %), la VAP des fortes descentes n'est plus plus lente que l'allure réelle. Métriques en version 6 (toutes les sorties sont recalculées : VAP, temps au km, forme du jour). Le modèle allure-pente de la page Estimateur est comparé à cette courbe ; l'équivalent plat du D+ de l'estimateur route reste celui de Minetti.
 

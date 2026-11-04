@@ -306,6 +306,7 @@ def test_validate_trail_replays_races_with_the_form_of_the_day_before():
     assert by_id[11]["reason"] == "pas de modèle allure-pente avant la course"
     assert by_id[12]["reason"] == "trace ou altitude indisponible"
     assert [x["date"] for x in v["races"]] == ["2026-10-20", "2026-10-10", "2020-05-01"]
-    assert v["total"] == {"n": 1, "mae_pct": abs(r["error_pct"]), "bias_pct": r["error_pct"], "within": 0}
+    assert {k: v["total"][k] for k in ("n", "mae_pct", "bias_pct", "within")} == {
+        "n": 1, "mae_pct": abs(r["error_pct"]), "bias_pct": r["error_pct"], "within": 0}
     assert v["moving"]["n"] == 1
     assert trail.validate_trail([], acts, efforts, set())["total"] is None

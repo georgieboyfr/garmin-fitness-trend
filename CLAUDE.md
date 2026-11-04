@@ -20,6 +20,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 - « Terminé » = tests verts, image Docker construite, visible sur ordinateur et mobile, CHANGELOG à jour.
 - Sessions courtes : une étape par session. Étape terminée = commit, suivi ci-dessous à jour, puis proposer à Greg de couper la session et lui donner la phrase de reprise : « Lis CLAUDE.md et reprends à la prochaine étape non cochée de la phase en cours. »
 - Toute idée de Greg non implémentée est notée, datée, dans la section 7 du brief (« Idées notées en cours de route »).
+- Les calculs s'adaptent aux données de chaque coureur et évoluent avec elles : pas de constante calée sur les données de Greg, tout doit marcher pour quelqu'un d'autre (principe de Greg du 4 novembre 2026, section 10 du brief).
 
 ## État d'avancement
 
@@ -66,9 +67,11 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 10. Après la course : activité reliée automatiquement, écart prédiction / résultat, calibration (3 novembre 2026 ; correction proposée et activée dans l'admin, choix de Greg ; reste à valider, section 10 du brief)
   - [x] 10 bis. Fiche d'une course réalisée : bouton qui lance l'estimation sur la trace de la sortie (forme de la veille et forme d'aujourd'hui), graphique de l'écart cumulé au fil des km (choix de Greg) (demande de Greg du 3 novembre 2026, fait le même jour)
   - [x] 10 ter. Niveau ajusté par la FC (vitesse à 85 % de la LTHR, références sur 4 mois), réglages figés et vraie précision séparée de l'erreur sur les courses de réglage (3 novembre 2026, choix de Greg ; section 10 du brief)
-  - [ ] 11. Vérification ordinateur et mobile, v0.3.0
+  - [x] 11. Vérification ordinateur et mobile, v0.3.0
     - [x] Pages vérifiées en local sur ordinateur et à 390 px de large (aucun débordement, menu responsive), commit et tag `v0.3.0`, push, image construite par la CI (3 novembre 2026)
-    - [ ] Mise à jour du Synology et vérification sur le téléphone (Greg)
+    - [x] Mise à jour du Synology et vérification sur le téléphone (Greg, 4 novembre 2026)
+  - [x] 12. VAP selon la courbe de Strava au lieu de Minetti (4 novembre 2026, demande de Greg ; commité, pas encore poussé)
+  - [x] 13. Limites à 95 % (Bland-Altman) dans la précision de l'estimateur, après comparaison avec la thèse de L. Lerebourg (4 novembre 2026, section 10 du brief ; commité, pas encore poussé)
   - Points à trancher avec Greg au fil des étapes : terrain technique et chaleur (étape 6 ou plus tard), forme projetée à la date de la course (le coach de la phase 4 la fournira ; en attendant, forme actuelle maintenue)
   - Tranché : l'estimateur a son propre onglet dans le menu (3 novembre 2026)
 - [ ] Phase 4 — Coach (section 6 du brief ; terminé quand un plan est suivi sur 2 semaines réelles sans intervention manuelle ; v1.0.0). Logique de plan à base de règles explicites, en fonctions pures testées ; tout reste utilisable sans LLM
