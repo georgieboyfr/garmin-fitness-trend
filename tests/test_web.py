@@ -369,6 +369,7 @@ def test_coach_page_shows_the_sunday_review(client, config, monkeypatch):
     assert "Semaine peu suivie" in r.text and "La semaine prochaine" in r.text
     assert 'class="coach-race-day"' in r.text and "Trail du dimanche" in r.text and "jour de course" in r.text
     assert "Course B : Trail du dimanche : encore à courir" in r.text
+    assert "Fraîcheur ce matin" not in r.text                  # pas de sorties : pas de fitness
     r = client.post("/coach/bilan/2026-11-02", json={"next_week": "chargée", "feeling": None})
     assert r.status_code == 200
     r = client.get("/coach?vue=plan")

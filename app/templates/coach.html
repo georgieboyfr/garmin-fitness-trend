@@ -28,6 +28,9 @@
     <b>{{ r.name }}</b>
     <div><span data-short-date="{{ r.race_date }}"></span> · <span class="strong">{{ countdown(r) }}</span></div>
     <div class="muted small">{% if r.proposal %}temps prévu <b data-chrono="{{ r.proposal.realistic_s }}"></b> {{ tip("L'estimateur sur ta forme d'aujourd'hui, correction de l'admin comprise. La fitness projetée au jour J viendra avec une prochaine étape du coach.") }}{% else %}temps prévu indisponible{% endif %}{% if r.target_s %} · objectif <b data-chrono="{{ r.target_s }}"></b>{% endif %}</div>
+    {% if r.freshness %}{% set f = r.freshness %}
+    <div class="small">Fraîcheur ce matin : <b>{{ "+" if f.form > 0 }}{{ f.form | string | replace(".", ",") }} ({{ "+" if f.pct > 0 }}{{ f.pct }} %)</b> · {{ f.label }} {{ tip("Forme de la page Forme au matin de la course : fitness moins fatigue de la veille, rapportée à la fitness (" ~ (f.fitness | string | replace(".", ",")) ~ ") pour valoir quel que soit ton volume. Mêmes zones que le jour J du plan.") }}</div>
+    {% endif %}
   </div>
 </div>
 {% endmacro %}

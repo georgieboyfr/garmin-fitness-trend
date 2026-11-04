@@ -262,6 +262,13 @@ def test_sunday_review_then_monday_adjusted_then_frozen(config, live):
     assert tuesday.week_plan(date(2026, 11, 9))["weeks"][0]["kind"] == "allégée"
 
 
+def test_freshness_on_race_morning(config, live):
+    co = coach_live.Coach(config, live, SUNDAY)
+    f = co.freshness(SUNDAY)
+    assert f["fitness"] > 0 and f["pct"] == round(f["form"] / f["fitness"] * 100)
+    assert f["zone"] in ("transition", "fresh", "neutral", "optimal", "overload") and f["label"]
+
+
 # ---------- notification ----------
 
 def test_review_message_and_due_time():

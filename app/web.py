@@ -592,6 +592,9 @@ def coach_page(request: Request, vue: str = ""):
             # seules les courses de la semaine sont mises en avant : ce sont des jours importants
             if week:
                 week_races = [r for r in cal["upcoming"] if r["race_date"] <= week["sunday"]]
+                for r in week_races:
+                    if r["days_left"] == 0:          # course du jour : la fraîcheur du matin
+                        r["freshness"] = co.freshness(today)
             if summary:
                 answers = co.answers(reviewed)
                 bilan = {"summary": summary, "answers": answers, "current": reviewed == monday_,

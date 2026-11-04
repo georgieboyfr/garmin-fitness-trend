@@ -12,7 +12,19 @@ la page Coach et le planificateur (notification du dimanche soir).
 """
 from datetime import date, timedelta
 
-from . import coach, coach_plan, coach_review, coach_week, metrics_job, physio, queries, settings, tracked
+from . import (
+    coach,
+    coach_plan,
+    coach_review,
+    coach_week,
+    estimator,
+    metrics_job,
+    physio,
+    queries,
+    settings,
+    stats,
+    tracked,
+)
 
 
 class Coach:
@@ -80,6 +92,19 @@ class Coach:
             return None
         upto = min(self.today, coach_review.sunday(monday_))
         return coach_week.week_view(plan["weeks"][0], self.data["acts"], upto, self.data["confirmed"])
+
+    def freshness(self, day: date) -> dict | None:
+        """Fraîcheur au matin d'un jour (forme de la page Forme : fitness − fatigue de la veille),
+        en % de la fitness, avec la zone du jour J du plan (mêmes seuils que la page Forme)."""
+        daily = {d: v for d, v in estimator._daily_load(self.data["acts"]).items() if d < day}
+        if not daily:
+            return None
+        last = stats.banister(daily, min(daily), day)[-1]
+        fitness, form = last["fitness"], last["form"]
+        pct = form / fitness * 100 if fitness > 0 else 0.0
+        zone, label = coach_plan._race_form(pct)
+        return {"fitness": round(fitness, 1), "form": round(form, 1), "pct": round(pct),
+                "zone": zone, "label": label}
 
     # ---------- bilan ----------
 
