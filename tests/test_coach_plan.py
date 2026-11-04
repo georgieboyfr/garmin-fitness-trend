@@ -340,3 +340,20 @@ def test_conflicts_offer_solutions_to_choose_from():
     assert next(x for x in found if "B1" in x["text"])["solutions"][0]["priority"] == "C"
     assert next(x for x in found if "C1" in x["text"])["solutions"][0]["delete"]
     assert cp.conflicts([{**b, "race_date": "2027-01-10"}, a1]) == []
+
+
+def test_optional_days_get_a_bonus_outside_the_plan():
+    days = cp.chosen_days(avail((0, "oui", 50), (1, "oui", 50), (3, "oui", 70), (5, "optionnel", 120)), 4)
+    w = cp.build_week(week(phase="foncier"), days, 120, RATES, RACE, {}, [], 170, 0)
+    by = {s["weekday"]: s for s in w["sessions"]}
+    assert by[5]["optional"] and "(optionnelle)" in by[5]["label"] and not by[5]["key"]
+    assert by[3]["type"] == "sortie longue" and not by[3].get("optional")   # le plan tient sur les jours oui
+    assert w["minutes"] == sum(s["minutes"] for s in w["sessions"] if not s.get("optional"))
+    ext = cp.build_week(week(phase="spécifique"), days, 120, RATES, RACE, {}, [], 170, 0, 160)
+    bonus = next(s for s in ext["sessions"] if s.get("optional"))
+    assert bonus["minutes"] == 160 and bonus["extended"]                    # l'allongée, le weekend
+    assert next(s for s in ext["sessions"] if s["type"] == "sortie longue" and not s.get("optional"))[
+        "minutes"] <= 70
+    only = cp.chosen_days(avail((5, "optionnel", 120), (6, "optionnel", 90)), None)
+    w2 = cp.build_week(week(phase="foncier"), only, 120, RATES, RACE, {}, [], 170, 0)
+    assert not any(s.get("optional") for s in w2["sessions"])        # que des optionnels : le plan

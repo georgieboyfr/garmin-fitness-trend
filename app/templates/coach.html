@@ -35,13 +35,18 @@
   <div class="card-head">
     <h2>Ton plan {{ tip("Plan recalculé à chaque ouverture, à rebours depuis la course : affûtage (une semaine sous 1 h 30 de course, deux au-delà), puis phases spécifique, développement et foncier selon le temps qui reste, avec un cycle de 3 semaines de charge et 1 allégée (−30 %). La charge fait monter ta fitness (page Forme) d'au plus +5 par semaine, sans dépasser de plus de 10 % ton pic des 12 derniers mois, dans la limite de tes disponibilités. 80/20 : une séance de qualité par semaine (deux à partir de 5 séances), jamais à côté d'une autre séance dure ni de la sortie longue. Les durées viennent de ta charge par heure, mesurée sur tes sorties.") }}</h2>
   </div>
-  <div class="coach-banner">
-    <span class="pill priority-{{ main.priority }}">{{ main.priority }}</span>
-    <div>
-      <b>{{ main.name }}</b> · <span data-short-date="{{ main.race_date }}"></span> · {% if main.days_left == 0 %}aujourd'hui{% elif main.days_left < 14 %}dans {{ main.days_left }} jours{% else %}dans {{ main.weeks_left }} semaines{% endif %}
-      <div class="muted small">{{ main.route }} · objectif {% if main.target_s %}<b data-chrono="{{ main.target_s }}"></b>{% else %}<a href="?vue=echeances">à fixer</a>{% endif %}</div>
-    </div>
-  </div>
+  <h3 class="coach-glance-title">Tes courses</h3>
+  <ul class="coach-plan-races">
+    {% for r in cal.upcoming if r.race_date <= main.race_date %}
+    <li class="coach-banner{% if r is sameas main %} is-main{% endif %}">
+      <span class="pill priority-{{ r.priority }}">{{ r.priority }}</span>
+      <div>
+        <b>{{ r.name }}</b> · <span data-short-date="{{ r.race_date }}"></span> · {% if r.days_left == 0 %}aujourd'hui{% elif r.days_left < 14 %}dans {{ r.days_left }} jours{% else %}dans {{ r.weeks_left }} semaines{% endif %}
+        <div class="muted small">{{ r.route }} · {% if r.target_s %}objectif <b data-chrono="{{ r.target_s }}"></b>{% elif r.proposal %}estimé <b data-chrono="{{ r.proposal.realistic_s }}"></b>{% else %}objectif <a href="?vue=echeances">à fixer</a>{% endif %} · {% if r is sameas main %}le plan est construit pour elle{% elif r.priority == "B" %}mini-affûtage, puis récupération{% else %}courue comme une grosse séance{% endif %}</div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
   {% set c = plan.continue %}
   {% set week_load = plan.weeks | selectattr("kind", "equalto", "charge") | map(attribute="planned_load") | max if plan.weeks | selectattr("kind", "equalto", "charge") | list else none %}
   <h3 class="coach-glance-title">Le plan en un coup d'œil {{ tip("Comparé à « sans plan » : tu continues avec ta charge moyenne des 12 dernières semaines, sans affûtage. Même modèle que la page Forme (fitness sur 6 semaines, fatigue sur une semaine), mêmes chiffres de départ.") }}</h3>
@@ -67,10 +72,11 @@
   <p class="small muted">Charge par heure {% if plan.rates.personal %}mesurée sur tes sorties des 12 derniers mois{% else %}par défaut (pas assez de sorties avec FC){% endif %} : {{ plan.rates.easy | round | int }} en endurance, {{ plan.rates.quality | round | int }} en séance (HRSS par heure, 100 = une heure au seuil).</p>
   <div class="coach-weeks">
     {% for w in plan.weeks %}
-    <details class="coach-week kind-{{ w.kind }}" {% if loop.index <= 2 %}open{% endif %}>
+    {% set week_races = w.sessions | selectattr("type", "equalto", "course") | list %}
+    <details class="coach-week kind-{{ w.kind }}{% if week_races %} has-race{% endif %}" {% if loop.index <= 2 %}open{% endif %}>
       <summary>
         <span class="strong">S{{ w.index }}</span> · semaine du <span data-short-date="{{ w.monday }}"></span>
-        · {{ w.phase }}{% if w.kind not in ("charge", w.phase) %} ({{ w.kind }}){% endif %}
+        · {{ w.phase }}{% if w.kind not in ("charge", w.phase) %} ({{ w.kind }}){% endif %}{% for x in week_races %} <span class="pill priority-{{ x.priority or 'A' }}">{{ x.label }}</span>{% endfor %}
         <span class="muted small">· {{ w.minutes }} min{% if w.gain_m %} · D+ {{ w.gain_m | int }} m{% if w.gain_target %} (visé {{ w.gain_target | int }}){% endif %}{% endif %} · charge {{ w.planned_load }} · fitness {{ w.fitness_end | string | replace(".", ",") }}</span>{% if w.sessions | selectattr("extended") | list %} <span class="pill priority-C">sortie longue à caler</span>{% endif %}
       </summary>
       {% for e in w.events %}<p class="small muted coach-event">Récupération de {{ e.name }} jusqu'au <span data-short-date="{{ e.until }}"></span> : ni séance dure ni sortie longue, charge réduite.</p>{% endfor %}
@@ -79,7 +85,7 @@
         <li class="{{ 'muted' if x.date < today }}">
           <span class="coach-day">{{ x.day }} <span class="muted small" data-short-date="{{ x.date }}"></span></span>
           <div>
-            <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{% if x.key %} <span class="pill priority-B">séance clé</span>{% endif %}{% if x.date < today %} <span class="small">· passé</span>{% endif %}
+            <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{% if x.key %} <span class="pill priority-B">séance clé</span>{% endif %}{% if x.optional %} <span class="pill priority-C">optionnelle</span>{% endif %}{% if x.date < today %} <span class="small">· passé</span>{% endif %}
             {% if x.steps and x.steps | length == 1 %}
             <div class="small">{% set t0 = x.steps[0].text | replace(x.minutes ~ " min en ", "") %}{{ t0[:1] | upper }}{{ t0[1:] }}{% if x.steps[0].target %} <span class="muted">— {{ x.steps[0].target }}</span>{% endif %}</div>
             {% elif x.steps %}

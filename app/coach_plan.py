@@ -117,7 +117,7 @@ def simulate(state: dict, weeks: list[dict], rates: dict, today: date, race_date
     planned = {}
     for w in weeks:
         for s in w["sessions"]:
-            if not s.get("main") and s.get("minutes"):
+            if not s.get("main") and not s.get("optional") and s.get("minutes"):
                 planned[s["date"]] = planned.get(s["date"], 0.0) + session_load(s, rates)
     start = date.fromisoformat(weeks[0]["monday"])
     out = _run(state, start, race_date, today, lambda d: planned.get(d.isoformat(), 0.0))
@@ -372,6 +372,13 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
     if kind == "course":
         sessions.append(_race_session(race))
         usable = [d for d in usable if d["weekday"] < race_wd - 1]      # veille au repos
+    # jours optionnels : en bonus, hors du plan (choix de Greg du 4 novembre 2026) ; le plan tient sur
+    # les jours « oui », sauf s'il n'y en a aucun
+    optional = [d for d in usable if d.get("status") == "optionnel"]
+    if len(optional) < len(usable):
+        usable = [d for d in usable if d not in optional]
+    else:
+        optional = []
     if not usable:
         return _finish(week, sessions, load, rates)
     # sortie longue : le jour au temps maximal le plus long (à égalité, le plus tard dans la semaine),
@@ -390,6 +397,9 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
         n_quality = min(n_quality, 1)
     n_quality = max(0, n_quality - sum(1 for _, r in side if r["priority"] == "C"))
     others = [d for d in usable if d is not long_day]
+    # bonus : le jour optionnel le plus long, ni en récupération ni à côté d'une course, hors course
+    bonus_pool = [d for d in optional if d["weekday"] not in no_hard] if kind != "course" else []
+    bonus_day = max(bonus_pool, key=lambda d: (d["max_min"], d["weekday"])) if bonus_pool else None
     total_min = budget = load * 60 / rates["easy"]                       # en minutes d'endurance
     q_sessions, quality_days = [], [{"weekday": wd} for wd in side_wd]
     q_pool = [d for d in others if d["weekday"] not in no_hard]
@@ -423,7 +433,7 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
         # la sortie longue d'abord, la plus longue de la semaine ; ce sont les footings qui sautent
         wanted = LONG_SHARE * budget
         cap = min(long_day["max_min"], max(wanted, total_min / 2), total_min)
-        if long_override and long_override > long_day["max_min"]:
+        if long_override and long_override > long_day["max_min"] and not bonus_day:
             cap = min(long_override, total_min)          # allongée : prise sur les footings
         long_min = max(MIN_EASY_MIN, wk.floor5(cap))
         if steady:          # la fin soutenue charge plus : la sortie raccourcit d'autant, en endurance
@@ -473,7 +483,31 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
         sessions.append({"weekday": long_day["weekday"], **s, "key": not q_sessions and not side,
                          "habit": habit["name"] if habit else None})
     sessions.extend(q_sessions)
+    if bonus_day:
+        sessions.append(_bonus(bonus_day, long_min, long_override, variant, phase, kind, trail,
+                               week_in_phase, paces, habit_by_day))
     return _finish(week, sessions, load, rates)
+
+
+def _bonus(day: dict, long_min: int, long_override: int | None, variant: str | None, phase: str, kind: str,
+           trail: bool, week_in_phase: int, paces: dict, habit_by_day: dict) -> dict:
+    """Sortie du jour optionnel, en bonus : une sortie longue en endurance (la sortie allongée de la
+    semaine, s'il y en a une), hors de la charge prévue ; le plan ne compte pas dessus."""
+    minutes = long_override or wk.floor5(min(day["max_min"], max(long_min, 60)))
+    variant = variant or wk.long_variant(phase, kind, trail, week_in_phase)
+    s = wk.long_run(variant, max(MIN_EASY_MIN, minutes), paces, km=not trail)
+    s["label"] += " (optionnelle)"
+    s["description"] = "En bonus, si tu es disponible : le plan ne compte pas dessus. " + s["description"]
+    if long_override and minutes > day["max_min"]:
+        s["extended"] = True
+        s["description"] += (f" Plus long que ton temps du {WEEKDAYS[day['weekday']]} "
+                             f"({day['max_min']} min) : à caler, c'est la sortie qui prépare la durée de "
+                             "la course.")
+    elif long_override:
+        s["description"] += " C'est la sortie qui prépare la durée de la course : à privilégier."
+    habit = habit_by_day.get(day["weekday"])
+    return {"weekday": day["weekday"], **s, "key": False, "optional": True,
+            "habit": habit["name"] if habit else None}
 
 
 def session_load(s: dict, rates: dict) -> float:
@@ -491,9 +525,10 @@ def _finish(week: dict, sessions: list[dict], load: float, rates: dict) -> dict:
     for s in sessions:
         s["date"] = (week["monday"] + timedelta(days=s["weekday"])).isoformat()
         s["day"] = WEEKDAYS[s["weekday"]]
-    minutes = sum(s["minutes"] or 0 for s in sessions if not s.get("main"))
-    planned = sum(session_load(s, rates) for s in sessions if not s.get("main"))
-    gain = sum(s.get("gain_m") or 0 for s in sessions if not s.get("main"))
+    counted = [s for s in sessions if not s.get("main") and not s.get("optional")]
+    minutes = sum(s["minutes"] or 0 for s in counted)
+    planned = sum(session_load(s, rates) for s in counted)
+    gain = sum(s.get("gain_m") or 0 for s in counted)
     return {**week, "monday": week["monday"].isoformat(), "target_load": round(load),
             "planned_load": round(planned), "minutes": minutes, "gain_m": round(gain, -1),
             "sessions": sessions}
@@ -514,7 +549,8 @@ def long_extensions(weeks: list[dict], days: list[dict], race: dict, enabled: bo
     jusqu'à 90 % de la durée de la course (3 h au plus). {index de semaine : minutes}."""
     if not enabled or not days or not race.get("duration_s"):
         return {}
-    day_max = max(d["max_min"] for d in days)
+    core = [d for d in days if d.get("status") != "optionnel"] or days
+    day_max = max(d["max_min"] for d in core)
     goal = min(LONG_RACE_SHARE * race["duration_s"] / 60, LONG_MAX_MIN)
     if goal <= day_max:
         return {}
@@ -548,7 +584,9 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
     state = fitness_state(acts, today)
     weeks = skeleton(today, race_date, race.get("duration_s"))
     cap_fitness = state["peak_12m"] * PEAK_MARGIN if state["peak_12m"] else None
-    capacity_min = sum(d["max_min"] for d in days)
+    # capacité : les jours « oui » ; les jours optionnels sont des bonus hors du plan
+    core_days = [d for d in days if d.get("status") != "optionnel"] or days
+    capacity_min = sum(d["max_min"] for d in core_days)
     # plafond : tout le temps disponible, réparti en 80/20 (endurance, effort), comme le plan
     blended = EASY_TIME_SHARE * rates["easy"] + (1 - EASY_TIME_SHARE) * rates["quality"]
     max_load = capacity_min / 60 * blended
