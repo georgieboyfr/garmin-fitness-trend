@@ -43,7 +43,6 @@ MIN_EASY_MIN = 30               # un footing dure au moins 30 min
 TRAIL_GAIN_PER_KM = 15.0        # sortie de trail : plus de 15 m de D+ par km
 DEFAULT_EASY_VAM = 300          # m de D+ par heure en endurance, à défaut de sorties trail faciles
 EASY_TIME_SHARE = 0.8           # 80/20 : 80 % du temps en endurance
-CAPPED_MARGIN = 10              # charge prévue sous la visée de plus de 10 : les jours limitent
 QUALITY_MAX_SHARE = 0.6         # deux séances de qualité seulement si elles laissent 40 % de la charge
 LONG_SHARE = 0.35               # sortie longue : environ un tiers du temps de la semaine
 # mélange appris sur les périodes où la fitness du coureur a monté (demande de Greg du 4 novembre 2026)
@@ -53,6 +52,8 @@ RISE_MIN_PERIODS = 2            # au moins 2 périodes, sinon le 80/20 par défa
 DEFAULT_RAMP_PCT = 10           # montée du volume, % par semaine (réglage posé au coureur : 10 ou 15)
 LONG_RACE_SHARE = 0.9           # sortie longue allongée : jusqu'à 90 % de la durée de la course
 LONG_MAX_MIN = 180              # jamais plus de 3 h
+LONG_STEP_SHARE, LONG_STEP_MIN = 0.10, 10   # sortie la plus longue : +10 % ou +10 min par semaine au plus
+LONG_START_WEEKS = 4            # départ : la plus longue sortie ordinaire des 4 dernières semaines
 # plusieurs courses (étape 6) : repères généraux, à valider par Greg
 RECOVERY_KM_PER_DAY = 3.0       # récupération : un jour sans séance dure par 3 km d'effort (Daniels)
 RECOVERY_MIN_DAYS, RECOVERY_MAX_DAYS = 2, 21
@@ -145,7 +146,7 @@ def load_rates(acts, today: date) -> dict:
     """Charge par heure (HRSS/h) des sorties faciles et des séances du coureur sur 12 mois, et son
     allure habituelle en endurance (sorties faciles sur route plate), pour donner une distance."""
     since = today - timedelta(days=RATE_DAYS)
-    easy, quality, steady, paces, climbs = [], [], [], [], []
+    easy, quality, steady, paces, climbs, q_min = [], [], [], [], [], []
     for a in acts:
         moving = a.get("moving_duration_s") or 0
         zones = [a.get(f"zone{i}_s") or 0 for i in range(1, 6)]
@@ -162,11 +163,13 @@ def load_rates(acts, today: date) -> dict:
                 paces.append(moving / a["distance_km"])
         elif hard >= QUALITY_MIN_HARD_SHARE:
             quality.append(rate)
+            q_min.append(moving / 60)
         else:
             steady.append(rate)
     e = round(median(easy), 1) if len(easy) >= 3 else DEFAULT_RATES[0]
     q = round(median(quality), 1) if len(quality) >= 3 else DEFAULT_RATES[1]
     return {"steady": round(median(steady), 1) if len(steady) >= 3 else round((e + q) / 2, 1),
+            "quality_min": round(median(q_min)) if len(q_min) >= 3 else None,
             "easy": e, "quality": q, "personal": len(easy) >= 3, "easy_n": len(easy),
             "quality_n": len(quality),
             "easy_pace": round(median(paces), 1) if len(paces) >= 3 else None,
@@ -478,7 +481,7 @@ def _pick_day(candidates, long_day, picked, kind, race_wd, habit_by_day, hills: 
 def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dict, paces: dict,
                habits: list[dict], lthr: float | None, week_in_phase: int,
                long_override: int | None = None, cal: dict | None = None, n_steady: int = 0,
-               history_mix: bool = False) -> dict:
+               long_cap: float | None = None) -> dict:
     """Séances d'une semaine pour une charge visée : sortie longue, qualité, footings, prises dans
     le catalogue de coach_workouts et variées d'une semaine à l'autre. Durées rondes (5 min) ; un
     footing dure au moins MIN_EASY_MIN, sinon un jour de footing saute. long_override : sortie
@@ -544,8 +547,8 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
         if d is None:
             break
         q = wk.quality(phase, kind, rank, trail, week_in_phase, paces, d["max_min"])
-        if history_mix and kind == "charge" and q["hard"]:
-            q = _fill(q, d["max_min"], paces)
+        if kind == "charge" and q["hard"] and rates.get("quality_min"):
+            q = _fill(q, min(d["max_min"], rates["quality_min"]), paces)
         cost = q["minutes"] * (rates["quality"] if q["hard"] else rates["easy"]) / rates["easy"]
         if rank > 0 and budget - total_min + cost > QUALITY_MAX_SHARE * budget:
             break                                       # une seule séance : la seconde mangerait la semaine
@@ -567,11 +570,17 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
         # une semaine de charge sur deux, la sortie longue finit en allure soutenue (choix de Greg)
         steady = kind == "charge" and week["index"] % 2 == 0 and variant not in ("progressive", "spécifique")
         # la sortie longue d'abord, la plus longue de la semaine ; ce sont les footings qui sautent
-        wanted = LONG_SHARE * budget
-        cap = min(long_day["max_min"], max(wanted, total_min / 2), total_min)
+        # en semaine de charge, la sortie longue vise le palier suivant de sa progression (le jour et
+        # la charge de la semaine le permettant) ; sinon environ un tiers de la semaine
+        wanted = long_cap if long_cap and kind == "charge" else LONG_SHARE * budget
+        cap = min(long_day["max_min"], max(wanted, total_min / 2) if kind != "charge" or not long_cap
+                  else wanted, total_min)
         if long_override and long_override > long_day["max_min"] and not bonus_day:
             cap = min(long_override, total_min)          # allongée : prise sur les footings
+        if long_cap:
+            cap = min(cap, long_cap)                     # progression de la sortie longue
         long_min = max(MIN_EASY_MIN, wk.floor5(cap))
+        level = long_min                                # palier de progression atteint cette semaine
         if steady:          # la fin soutenue charge plus : la sortie raccourcit d'autant, en endurance
             extra = wk.steady_finish_min(long_min) * (rates["quality"] / rates["easy"] - 1)
             long_min = max(MIN_EASY_MIN, wk.floor5(long_min - extra))
@@ -615,6 +624,7 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
                          "habit": habit["name"] if habit else None})
     if long_day:
         s = wk.long_run(variant, long_min, paces, km=not trail, steady_finish=steady)
+        s["level_min"] = level
         if long_min > long_day["max_min"]:
             s["extended"] = True
             s["label"] += " allongée"
@@ -626,18 +636,17 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
                          "habit": habit["name"] if habit else None})
     sessions.extend(q_sessions)
     if bonus_day:
-        sessions.append(_bonus(bonus_day, long_min, long_override, variant, phase, kind, trail,
-                               week_in_phase, paces, habit_by_day))
+        over = min(long_override, long_cap) if long_override and long_cap else long_override
+        sessions.append(_bonus(bonus_day, long_min, wk.floor5(over) if over else None, variant, phase, kind,
+                               trail, week_in_phase, paces, habit_by_day, long_cap))
     return _finish(week, sessions, load, rates)
 
 
-QUALITY_FILL_MAX = 20           # séance prolongée d'au plus 20 min de footing
-
-
 def _fill(q: dict, day_max: float, paces: dict) -> dict:
-    """Séance prolongée par un footing jusqu'au temps du jour (20 min au plus), comme les séances
-    des hausses passées du coureur, comptées sortie entière."""
-    add = wk.floor5(min(day_max - q["minutes"], QUALITY_FILL_MAX))
+    """Une séance dure comme les séances du coureur (durée médiane de ses sorties de qualité, dans
+    le temps du jour) : la partie structurée, puis un footing (la charge par heure des séances est
+    mesurée sur la sortie entière)."""
+    add = wk.floor5(day_max - q["minutes"])
     if add < 10:
         return q
     steps = q["steps"] + [wk.step("cooldown", f"puis {add} min de footing", add,
@@ -646,10 +655,11 @@ def _fill(q: dict, day_max: float, paces: dict) -> dict:
 
 
 def _bonus(day: dict, long_min: int, long_override: int | None, variant: str | None, phase: str, kind: str,
-           trail: bool, week_in_phase: int, paces: dict, habit_by_day: dict) -> dict:
+           trail: bool, week_in_phase: int, paces: dict, habit_by_day: dict,
+           long_cap: float | None = None) -> dict:
     """Sortie du jour optionnel, en bonus : une sortie longue en endurance (la sortie allongée de la
     semaine, s'il y en a une), hors de la charge prévue ; le plan ne compte pas dessus."""
-    minutes = long_override or wk.floor5(min(day["max_min"], max(long_min, 60)))
+    minutes = long_override or wk.floor5(min(day["max_min"], max(long_min, 60), long_cap or math.inf))
     variant = variant or wk.long_variant(phase, kind, trail, week_in_phase)
     s = wk.long_run(variant, max(MIN_EASY_MIN, minutes), paces, km=not trail)
     s["label"] += " (optionnelle)"
@@ -775,15 +785,14 @@ def long_extensions(weeks: list[dict], days: list[dict], race: dict, enabled: bo
     goal = min(LONG_RACE_SHARE * race["duration_s"] / 60, LONG_MAX_MIN)
     if goal <= day_max:
         return {}
-    spec = [w["index"] for w in weeks if w["phase"] == "spécifique" and w["kind"] == "charge"]
+    # semaines de charge du développement et du spécifique : celles où un jour plus long est libre,
+    # sinon une sur deux en comptant depuis l'affûtage ; la durée visée est celle de la course, la
+    # progression de la sortie longue (build_plan) en fait des paliers
+    spec = [w["index"] for w in weeks
+            if w["phase"] in ("développement", "spécifique") and w["kind"] == "charge"]
     roomy = [i for i in spec if _core_max(week_days(days, i)) > day_max]
     picked = roomy or sorted(spec[::-1][::2])
-    out = {}
-    for j, i in enumerate(picked, 1):
-        minutes = wk.floor5(day_max + (goal - day_max) * j / len(picked))
-        if minutes > day_max:
-            out[i] = minutes
-    return out
+    return {i: wk.floor5(goal) for i in picked}
 
 
 READY_WEEKS = 8                 # « aujourd'hui » : les 8 dernières semaines pleines
@@ -841,6 +850,12 @@ def readiness(acts, today: date, weeks: list[dict], race: dict, n_days: int) -> 
         r["ok"] = r["need"] is not None and r["plan"] >= 0.95 * r["need"]
         r["better"] = r["plan"] > r["now"]
     return out
+
+
+def _long_step(ref: float) -> float:
+    """Plus longue sortie permise une semaine : celle des 4 semaines précédentes plus 10 % ou
+    10 min, le plus grand (repère courant de progression de la sortie longue)."""
+    return ref + max(LONG_STEP_MIN, LONG_STEP_SHARE * ref)
 
 
 def _spread(index: int, per_week: float) -> int:
@@ -905,6 +920,10 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
     taper_loads = TAPER_LOADS[sum(1 for w in weeks if w["kind"] in ("affûtage", "course"))]
     taper_i = 0
     extended = long_extensions(weeks, days, race, extend)
+    # progression de la sortie longue (repère courant : +10 % ou +10 min par semaine, le plus grand)
+    recent_long = [(a.get("moving_duration_s") or 0) / 60 for a in ordinary(acts, today, race_ids, True)
+                   if a["start"].date() >= monday(today) - timedelta(weeks=LONG_START_WEEKS)]
+    long_hist = [max(recent_long, default=0) or DEFAULT_DAY_MIN]   # plus longues sorties, semaine par semaine
     cal = race_calendar(others or [], weeks[0]["monday"], race_date)
     for w in weeks:
         if w["kind"] == "charge":
@@ -944,7 +963,10 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
         built = build_week(w, days_of(w), load, rates, race, paces, habits, lthr,
                            week_in_phase,
                            extended.get(w["index"]), cal,
-                           _spread(w["index"], steady_per_week), bool(history))
+                           _spread(w["index"], steady_per_week),
+                           _long_step(max(long_hist[-LONG_START_WEEKS:])))
+        long_hist.append(max([0] + [x.get("level_min", x["minutes"]) for x in built["sessions"]
+                                    if x["type"] == "sortie longue" and not x.get("optional")]))
         built["periods"] = events
         built["events"] = [{"name": r["name"], "until": cal["recovery_end"][r["race_date"]]}
                            for r in others or [] if r["race_date"] in cal["recovery_end"]
@@ -952,8 +974,9 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
                            and cal["recovery_end"][r["race_date"]] >= w["monday"].isoformat()]
         if w["phase"] == "spécifique" and is_trail(race) and race.get("gain_m"):
             built["gain_target"] = round(race["gain_m"], -1)        # D+ de la course, visé chaque semaine
-        built["capped"] = w["kind"] == "charge" and not events and (load >= week_cap(w) - 0.5
-                                                      or built["planned_load"] < load - CAPPED_MARGIN)
+        # disponibilités limitantes : la charge visée bute sur le temps de la semaine (la progression
+        # de la sortie longue, elle, est voulue)
+        built["capped"] = w["kind"] == "charge" and not events and load >= week_cap(w) - 0.5
         fitness = fitness_after(fitness, built["planned_load"])
         out.append(built)
     baseline = smoothed_daily(acts, today, race_ids)

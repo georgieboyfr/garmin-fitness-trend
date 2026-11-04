@@ -203,7 +203,8 @@ def reminder(trail: bool, p: dict, compact: bool = False) -> dict:
     if trail:
         steps = [_warmup(warm(compact, 20), lthr),
                  step("work", "3 × 3 min de montée à l'effort de course", 9, target(RACE_TRAIL, lthr)),
-                 step("recovery", "redescente souple au trot", 7.5, target(RECOVERY, lthr)),
+                 step("recovery", "récupération : redescente souple au trot, environ 2 min 30 après "
+                      "chaque montée", 7.5, target(RECOVERY, lthr)),
                  _cooldown(cool(compact), lthr)]
         return _session("rappel", "Rappel en côte", steps, "Retrouver les sensations du terrain sans se "
                                                            "fatiguer.")
@@ -305,7 +306,8 @@ def uphill_tempo(level: int, p: dict, compact: bool = False) -> dict:
     lthr = p.get("lthr")
     steps = [_warmup(warm(compact), lthr),
              step("work", f"{minutes} min de montée continue", minutes, target(THRESHOLD, lthr)),
-             step("recovery", "redescente souple au trot, sans forcer", minutes * 0.6,
+             step("recovery", f"redescente souple au trot, sans forcer, environ {_minutes(minutes * 0.6)}",
+                  minutes * 0.6,
                   target(RECOVERY, lthr)),
              _cooldown(cool(compact), lthr)]
     return _session("montée au seuil", "Montée continue au seuil", steps,

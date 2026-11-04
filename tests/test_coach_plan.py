@@ -59,7 +59,8 @@ def test_load_rates_are_learnt_from_easy_runs_and_sessions():
     acts = [run(TODAY - timedelta(days=i), 40, 60, 0.0) for i in range(1, 6)]
     acts += [run(TODAY - timedelta(days=i), 70, 60, 0.5) for i in range(10, 14)]
     r = cp.load_rates(acts, TODAY)
-    assert r == {"steady": 55.0, "easy": 40.0, "quality": 70.0, "personal": True, "easy_n": 5, "quality_n": 4,
+    assert r == {"steady": 55.0, "quality_min": 60, "easy": 40.0, "quality": 70.0, "personal": True,
+                 "easy_n": 5, "quality_n": 4,
                  "easy_pace": None, "easy_vam": cp.DEFAULT_EASY_VAM, "easy_vam_personal": False}
     assert cp.load_rates([], TODAY)["easy"] == cp.DEFAULT_RATES[0]
 
@@ -224,18 +225,20 @@ def test_volume_ramps_by_the_runner_choice_from_the_current_load():
     assert fast["weeks"][2]["target_load"] > slow["weeks"][2]["target_load"]
 
 
-def test_long_runs_extend_every_other_specific_week_up_to_race_duration():
+def test_long_runs_extend_every_other_charge_week_toward_race_duration():
     weeks = cp.skeleton(TODAY, date(2027, 5, 22), 3 * 3600)
     days = cp.chosen_days(avail((1, "oui", 60), (3, "oui", 60), (5, "oui", 120)), 3)
     ext = cp.long_extensions(weeks, days, {"duration_s": 3 * 3600}, True)
+    late = [w["index"] for w in weeks
+            if w["phase"] in ("développement", "spécifique") and w["kind"] == "charge"]
     spec = [w["index"] for w in weeks if w["phase"] == "spécifique" and w["kind"] == "charge"]
-    assert ext and set(ext) <= set(spec) and max(ext) == spec[-1]         # la dernière avant l'affûtage
-    assert ext[spec[-1]] == 160                                            # 90 % de 3 h, arrondi à 5
-    assert sorted(ext.values()) == [ext[i] for i in sorted(ext)]           # progression régulière
+    assert ext and set(ext) <= set(late) and max(ext) == late[-1]         # la dernière avant l'affûtage
+    assert set(ext.values()) == {160}                                      # 90 % de 3 h ; la progression dose
     assert all(b - a >= 2 for a, b in zip(sorted(ext), sorted(ext)[1:], strict=False))   # une sur deux
     assert cp.long_extensions(weeks, days, {"duration_s": 3 * 3600}, False) == {}
     assert cp.long_extensions(weeks, days, {"duration_s": 7200}, True) == {}      # 108 min < 120
     assert cp.long_extensions(weeks, days, {"duration_s": 6 * 3600}, True)[spec[-1]] == 180   # 3 h au plus
+    assert cp._long_step(60) == 70 and cp._long_step(150) == 165                   # +10 min ou +10 %
     w = cp.build_week({**week(phase="spécifique"), "index": spec[-1]}, days, 260, RATES, RACE, {}, [], 170, 0,
                       160)
     long = next(s for s in w["sessions"] if s["type"] == "sortie longue")
@@ -374,8 +377,9 @@ def test_an_optional_day_once_every_three_weeks_enters_the_plan_those_weeks():
            if any(s["weekday"] == 5 and s["type"] != "course" for s in w["sessions"])]
     assert sat and all(i % 3 == 0 for i in sat)
     assert not any(s.get("optional") for w in plan["weeks"] for s in w["sessions"])     # compté, pas en bonus
-    longs = [s for w in plan["weeks"] for s in w["sessions"] if s.get("extended")]
-    assert longs and all(s["weekday"] == 5 for s in longs)          # l'allongée tombe les weekends libres
+    longest = max((s for w in plan["weeks"] for s in w["sessions"] if s["type"] == "sortie longue"),
+                  key=lambda s: s["minutes"])
+    assert longest["weekday"] == 5                                   # la plus longue tombe un weekend libre
     assert plan["capacity_min"] == 190 + 40
 
 
@@ -399,14 +403,13 @@ def test_rising_periods_learn_what_raised_the_runner_fitness():
 def test_steady_runs_spread_over_weeks_and_quality_sessions_fill_the_day():
     assert [cp._spread(i, 0.5) for i in range(1, 7)] == [0, 1, 0, 1, 0, 1]
     days = cp.chosen_days(avail((0, "oui", 90), (1, "oui", 90), (3, "oui", 100)), 3)
-    rates = {**RATES, "steady": 50.0}
-    w = cp.build_week(week(phase="développement"), days, 150, rates, RACE, {}, [], 170, 0, None, None,
-                      1, True)
+    rates = {**RATES, "steady": 50.0, "quality_min": 70}
+    w = cp.build_week(week(phase="développement"), days, 150, rates, RACE, {}, [], 170, 0, None, None, 1)
     steady = [s for s in w["sessions"] if s["type"] == "footing soutenu"]
     assert len(steady) == 1 and any(x["kind"] == "work" for x in steady[0]["steps"])
     assert cp.session_load(steady[0], rates) > steady[0]["minutes"] * rates["easy"] / 60
     q = next(s for s in w["sessions"] if s["hard"])
-    assert q["steps"][-1]["text"].startswith("puis") and q["minutes"] <= 90
+    assert q["steps"][-1]["text"].startswith("puis") and q["minutes"] <= 70     # durée de ses séances
 
 
 def test_periods_replace_the_usual_days_with_the_planned_sessions():
@@ -478,3 +481,17 @@ def test_load_spikes_catch_a_block_of_big_days_not_a_single_long_run():
     raw = sum(a["hrss"] for a in acts if cp.monday(a["start"].date()) == block)
     assert week == pytest.approx(raw * spikes[block])                  # ramenée à la borne
     assert all(cp.monday(a["start"].date()) != block for a in cp.ordinary(acts, date(2026, 9, 1)))
+
+
+def test_long_run_progresses_by_the_usual_step():
+    acts = [run(TODAY - timedelta(days=i), 60, 60, 0.0) for i in range(1, 200, 2)]    # sorties d'une heure
+    days = avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 60), (5, "oui", 240))
+    plan = cp.build_plan({**RACE, "race_date": "2027-05-22", "duration_s": 4 * 3600}, TODAY, acts, days,
+                         None, [], {}, 170)
+    hist = [60]
+    for w in plan["weeks"]:
+        longs = [s.get("level_min", s["minutes"]) for s in w["sessions"] if s["type"] == "sortie longue"]
+        if longs:
+            assert max(longs) <= cp._long_step(max(hist[-4:])) + 0.01
+        hist.append(max(longs, default=0))
+    assert max(hist) > 120                                           # elle monte au fil du plan
