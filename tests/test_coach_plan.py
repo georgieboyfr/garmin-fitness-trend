@@ -238,7 +238,7 @@ def test_long_runs_extend_every_other_charge_week_toward_race_duration():
     assert cp.long_extensions(weeks, days, {"duration_s": 3 * 3600}, False) == {}
     assert cp.long_extensions(weeks, days, {"duration_s": 7200}, True) == {}      # 108 min < 120
     assert cp.long_extensions(weeks, days, {"duration_s": 6 * 3600}, True)[spec[-1]] == 180   # 3 h au plus
-    assert cp._long_step(60) == 70 and cp._long_step(150) == 165                   # +10 min ou +10 %
+    assert cp._long_step(60) == pytest.approx(66) and cp._long_step(150) == pytest.approx(165)   # +10 %
     w = cp.build_week({**week(phase="spécifique"), "index": spec[-1]}, days, 260, RATES, RACE, {}, [], 170, 0,
                       160)
     long = next(s for s in w["sessions"] if s["type"] == "sortie longue")
@@ -495,3 +495,15 @@ def test_long_run_progresses_by_the_usual_step():
             assert max(longs) <= cp._long_step(max(hist[-4:])) + 0.01
         hist.append(max(longs, default=0))
     assert max(hist) > 120                                           # elle monte au fil du plan
+
+
+def test_taper_keeps_frequency_and_strength_is_advised():
+    days = cp.chosen_days(avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 60), (5, "oui", 120)), 4)
+    w = cp.build_week(week(kind="affûtage", phase="affûtage"), days, 120, RATES, RACE, {}, [], 170, 0)
+    assert len(w["sessions"]) == 4                     # footings courts plutôt qu'un jour de moins
+    acts = [run(TODAY - timedelta(days=i), 60, 90, 0.0) for i in range(1, 200, 2)]
+    a = avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 60), (5, "oui", 150))
+    plan = cp.build_plan({**RACE, "race_date": "2027-03-28"}, TODAY, acts, a, None, [], {}, 170)
+    by = {w["phase"]: w["strength"] for w in plan["weeks"] if w["kind"] == "charge"}
+    assert by["foncier"] == 2 and by["spécifique"] == 1
+    assert plan["weeks"][-1]["strength"] == 0                        # rien en semaine de course

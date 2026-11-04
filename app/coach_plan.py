@@ -52,7 +52,13 @@ RISE_MIN_PERIODS = 2            # au moins 2 périodes, sinon le 80/20 par défa
 DEFAULT_RAMP_PCT = 10           # montée du volume, % par semaine (réglage posé au coureur : 10 ou 15)
 LONG_RACE_SHARE = 0.9           # sortie longue allongée : jusqu'à 90 % de la durée de la course
 LONG_MAX_MIN = 180              # jamais plus de 3 h
-LONG_STEP_SHARE, LONG_STEP_MIN = 0.10, 10   # sortie la plus longue : +10 % ou +10 min par semaine au plus
+LONG_STEP_SHARE = 0.10          # sortie : au plus +10 % sur la plus longue des 30 derniers jours (Frandsen
+                                # et al., BJSM 2025 : au-delà, plus de blessures de surmenage)
+TAPER_MIN_EASY = 20             # affûtage : footings raccourcis plutôt que supprimés, la fréquence est
+                                # gardée (Bosquet 2007 ; méta-analyse de 2023 sur l'endurance)
+STRENGTH = {"foncier": 2, "développement": 2, "spécifique": 1, "allégée": 1}   # renforcement par semaine
+                                # (2 à 3 séances sur 8 à 12 semaines améliorent l'économie de course,
+                                # Balsalobre-Fernández 2016 ; entretien ensuite)
 LONG_START_WEEKS = 4            # départ : la plus longue sortie ordinaire des 4 dernières semaines
 # plusieurs courses (étape 6) : repères généraux, à valider par Greg
 RECOVERY_KM_PER_DAY = 3.0       # récupération : un jour sans séance dure par 3 km d'effort (Daniels)
@@ -586,15 +592,17 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
             long_min = max(MIN_EASY_MIN, wk.floor5(long_min - extra))
             total_min -= extra
         total_min -= long_min
-    if total_min < MIN_EASY_MIN:
+    # en affûtage, la fréquence est gardée : footings plus courts plutôt qu'un jour de moins
+    min_easy = TAPER_MIN_EASY if kind in ("affûtage", "course") else MIN_EASY_MIN
+    if total_min < min_easy:
         easy_days = []                                  # plus assez pour un footing : repos
     # pas de footing trop court : on retire un jour (le moins long, jamais celui d'une habitude)
-    while len(easy_days) > 1 and total_min / len(easy_days) < MIN_EASY_MIN:
+    while len(easy_days) > 1 and total_min / len(easy_days) < min_easy:
         easy_days.remove(min(easy_days, key=lambda d: (d["weekday"] in habit_by_day, d["max_min"])))
     per_easy = total_min / len(easy_days) if easy_days else 0
     for i, d in enumerate(easy_days):
         habit = habit_by_day.get(d["weekday"])
-        minutes = max(MIN_EASY_MIN, wk.floor5(min(d["max_min"], per_easy + 2.5)))
+        minutes = max(min_easy, wk.floor5(min(d["max_min"], per_easy + 2.5)))
         # variété : en trail, footings vallonnés et sur le plat en alternance ; en foncier et en
         # développement, un footing sur deux semaines finit par des lignes droites
         # en phase spécifique d'un trail, tous les footings sont vallonnés : le D+ de la course
@@ -853,9 +861,9 @@ def readiness(acts, today: date, weeks: list[dict], race: dict, n_days: int) -> 
 
 
 def _long_step(ref: float) -> float:
-    """Plus longue sortie permise une semaine : celle des 4 semaines précédentes plus 10 % ou
-    10 min, le plus grand (repère courant de progression de la sortie longue)."""
-    return ref + max(LONG_STEP_MIN, LONG_STEP_SHARE * ref)
+    """Plus longue sortie permise une semaine : la plus longue des 4 semaines précédentes (environ
+    30 jours) plus 10 % (Frandsen et al., BJSM 2025)."""
+    return ref * (1 + LONG_STEP_SHARE)
 
 
 def _spread(index: int, per_week: float) -> int:
@@ -968,6 +976,8 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
         long_hist.append(max([0] + [x.get("level_min", x["minutes"]) for x in built["sessions"]
                                     if x["type"] == "sortie longue" and not x.get("optional")]))
         built["periods"] = events
+        built["strength"] = 0 if any(e["kind"] in PERIOD_REST for e in events) else (
+            STRENGTH.get(w["kind"]) if w["kind"] == "allégée" else STRENGTH.get(w["phase"], 0))
         built["events"] = [{"name": r["name"], "until": cal["recovery_end"][r["race_date"]]}
                            for r in others or [] if r["race_date"] in cal["recovery_end"]
                            and r["race_date"] < (w["monday"] + timedelta(days=6)).isoformat()
@@ -1018,4 +1028,4 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
             "capacity_limited": bool(capped), "capacity_fitness": round(max_load / 7, 1),
             "cap_fitness": round(cap_fitness, 1) if cap_fitness else None, "rates": rates,
             "days": days, "capacity_min": capacity_min, "weeks": out,
-            "race_fitness": round(sim["race_fitness"], 1)}
+            "race_fitness": round(sim["race_fitness"], 1), "trail": is_trail(race)}
