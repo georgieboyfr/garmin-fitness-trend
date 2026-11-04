@@ -458,3 +458,23 @@ def test_day_after_a_race_is_a_rest_day():
     short_c = cp.race_calendar([side_race(date(2026, 12, 13), "C", minutes=40)], date(2026, 11, 2),
                                date(2027, 5, 22))
     assert date(2026, 12, 14) not in short_c["rest"]
+
+
+def test_load_spikes_catch_a_block_of_big_days_not_a_single_long_run():
+    acts = []
+    for w in range(30):                                   # 30 semaines de 120 à 210 de charge
+        for k in (0, 2, 4):
+            acts.append({**run(date(2026, 1, 5) + timedelta(weeks=w, days=k), 40 + 10 * (w % 4), 60, 0.0),
+                         "id": len(acts)})
+    long_one = date(2026, 1, 5) + timedelta(weeks=20, days=6)
+    acts.append({**run(long_one, 90, 180, 0.0), "id": 900})             # une longue sortie isolée
+    block = date(2026, 1, 5) + timedelta(weeks=25)
+    acts += [{**run(block + timedelta(days=k), 200, 220, 0.0), "id": 901 + k} for k in (4, 5, 6)]
+    spikes = cp.load_spikes(acts, date(2026, 9, 1))
+    assert set(spikes) == {block} and 0 < spikes[block] < 1
+    assert cp.monday(long_one) not in spikes
+    daily = cp.smoothed_daily(acts, date(2026, 9, 1))
+    week = sum(v for d, v in daily.items() if cp.monday(d) == block)
+    raw = sum(a["hrss"] for a in acts if cp.monday(a["start"].date()) == block)
+    assert week == pytest.approx(raw * spikes[block])                  # ramenée à la borne
+    assert all(cp.monday(a["start"].date()) != block for a in cp.ordinary(acts, date(2026, 9, 1)))

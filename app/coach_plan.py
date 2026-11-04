@@ -50,8 +50,6 @@ LONG_SHARE = 0.35               # sortie longue : environ un tiers du temps de l
 RISE_DAYS = 56                  # fenêtre de 8 semaines
 RISE_MIN = 5.0                  # hausse de fitness d'au moins 5 points
 RISE_MIN_PERIODS = 2            # au moins 2 périodes, sinon le 80/20 par défaut
-EXCEPTIONAL_PCTL = 97           # sortie exceptionnelle : charge au-delà du 97e centile, ou plus de 3 h
-EXCEPTIONAL_S = 3 * 3600
 DEFAULT_RAMP_PCT = 10           # montée du volume, % par semaine (réglage posé au coureur : 10 ou 15)
 LONG_RACE_SHARE = 0.9           # sortie longue allongée : jusqu'à 90 % de la durée de la course
 LONG_MAX_MIN = 180              # jamais plus de 3 h
@@ -184,35 +182,61 @@ def _run_kind(a: dict) -> str | None:
     return "easy" if hard < EASY_MAX_HARD_SHARE else "hard" if hard >= QUALITY_MIN_HARD_SHARE else "steady"
 
 
-def ordinary(acts, today: date, race_ids=(), keep_races: bool = False) -> list[dict]:
-    """Sorties ordinaires d'avant aujourd'hui : sans les sorties exceptionnelles (plus de 3 h, ou
-    charge au-delà du 97e centile, comme un séjour en montagne) ni, sauf keep_races, les courses
-    confirmées (qui, elles, restent comptées même longues quand keep_races)."""
-    past = [a for a in acts if a["start"].date() < today]
-    loads = [a["hrss"] for a in past if a.get("hrss")]
-    cut = quantiles(loads, n=100)[EXCEPTIONAL_PCTL - 1] if len(loads) >= 30 else math.inf
-    out = []
-    for a in past:
-        race = a.get("id") in race_ids
-        if race and not keep_races:
+SPIKE_WEEKS = 52                # pics de charge : semaines comparées aux 52 précédentes
+SPIKE_MIN_WEEKS = 8
+
+
+def load_spikes(acts, today: date) -> dict:
+    """Pics de charge du coureur : semaines dont la charge dépasse la borne haute de Tukey (Q3 +
+    1,5 × écart interquartile) de ses semaines courues de l'année précédente (règle standard des
+    valeurs aberrantes, sans seuil à régler, qui suit l'évolution du coureur) ; un séjour de
+    plusieurs grosses sorties d'affilée en fait un, pas une longue sortie isolée. {lundi : facteur
+    qui ramène la semaine à la borne}."""
+    weekly = {}
+    for a in acts:
+        if a.get("hrss") and a["start"].date() < today:
+            m = monday(a["start"].date())
+            weekly[m] = weekly.get(m, 0.0) + a["hrss"]
+    out = {}
+    for m, load in weekly.items():
+        ref = [v for w, v in weekly.items() if m - timedelta(weeks=SPIKE_WEEKS) <= w <= m]
+        if len(ref) < SPIKE_MIN_WEEKS:
             continue
-        if not race and ((a.get("hrss") or 0) > cut or (a.get("moving_duration_s") or 0) > EXCEPTIONAL_S):
-            continue
-        out.append(a)
+        q1, _, q3 = quantiles(ref, n=4)
+        fence = q3 + 1.5 * (q3 - q1)
+        if load > fence > 0:
+            out[m] = fence / load
     return out
+
+
+def ordinary(acts, today: date, race_ids=(), keep_races: bool = False) -> list[dict]:
+    """Sorties ordinaires d'avant aujourd'hui : hors des pics de charge (load_spikes) et, sauf
+    keep_races, sans les courses confirmées."""
+    spikes = load_spikes(acts, today)
+    return [a for a in acts if a["start"].date() < today and monday(a["start"].date()) not in spikes
+            and (keep_races or a.get("id") not in race_ids)]
+
+
+def smoothed_daily(acts, today: date, race_ids=(), keep_races: bool = True) -> dict:
+    """Charge par jour d'avant aujourd'hui, les semaines de pic ramenées à la borne de Tukey."""
+    spikes = load_spikes(acts, today)
+    daily = {}
+    for a in acts:
+        d = a["start"].date()
+        if a.get("hrss") and d < today and (keep_races or a.get("id") not in race_ids):
+            daily[d] = daily.get(d, 0.0) + a["hrss"] * spikes.get(monday(d), 1.0)
+    return daily
 
 
 def rising_periods(acts, today: date, race_ids=()) -> dict | None:
     """Ce qui a fait monter la fitness du coureur : périodes de 8 semaines où sa fitness, calculée
-    sans les courses ni les sorties exceptionnelles (charge au-delà du 97e centile, plus de 3 h), a
+    sans les courses et avec les pics de charge ramenés à la borne (load_spikes), a
     gagné au moins 5 points, sans chevauchement ; sorties, temps et charge par semaine, charge par
     heure et part du temps facile, soutenu et en séance. None sous 2 périodes."""
     if sum(1 for a in acts if a.get("hrss") and a["start"].date() < today) < 30:
         return None
     normal = [a for a in ordinary(acts, today, race_ids) if a.get("hrss")]
-    daily = {}
-    for a in normal:
-        daily[a["start"].date()] = daily.get(a["start"].date(), 0.0) + a["hrss"]
+    daily = smoothed_daily(acts, today, race_ids, keep_races=False)
     if not daily:
         return None
     fit = {p["date"]: p["fitness"] for p in stats.banister(daily, min(daily), today - timedelta(days=1))}
@@ -932,10 +956,7 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
                                                       or built["planned_load"] < load - CAPPED_MARGIN)
         fitness = fitness_after(fitness, built["planned_load"])
         out.append(built)
-    baseline = {}
-    for a in ordinary(acts, today, race_ids, keep_races=True):
-        if a.get("hrss"):
-            baseline[a["start"].date()] = baseline.get(a["start"].date(), 0.0) + a["hrss"]
+    baseline = smoothed_daily(acts, today, race_ids)
     sim = simulate(state, out, rates, today, race_date, baseline)
     for w in out:
         w["fitness_end"] = round(sim["week_end"].get(w["monday"], fitness), 1)
