@@ -24,7 +24,7 @@ from . import coach_workouts as wk
 from . import estimator, stats
 
 PLAN_VERSION = 1
-TAPER_SHORT_S = 5400            # course de moins de 1 h 30 : une semaine d'affûtage
+TAPER_SHORT_S = 7200            # course de moins de 2 h : une semaine d'affûtage (choix de Greg)
 TAPER_LOADS = {1: (0.5,), 2: (0.6, 0.4)}   # part de la dernière semaine de charge
 RAMP_PER_WEEK = 5.0             # fitness gagnée au plus par semaine de charge (choix de Greg)
 PEAK_MARGIN = 1.10              # jamais plus de 10 % au-dessus du pic des 12 derniers mois
@@ -42,6 +42,8 @@ DEFAULT_DAY_MIN = 60            # jour possible sans durée connue
 MIN_EASY_MIN = 30               # un footing dure au moins 30 min
 TRAIL_GAIN_PER_KM = 15.0        # sortie de trail : plus de 15 m de D+ par km
 DEFAULT_EASY_VAM = 300          # m de D+ par heure en endurance, à défaut de sorties trail faciles
+EASY_TIME_SHARE = 0.8           # 80/20 : 80 % du temps en endurance
+CAPPED_MARGIN = 10              # charge prévue sous la visée de plus de 10 : les jours limitent
 QUALITY_MAX_SHARE = 0.6         # deux séances de qualité seulement si elles laissent 40 % de la charge
 LONG_SHARE = 0.35               # sortie longue : environ un tiers du temps de la semaine
 WEEKDAYS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
@@ -101,8 +103,7 @@ def simulate(state: dict, weeks: list[dict], rates: dict, today: date, race_date
     for w in weeks:
         for s in w["sessions"]:
             if s["type"] != "course" and s.get("minutes"):
-                rate = rates["quality"] if s["hard"] else rates["easy"]
-                planned[s["date"]] = planned.get(s["date"], 0.0) + s["minutes"] * rate / 60
+                planned[s["date"]] = planned.get(s["date"], 0.0) + session_load(s, rates)
     start = date.fromisoformat(weeks[0]["monday"])
     out = _run(state, start, race_date, today, lambda d: planned.get(d.isoformat(), 0.0))
     weeks_load = [sum(state["daily"].get(start - timedelta(weeks=w, days=-i), 0.0) for i in range(7))
@@ -287,12 +288,19 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
         quality_days.append(d)
         total_min -= cost
     easy_days = [d for d in others if d not in quality_days]
-    long_min = 0
+    long_min, variant, steady = 0, None, False
     if long_day:
+        variant = wk.long_variant(phase, kind, trail, week_in_phase)
+        # une semaine de charge sur deux, la sortie longue finit en allure soutenue (choix de Greg)
+        steady = kind == "charge" and week["index"] % 2 == 0 and variant not in ("progressive", "spécifique")
         # la sortie longue d'abord, la plus longue de la semaine ; ce sont les footings qui sautent
         wanted = LONG_SHARE * budget
         cap = min(long_day["max_min"], max(wanted, total_min / 2), total_min)
         long_min = max(MIN_EASY_MIN, wk.floor5(cap))
+        if steady:          # la fin soutenue charge plus : la sortie raccourcit d'autant, en endurance
+            extra = wk.steady_finish_min(long_min) * (rates["quality"] / rates["easy"] - 1)
+            long_min = max(MIN_EASY_MIN, wk.floor5(long_min - extra))
+            total_min -= extra
         total_min -= long_min
     if total_min < MIN_EASY_MIN:
         easy_days = []                                  # plus assez pour un footing : repos
@@ -322,13 +330,22 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
         sessions.append({"weekday": d["weekday"], **s, "key": False,
                          "habit": habit["name"] if habit else None})
     if long_day:
-        variant = wk.long_variant(phase, kind, trail, week_in_phase)
-        s = wk.long_run(variant, long_min, paces, km=not trail)
+        s = wk.long_run(variant, long_min, paces, km=not trail, steady_finish=steady)
         habit = habit_by_day.get(long_day["weekday"])
         sessions.append({"weekday": long_day["weekday"], **s, "key": not q_sessions,
                          "habit": habit["name"] if habit else None})
     sessions.extend(q_sessions)
     return _finish(week, sessions, load, rates)
+
+
+def session_load(s: dict, rates: dict) -> float:
+    """Charge prévue d'une séance (HRSS) : séance dure à la charge par heure des séances ; sinon en
+    endurance, sauf ses étapes d'effort (fin soutenue d'une sortie longue, lignes droites)."""
+    minutes = s.get("minutes") or 0
+    if s["hard"]:
+        return minutes * rates["quality"] / 60
+    work = sum(x["minutes"] for x in s.get("steps", []) if x["kind"] == "work")
+    return ((minutes - work) * rates["easy"] + work * rates["quality"]) / 60
 
 
 def _finish(week: dict, sessions: list[dict], load: float, rates: dict) -> dict:
@@ -337,8 +354,7 @@ def _finish(week: dict, sessions: list[dict], load: float, rates: dict) -> dict:
         s["date"] = (week["monday"] + timedelta(days=s["weekday"])).isoformat()
         s["day"] = WEEKDAYS[s["weekday"]]
     minutes = sum(s["minutes"] or 0 for s in sessions if s["type"] != "course")
-    planned = sum((s["minutes"] or 0) * (rates["quality"] if s["hard"] else rates["easy"]) / 60
-                  for s in sessions if s["type"] != "course")
+    planned = sum(session_load(s, rates) for s in sessions if s["type"] != "course")
     return {**week, "monday": week["monday"].isoformat(), "target_load": round(load),
             "planned_load": round(planned), "minutes": minutes, "sessions": sessions}
 
@@ -366,7 +382,9 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
     weeks = skeleton(today, race_date, race.get("duration_s"))
     cap_fitness = state["peak_12m"] * PEAK_MARGIN if state["peak_12m"] else None
     capacity_min = sum(d["max_min"] for d in days)
-    max_load = capacity_min / 60 * rates["easy"]
+    # plafond : tout le temps disponible, réparti en 80/20 (endurance, effort), comme le plan
+    blended = EASY_TIME_SHARE * rates["easy"] + (1 - EASY_TIME_SHARE) * rates["quality"]
+    max_load = capacity_min / 60 * blended
     fitness = state["fitness"]
     last_charge = None
     phase_counts = {}
@@ -389,7 +407,8 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
         week_in_phase = phase_counts.get(w["phase"], 0)
         phase_counts[w["phase"]] = week_in_phase + 1
         built = build_week(w, days, load, rates, race, paces, habits, lthr, week_in_phase)
-        built["capped"] = w["kind"] == "charge" and load >= max_load - 0.5
+        built["capped"] = w["kind"] == "charge" and (load >= max_load - 0.5
+                                                      or built["planned_load"] < load - CAPPED_MARGIN)
         fitness = fitness_after(fitness, built["planned_load"])
         out.append(built)
     sim = simulate(state, out, rates, today, race_date)

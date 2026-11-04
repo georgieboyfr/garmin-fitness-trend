@@ -246,6 +246,11 @@ STEADY = {"hr": (0.90, 0.95), "rpe": "5 à 6"}     # zone 3 : soutenu mais confo
 WALK = "marcher dans les montées raides pour rester sous la FC visée"
 
 
+def steady_finish_min(minutes: float) -> int:
+    """Durée de la fin soutenue d'une sortie longue."""
+    return 15 if minutes < 90 else 20
+
+
 def tempo(level: int, p: dict, compact: bool = False) -> dict:
     minutes = TEMPO[min(level, len(TEMPO) - 1)]
     lthr = p.get("lthr")
@@ -360,12 +365,22 @@ def easy_run(minutes: float, p: dict, hilly: bool, km: bool = True) -> dict:
                          "En aisance respiratoire : tu peux parler.")
 
 
-def long_run(variant: str, minutes: float, p: dict, km: bool = True) -> dict:
+def long_run(variant: str, minutes: float, p: dict, km: bool = True, steady_finish: bool = False) -> dict:
     """Sortie longue : classique, progressive, vallonnée, spécifique trail ou avec descentes. Le D+
     d'une sortie en endurance suit la vitesse de montée du coureur en endurance (easy_vam), pas
     celle de la course."""
     lthr = p.get("lthr")
     gain = round(p.get("easy_vam", 0) * minutes / 60, -1)
+    if steady_finish and variant not in ("progressive", "spécifique"):
+        s = long_run(variant, minutes - steady_finish_min(minutes), p, km)
+        end = steady_finish_min(minutes)
+        where = "sur une portion roulante ou en montée douce" if not km else "sur le plat"
+        s["steps"].append(step("work", f"{end} min finales en allure soutenue, {where}", end,
+                               target(STEADY, lthr)))
+        s["minutes"] = round5(minutes)
+        s["label"] += " et fin soutenue"
+        s["description"] += " Finir soutenu, sans forcer : apprendre à accélérer fatigué."
+        return s
     if variant == "progressive":
         end = 15 if minutes < 90 else 20
         steps = easy_steps(minutes - end, p, km) + [

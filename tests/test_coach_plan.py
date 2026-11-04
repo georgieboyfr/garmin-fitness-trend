@@ -186,3 +186,23 @@ def test_plan_is_compared_with_carrying_on_as_before():
     assert {"fitness", "form", "continue_fitness", "continue_form"} <= set(plan["series"][0])
     assert plan["hill_sessions"] >= 1 and plan["long_runs"] >= 10
 
+
+def test_plan_never_starts_with_a_light_week_and_tapers_one_week_under_two_hours():
+    weeks = cp.skeleton(TODAY, date(2026, 12, 13), 5938)                  # 6 semaines, course de 1 h 39
+    assert [w["kind"] for w in weeks][:2] == ["charge", "charge"]
+    assert [w["kind"] for w in weeks][-2:] == ["charge", "course"]       # une semaine d'affûtage
+    long_race = cp.skeleton(TODAY, date(2026, 12, 13), 3 * 3600)
+    assert [w["kind"] for w in long_race][-2:] == ["affûtage", "course"]
+
+
+def test_long_runs_finish_steady_every_other_charge_week():
+    days = cp.chosen_days(avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 70), (5, "oui", 150)), 4)
+    labels = []
+    for i in (1, 2):
+        w = cp.build_week({**week(phase="foncier"), "index": i}, days, 220, RATES, RACE, {}, [], 170, 0)
+        labels.append(next(s for s in w["sessions"] if s["type"] == "sortie longue"))
+    assert "fin soutenue" not in labels[0]["label"] and "fin soutenue" in labels[1]["label"]
+    finish = labels[1]["steps"][-1]
+    assert finish["kind"] == "work" and "allure soutenue" in finish["text"]
+    assert cp.session_load(labels[1], RATES) > labels[1]["minutes"] * RATES["easy"] / 60   # elle charge plus
+
