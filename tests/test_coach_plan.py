@@ -507,3 +507,17 @@ def test_taper_keeps_frequency_and_strength_is_advised():
     by = {w["phase"]: w["strength"] for w in plan["weeks"] if w["kind"] == "charge"}
     assert by["foncier"] == 2 and by["spécifique"] == 1
     assert plan["weeks"][-1]["strength"] == 0                        # rien en semaine de course
+
+
+def test_key_sessions_make_a_full_round_before_repeating():
+    acts = [run(TODAY - timedelta(days=i), 60, 90, 0.0) for i in range(1, 200, 2)]
+    days = avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 70), (5, "oui", 150))
+    plan = cp.build_plan({**RACE, "race_date": "2027-05-22"}, TODAY, acts, days, None, [], {}, 170)
+    for phase in ("foncier", "développement", "spécifique"):
+        types = [x["type"] for w in plan["weeks"] if w["phase"] == phase and w["kind"] == "charge"
+                 for x in w["sessions"] if x["hard"] and x["type"] != "course"]
+        catalog = len(cp.wk.QUALITY[(phase, True)])
+        head = types[:catalog]
+        assert len(set(head)) == len(head), (phase, types)          # aucune répétition avant un tour complet
+    flat = {"fartlek", "vma", "pyramide", "seuil", "tempo"}
+    assert any(t in flat for w in plan["weeks"] for t in (x["type"] for x in w["sessions"]))   # du plat aussi

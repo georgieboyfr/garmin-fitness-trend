@@ -966,8 +966,13 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
             load = min(load, week_cap(w))
             if any(e["kind"] == "reprise" for e in events):
                 load *= RECOVERY_LOAD
-        week_in_phase = phase_counts.get(w["phase"], 0)
-        phase_counts[w["phase"]] = week_in_phase + 1
+        # rang de la semaine parmi celles de même type de sa phase : les variantes tournent sur les
+        # semaines de charge seules, sans qu'une allégée en fasse sauter une
+        # rang parmi les semaines de même type de sa phase qui ont eu une séance de qualité : les
+        # variantes tournent sans qu'une semaine allégée ou sans séance (course, récupération) en
+        # fasse sauter une
+        key = (w["phase"], w["kind"])
+        week_in_phase = phase_counts.get(key, 0)
         built = build_week(w, days_of(w), load, rates, race, paces, habits, lthr,
                            week_in_phase,
                            extended.get(w["index"]), cal,
@@ -975,6 +980,8 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
                            _long_step(max(long_hist[-LONG_START_WEEKS:])))
         long_hist.append(max([0] + [x.get("level_min", x["minutes"]) for x in built["sessions"]
                                     if x["type"] == "sortie longue" and not x.get("optional")]))
+        if any(x["hard"] and x["type"] != "course" for x in built["sessions"]) or w["kind"] != "charge":
+            phase_counts[key] = week_in_phase + 1
         built["periods"] = events
         built["strength"] = 0 if any(e["kind"] in PERIOD_REST for e in events) else (
             STRENGTH.get(w["kind"]) if w["kind"] == "allégée" else STRENGTH.get(w["phase"], 0))

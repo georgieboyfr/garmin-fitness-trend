@@ -145,6 +145,27 @@ def vma(level: int, p: dict, compact: bool = False) -> dict:
                                          "la première. Arrêter si l'allure s'effondre.")
 
 
+PYRAMIDE = [(1, 2, 3, 2, 1), (1, 2, 3, 4, 3, 2, 1), (2, 3, 4, 4, 3, 2)]   # min d'effort
+
+
+def pyramid(level: int, p: dict, compact: bool = False) -> dict:
+    """Pyramide : efforts de 1 à 4 min qui montent puis redescendent, entre l'allure 5 km et le
+    seuil, récupération au trot de la moitié de l'effort précédent."""
+    blocks = PYRAMIDE[min(level, len(PYRAMIDE) - 1)]
+    lthr = p.get("lthr")
+    pace = pace_band(p["threshold"] * 0.96) if p.get("threshold") else ""
+    work = sum(blocks)
+    rest = sum(b / 2 for b in blocks[:-1])
+    steps = [_warmup(warm(compact, 20), lthr),
+             step("work", "pyramide " + "-".join(str(b) for b in blocks) + " min, vite mais régulier", work,
+                  target({"hr": (0.97, 1.03), "rpe": "7 à 8"}, lthr, pace)),
+             step("recovery", "récupération au trot : la moitié de l'effort qui précède (30 s après 1 min, "
+                              "1 min après 2 min...)", rest, target(RECOVERY, lthr)),
+             _cooldown(cool(compact), lthr)]
+    return _session("pyramide", "Pyramide", steps, "Partir prudemment : les efforts longs du milieu se "
+                                                   "courent à la même allure que les courts.")
+
+
 def strides(base_min: float, p: dict) -> dict:
     lthr = p.get("lthr")
     steps = [step("steady", f"{_minutes(base_min)} en endurance", base_min,
@@ -448,13 +469,17 @@ def _q(make, shift: int = 0):
     return lambda lv, p, compact=False: make(lv + shift, p, compact)
 
 
+# séance clé par phase, route ou trail : les variantes tournent d'une semaine de charge à l'autre (un
+# tour complet avant toute répétition), le palier monte à chaque tour
 QUALITY = {
-    ("foncier", False): [_q(fartlek), _q(hills_short)],
-    ("foncier", True): [_q(hills_short), _q(fartlek), _q(power_hike)],
-    ("développement", False): [_q(seuil), _q(tempo)],
-    ("développement", True): [_q(seuil), _q(hills_medium), _q(uphill_tempo)],
-    ("spécifique", False): [_q(race_pace), _q(tempo, 1)],
-    ("spécifique", True): [_q(hills_long), _q(uphill_tempo, 1), _q(downhill), _q(power_hike, 1)],
+    ("foncier", False): [_q(fartlek), _q(hills_short), _q(vma), _q(pyramid)],
+    ("foncier", True): [_q(hills_short), _q(fartlek), _q(power_hike), _q(vma), _q(pyramid)],
+    ("développement", False): [_q(seuil), _q(vma, 2), _q(tempo), _q(pyramid, 1), _q(hills_medium)],
+    ("développement", True): [_q(seuil), _q(hills_medium), _q(vma, 2), _q(uphill_tempo), _q(pyramid, 1),
+                              _q(tempo)],
+    ("spécifique", False): [_q(race_pace), _q(seuil, 2), _q(tempo, 1), _q(vma, 3)],
+    ("spécifique", True): [_q(hills_long), _q(uphill_tempo, 1), _q(downhill), _q(seuil, 2),
+                           _q(power_hike, 1), _q(hills_medium, 1)],
 }
 SECOND = [_q(vma), _q(seuil, 2)]
 LIGHT = [_q(hill_sprints), _q(fartlek)]
