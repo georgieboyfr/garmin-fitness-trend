@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% from "_estimateur.html" import tip, chrono_text with context %}
+{% block title %}Coach · Fitness Trend{% endblock %}
+
+{% block content %}
+{% set cal = calendar %}
+<section class="hero">
+  <h1>Coach</h1>
+  <p class="muted">Démarrage en 5 minutes : tes courses à venir, et si tu veux tes disponibilités et tes habitudes. Rien d'autre n'est obligatoire : sans réponse, le coach part de tes 12 dernières semaines.</p>
+</section>
+
+<section class="card" id="echeances">
+  <div class="card-head">
+    <h2>Tes échéances {{ tip("Le calendrier du coach, séparé des courses suivies de l'estimateur. Priorité A : objectif principal, le plan entier est construit pour elle, avec un affûtage complet. B : course importante, mini-affûtage de quelques jours puis récupération. C : course de préparation, courue comme une grosse séance, juste une semaine un peu allégée.") }}</h2>
+  </div>
+  {% if cal.upcoming %}
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Priorité</th><th>Course</th><th>Date</th><th>Parcours</th><th>Objectif</th><th>Proposé {{ tip("Temps réaliste de l'estimateur avec ta forme d'aujourd'hui (fourchette optimiste à prudent), correction de l'admin comprise. Accepte-le comme objectif ou saisis le tien.") }}</th><th></th></tr></thead>
+      <tbody>
+        {% for r in cal.upcoming %}
+        <tr>
+          <td><span class="pill priority-{{ r.priority }}" title="{{ r.priority_label }}">{{ r.priority }}</span></td>
+          <td class="strong">{{ r.name }}</td>
+          <td><span data-short-date="{{ r.race_date }}"></span> <span class="muted">· {% if r.days_left == 0 %}aujourd'hui{% elif r.days_left < 14 %}dans {{ r.days_left }} j{% else %}dans {{ r.weeks_left }} sem.{% endif %}</span></td>
+          <td class="muted">{{ r.route }}</td>
+          <td>
+            <form class="coach-target" data-url="/coach/courses/{{ r.id }}/objectif">
+              <input name="target" inputmode="numeric" size="8" value="{{ chrono_text(r.target_s) }}" placeholder="—" aria-label="Objectif de {{ r.name }}">
+              <button class="btn-ghost" type="submit">Enregistrer</button>
+              <span class="small muted" role="status"></span>
+            </form>
+          </td>
+          <td>{% if r.proposal %}<b data-chrono="{{ r.proposal.realistic_s }}"></b> <span class="muted small">(<span data-chrono="{{ r.proposal.optimistic_s }}"></span> à <span data-chrono="{{ r.proposal.prudent_s }}"></span>)</span>
+            {% if r.target_s != r.proposal.realistic_s %}<button class="btn-ghost" type="button" data-accept="/coach/courses/{{ r.id }}/objectif" data-value="{{ r.proposal.realistic_s }}">Accepter</button>{% endif %}
+            {% else %}<span class="muted small">estimation impossible</span>{% endif %}</td>
+          <td><button class="btn-ghost" type="button" data-coach-delete="/coach/courses/{{ r.id }}/supprimer" aria-label="Retirer {{ r.name }}">Retirer</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if not cal.main %}<p class="small muted">Aucune course A : le plan suivra le maintien de forme, en intégrant tes courses B et C.</p>{% endif %}
+  {% else %}
+  <p class="muted">Aucune course à venir : le coach te proposera un maintien de forme. Ajoute une course pour qu'il prépare un plan vers elle.</p>
+  {% endif %}
+
+  <h3>Ajouter une course</h3>
+  <form class="coach-race" data-url="/coach/courses">
+    {% if tracked_races %}
+    <div class="filters">
+      <label class="filter">Reprendre une course suivie
+        <select name="prefill" class="select">
+          <option value="">—</option>
+          {% for t in tracked_races %}<option value="{{ t.id }}" data-race="{{ {'name': t.name, 'race_date': t.race_date, 'gpx_id': t.gpx_id, 'distance_m': t.distance_m, 'gain_m': t.gain_m, 'target': chrono_text(t.target_s)} | tojson | forceescape }}">{{ t.name }}</option>{% endfor %}
+        </select></label>
+    </div>
+    {% endif %}
+    <div class="filters">
+      <label class="filter">Nom <input name="name" maxlength="120" required placeholder="ex. Trail du Vercors"></label>
+      <label class="filter">Date <input name="race_date" type="date" required min="{{ today }}"></label>
+      <label class="filter">Priorité
+        <select name="priority" class="select">
+          {% for k, label in priorities.items() %}<option value="{{ k }}" {% if k == "A" and not cal.main %}selected{% elif k == "B" and cal.main %}selected{% endif %}>{{ k }} : {{ label }}</option>{% endfor %}
+        </select></label>
+    </div>
+    <div class="filters">
+      <label class="filter">Parcours
+        <select name="source" class="select">
+          {% for g in gpx_recent %}<option value="{{ g.id }}">GPX : {{ g.name }}</option>{% endfor %}
+          <option value="distance" selected>Distance et D+</option>
+        </select></label>
+      <span class="coach-road filters">
+        <label class="filter">Distance (km) <input name="distance_km" inputmode="decimal"></label>
+        <label class="filter">D+ (m) <input name="gain_m" inputmode="numeric" placeholder="0"></label>
+      </span>
+      <label class="filter">Objectif (facultatif) <input name="target" inputmode="numeric" placeholder="proposé ensuite"></label>
+    </div>
+    <p class="small muted">Pour un trail, importe d'abord le GPX dans <a href="/estimateur#trail">l'estimateur</a> : il apparaît ensuite dans la liste des parcours.</p>
+    <div class="aid-actions">
+      <button class="btn-primary" type="submit">Ajouter au calendrier</button>
+      <span class="small muted" role="status"></span>
+    </div>
+  </form>
+
+  {% if cal.past %}
+  <p class="small muted">Courses passées du calendrier : {% for r in cal.past %}{{ r.priority }} {{ r.name }} (<span data-short-date="{{ r.race_date }}"></span>){{ ", " if not loop.last }}{% endfor %}.</p>
+  {% endif %}
+</section>
+
+<section class="card" id="disponibilites">
+  <div class="card-head">
+    <h2>Disponibilités <span class="muted small">facultatif</span> {{ tip("Les jours où tu peux courir et le temps maximal de chaque jour. Sans saisie, le coach les déduit de tes 12 dernières semaines : un jour est habituel si tu y as couru au moins une semaine sur deux, avec ta durée habituelle (médiane) ce jour-là.") }}</h2>
+  </div>
+  <p class="small muted">{% if availability_saved %}Tes disponibilités saisies.{% else %}Déduites de tes 12 dernières semaines : environ {{ inferred.sessions_per_week | string | replace(".0", "") | replace(".", ",") }} sortie{{ "s" if inferred.sessions_per_week > 1 }} par semaine.{% endif %}</p>
+  <form class="coach-availability" data-url="/coach/profil">
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Jour</th><th>Possible</th><th>Durée max (min)</th><th>Ton historique</th></tr></thead>
+        <tbody>
+          {% for d in availability %}
+          <tr data-weekday="{{ d.weekday }}">
+            <td class="strong">{{ d.label }}</td>
+            <td><input type="checkbox" name="available" aria-label="{{ d.label }} possible" {% if d.available %}checked{% endif %}></td>
+            <td><input name="max_min" inputmode="numeric" size="4" value="{{ d.max_min or '' }}" aria-label="Durée maximale le {{ d.label | lower }}"></td>
+            <td class="muted small">{{ d.weeks }} semaine{{ "s" if d.weeks > 1 }} sur {{ inferred.weeks }}{% if d.usual_min %}, {{ d.usual_min }} min d'habitude{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="aid-actions">
+      <button class="btn-primary" type="submit">Enregistrer</button>
+      {% if availability_saved %}<button class="btn-ghost" type="button" data-reset="availability">Revenir à l'historique</button>{% endif %}
+      <span class="small muted" role="status"></span>
+    </div>
+  </form>
+</section>
+
+<section class="card" id="habitudes">
+  <div class="card-head">
+    <h2>Habitudes <span class="muted small">facultatif</span> {{ tip("Les sorties qui reviennent : un parcours qui fait au moins la moitié de tes sorties d'un jour habituel, sur les 12 dernières semaines. Une habitude gardée reste à sa place dans le plan ; le coach lui donnera un rôle selon la phase (footing, côtes, sortie plus longue).") }}</h2>
+  </div>
+  {% if habits %}
+  <form class="coach-habits" data-url="/coach/profil">
+    <ul class="coach-habit-list">
+      {% for h in habits %}
+      <li data-weekday="{{ h.weekday }}" data-route="{{ h.route_id }}">
+        <label><input type="checkbox" name="keep" {% if h.keep or not h.confirmed %}checked{% endif %}>
+          <b>{{ h.label }}</b> : <a href="/sorties/{{ h.activity_id }}">{{ h.name or "parcours" }}</a>
+          <span class="muted small">({{ h.count }} sorties sur {{ h.runs }} ce jour-là, {{ h.distance_km | string | replace(".", ",") }} km, {{ h.gain_m }} m D+, {{ h.moving_min }} min)</span>
+          {% if not h.confirmed %}<span class="pill">à confirmer</span>{% endif %}</label>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="aid-actions">
+      <button class="btn-primary" type="submit">Garder les habitudes cochées</button>
+      <span class="small muted" role="status"></span>
+    </div>
+  </form>
+  {% else %}
+  <p class="muted">Aucune habitude nette sur tes 12 dernières semaines : aucun parcours ne fait la moitié des sorties d'un même jour.</p>
+  {% endif %}
+</section>
+
+<p class="small muted">Prochaine étape du coach : le plan périodisé vers ta course A, construit sur ces réglages.</p>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/coach.js?v={{ asset_version }}"></script>
+{% endblock %}

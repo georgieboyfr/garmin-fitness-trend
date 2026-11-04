@@ -498,3 +498,16 @@ details.tracked-add > summary { cursor: pointer; font-weight: 600; margin: 12px 
 .segmented [aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
 
 .tracked-form .filter, .tracked-form select, #tracked-activity { min-width: 0; max-width: 100%; }
+
+/* coach */
+.pill { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 600;
+        background: var(--surface-2); color: var(--muted); }
+.pill.priority-A { background: var(--accent); color: var(--accent-text); }
+.pill.priority-B { background: var(--accent-soft); color: var(--accent); }
+.coach-race .filters + .filters, .coach-race .aid-actions,
+.coach-availability .aid-actions, .coach-habits .aid-actions { margin-top: 12px; }
+.coach-target { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.coach-target input, .coach-availability input[name=max_min] {
+  font: inherit; padding: 4px 6px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); }
+.coach-habit-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }

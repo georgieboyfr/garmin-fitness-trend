@@ -19,6 +19,7 @@ from fastapi.templating import Jinja2Templates
 
 from . import (
     __version__,
+    coach,
     courses,
     db,
     detail,
@@ -47,6 +48,7 @@ PAGES = [
     ("/forme", "Forme", True),
     ("/courses", "Courses", True),
     ("/estimateur", "Estimateur", True),
+    ("/coach", "Coach", True),
 ]
 
 router = APIRouter(include_in_schema=False)
@@ -521,3 +523,125 @@ async def save_aid_stations(request: Request, gpx_id: str):
     meta["aid_stations"] = stations
     path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
     return {"aid_stations": stations}
+
+
+# ---------- coach ----------
+
+@router.get("/coach")
+def coach_page(request: Request):
+    if (redirect := _login_redirect(request)):
+        return redirect
+    cfg = request.app.state.config
+    today = _today(request)
+    conn = db.connect(cfg.db_path)
+    try:
+        data = tracked.load_data(cfg, conn)
+        races = coach.all_races(conn)
+        profile = settings.get(conn, "coach")
+        factors = tracked.corrections(conn)
+        tracked_races = tracked.all_races(conn)
+    finally:
+        conn.close()
+    cal = coach.calendar(races, today)
+    dem = getattr(request.app.state, "dem", None)
+    for r in cal["upcoming"]:
+        r["proposal"] = coach.proposed_target(cfg, r, today, data, factors, dem)
+        r["route"] = tracked._route_label(cfg, r)
+    inferred = coach.availability_from_history(data["acts"], today)
+    habits = coach.effective_habits(profile["habits"], coach.habits_from_history(data["acts"], today))
+    upcoming_tracked = [r for r in tracked_races if not r["race_date"] or r["race_date"] >= today.isoformat()]
+    return render(request, "coach.html", "/coach", calendar=cal,
+                  availability=coach.effective_availability(profile["availability"], inferred),
+                  inferred=inferred, availability_saved=profile["availability"] is not None,
+                  habits=habits,
+                  priorities=coach.PRIORITIES, gpx_recent=gpx_store.recent(cfg),
+                  tracked_races=upcoming_tracked,
+                  today=today.isoformat())
+
+
+async def _coach_values(request: Request):
+    try:
+        return coach.clean(request.app.state.config, await request.json()), None
+    except ValueError as e:
+        return None, JSONResponse({"detail": str(e) or "Saisie invalide."}, status_code=400)
+
+
+@router.post("/coach/courses")
+async def coach_create(request: Request):
+    if (error := _session_error(request)):
+        return error
+    values, error = await _coach_values(request)
+    if error:
+        return error
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        race_id = coach.create(conn, values)
+    finally:
+        conn.close()
+    return {"id": race_id}
+
+
+@router.post("/coach/courses/{race_id}")
+async def coach_update(request: Request, race_id: int):
+    if (error := _session_error(request)):
+        return error
+    values, error = await _coach_values(request)
+    if error:
+        return error
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        if coach.get(conn, race_id) is None:
+            return JSONResponse({"detail": "Course inconnue."}, status_code=404)
+        coach.update(conn, race_id, values)
+    finally:
+        conn.close()
+    return {"id": race_id}
+
+
+@router.post("/coach/courses/{race_id}/objectif")
+async def coach_target(request: Request, race_id: int):
+    """Objectif accepté (temps proposé) ou modifié ; null le retire."""
+    if (error := _session_error(request)):
+        return error
+    body = await request.json()
+    target = body.get("target_s") if isinstance(body, dict) else None
+    if target is not None and (isinstance(target, bool) or not isinstance(target, int | float)
+                               or not 0 < target <= tracked.MAX_TARGET_S):
+        return JSONResponse({"detail": "Objectif invalide."}, status_code=400)
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        if coach.get(conn, race_id) is None:
+            return JSONResponse({"detail": "Course inconnue."}, status_code=404)
+        coach.set_target(conn, race_id, float(target) if target is not None else None)
+    finally:
+        conn.close()
+    return {"id": race_id}
+
+
+@router.post("/coach/courses/{race_id}/supprimer")
+def coach_delete(request: Request, race_id: int):
+    if (error := _session_error(request)):
+        return error
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        coach.delete(conn, race_id)
+    finally:
+        conn.close()
+    return {"deleted": race_id}
+
+
+@router.post("/coach/profil")
+async def coach_profile(request: Request):
+    """Disponibilités par jour et habitudes gardées ; null revient à l'historique."""
+    if (error := _session_error(request)):
+        return error
+    try:
+        values = coach.clean_profile(await request.json())
+    except (ValueError, KeyError, TypeError) as e:
+        return JSONResponse({"detail": str(e) or "Saisie invalide."}, status_code=400)
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        settings.update(conn, "coach", values)
+    finally:
+        conn.close()
+    return {"saved": True}

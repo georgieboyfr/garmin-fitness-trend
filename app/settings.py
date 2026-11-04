@@ -28,6 +28,9 @@ DEFAULTS = {
     # correction des estimations, activée par Greg dans l'admin : facteur multiplié aux temps
     # estimés (0,96 = 4 % plus rapide), figé au moment de l'activation ; None = pas de correction
     "estimator": {"correction_road": None, "correction_trail": None},
+    # coach : disponibilités saisies (7 jours) et habitudes confirmées, vérifiées par
+    # coach.clean_profile ; None = déduites de l'historique
+    "coach": {"availability": None, "habits": None},
 }
 
 CORRECTION_LIMITS = (0.8, 1.2)
@@ -126,7 +129,19 @@ def _validate_estimator(values: dict) -> dict:
     return out
 
 
-VALIDATORS = {"garmin_sync": _validate_garmin_sync, "elevation": _validate_elevation,
+def _validate_coach(values: dict) -> dict:
+    out = {}
+    for key, value in values.items():
+        if key not in DEFAULTS["coach"]:
+            raise ValueError(f"réglage inconnu : {key}")
+        if value is not None and not isinstance(value, list):
+            raise ValueError(f"{key} doit être une liste, ou null")
+        out[key] = value
+    return out
+
+
+VALIDATORS = {"garmin_sync": _validate_garmin_sync, "coach": _validate_coach,
+              "elevation": _validate_elevation,
               "races": _validate_races, "estimator": _validate_estimator,
               "physiology": _validate_physiology}
 
