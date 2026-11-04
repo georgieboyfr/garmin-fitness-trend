@@ -174,3 +174,15 @@ def test_trail_long_run_climbs_at_the_runner_easy_rate_not_race_rate():
     assert f"environ {round(360 * hours, -1):.0f} m de D+" in text(long)  # 360 m/h, pas 375 m/h (course)
     assert "marcher dans les montées" in text(long)
 
+
+def test_plan_is_compared_with_carrying_on_as_before():
+    acts = [run(TODAY - timedelta(days=i), 60, 90, 0.0) for i in range(1, 200, 2)]
+    days = avail((0, "oui", 120), (1, "oui", 120), (3, "oui", 120), (5, "oui", 240))
+    plan = cp.build_plan({**RACE, "race_date": "2027-01-31"}, TODAY, acts, days, None, [], {}, 170)
+    c = plan["continue"]
+    assert c["weekly_load"] == pytest.approx(210, abs=15)             # 60 HRSS un jour sur deux
+    assert plan["race_form"] > c["race_form"]                         # l'affûtage : plus frais que sans plan
+    assert len(plan["series"]) == (date(2027, 1, 31) - date(2026, 11, 2)).days
+    assert {"fitness", "form", "continue_fitness", "continue_form"} <= set(plan["series"][0])
+    assert plan["hill_sessions"] >= 1 and plan["long_runs"] >= 10
+

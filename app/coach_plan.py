@@ -65,32 +65,51 @@ def fitness_state(acts, today: date) -> dict:
             "peak_12m": round(peak, 1), "daily": daily}
 
 
-def simulate(state: dict, weeks: list[dict], rates: dict, today: date, race_date: date) -> dict:
-    """Fitness et fatigue jour par jour (modèle de Banister) : charge réelle avant aujourd'hui,
-    séances prévues ensuite. Fitness d'aujourd'hui, plus haute fitness du plan, fitness et
-    fraîcheur (forme : fitness − fatigue de la veille) le matin de la course, fin de chaque semaine."""
+CONTINUE_WEEKS = 12             # « sans plan » : charge moyenne des 12 dernières semaines pleines
+
+
+def _run(state: dict, start: date, race_date: date, today: date, future) -> dict:
+    """Fitness et fatigue jour par jour (modèle de Banister) de `start` à la veille de la course :
+    charge réelle avant aujourd'hui, puis future(jour). Série quotidienne, fitness d'aujourd'hui,
+    plus haute fitness, fitness et fraîcheur (forme : fitness − fatigue) le matin de la course."""
     k_fit, k_fat = 1 - math.exp(-1 / stats.TAU_FITNESS), 1 - math.exp(-1 / stats.TAU_FATIGUE)
+    fit, fat = state["fitness"], state["fatigue"]
+    out = {"today_fitness": None, "peak_fitness": fit, "week_end": {}, "series": []}
+    d = start
+    while d < race_date:
+        if d == today:
+            out["today_fitness"] = fit
+        load = state["daily"].get(d, 0.0) if d < today else future(d)
+        fit += (load - fit) * k_fit
+        fat += (load - fat) * k_fat
+        out["peak_fitness"] = max(out["peak_fitness"], fit)
+        out["week_end"][monday(d).isoformat()] = fit
+        out["series"].append({"date": d.isoformat(), "fitness": round(fit, 1), "form": round(fit - fat, 1)})
+        d += timedelta(days=1)
+    if out["today_fitness"] is None:
+        out["today_fitness"] = fit
+    out["race_fitness"], out["race_form"] = fit, fit - fat
+    return out
+
+
+def simulate(state: dict, weeks: list[dict], rates: dict, today: date, race_date: date) -> dict:
+    """Plan : séances prévues à partir d'aujourd'hui. Comparaison « sans plan » : la charge moyenne
+    des 12 dernières semaines pleines, celle qui entretient la fitness actuelle, sans affûtage ;
+    semaine médiane de ces semaines, pour la régularité."""
     planned = {}
     for w in weeks:
         for s in w["sessions"]:
             if s["type"] != "course" and s.get("minutes"):
                 rate = rates["quality"] if s["hard"] else rates["easy"]
                 planned[s["date"]] = planned.get(s["date"], 0.0) + s["minutes"] * rate / 60
-    fit, fat = state["fitness"], state["fatigue"]
-    d = date.fromisoformat(weeks[0]["monday"])
-    out = {"today_fitness": None, "peak_fitness": fit, "week_end": {}}
-    while d < race_date:
-        if d == today:
-            out["today_fitness"] = fit
-        load = state["daily"].get(d, 0.0) if d < today else planned.get(d.isoformat(), 0.0)
-        fit += (load - fit) * k_fit
-        fat += (load - fat) * k_fat
-        out["peak_fitness"] = max(out["peak_fitness"], fit)
-        out["week_end"][monday(d).isoformat()] = fit
-        d += timedelta(days=1)
-    if out["today_fitness"] is None:
-        out["today_fitness"] = fit
-    out["race_fitness"], out["race_form"] = fit, fit - fat
+    start = date.fromisoformat(weeks[0]["monday"])
+    out = _run(state, start, race_date, today, lambda d: planned.get(d.isoformat(), 0.0))
+    weeks_load = [sum(state["daily"].get(start - timedelta(weeks=w, days=-i), 0.0) for i in range(7))
+                  for w in range(1, CONTINUE_WEEKS + 1)]
+    mean = sum(weeks_load) / CONTINUE_WEEKS
+    out["continue"] = _run(state, start, race_date, today, lambda d: mean / 7)
+    out["continue"]["weekly_load"] = round(mean)
+    out["continue"]["median_week"] = round(median(weeks_load))
     return out
 
 
@@ -323,6 +342,13 @@ def _finish(week: dict, sessions: list[dict], load: float, rates: dict) -> dict:
 
 # ---------- plan complet ----------
 
+def _race_form(pct: float) -> tuple[str, str]:
+    """Zone de fraîcheur relative (% de la fitness) le jour d'une course : mêmes seuils que la page
+    Forme, rapportés à la fitness ; être très frais un jour de course n'est pas un défaut."""
+    key, label = stats.form_zone(pct)
+    return key, "Très frais, bien reposé" if key == "transition" else label
+
+
 def build_plan(race: dict, today: date, acts, availability: list[dict], max_sessions: int | None,
                habits: list[dict], paces: dict, lthr: float | None) -> dict | None:
     """Plan de la semaine en cours à la course A. race : échéance du coach avec duration_s (temps
@@ -370,14 +396,27 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
     # fraîcheur relative (% de la fitness) : mêmes seuils que la page Forme, mais rapportés à la
     # fitness, pour valoir quel que soit le volume du coureur (convention d'intervals.icu)
     form_pct = sim["race_form"] / sim["race_fitness"] * 100 if sim["race_fitness"] > 0 else 0.0
-    form_key, form_label = stats.form_zone(form_pct)
-    if form_key == "transition":                   # le jour d'une course, être très frais n'est pas un défaut
-        form_label = "Très frais, bien reposé"
+    form_key, form_label = _race_form(form_pct)
+    cont = sim["continue"]
+    cont_pct = cont["race_form"] / cont["race_fitness"] * 100 if cont["race_fitness"] > 0 else 0.0
+    cont_key, cont_label = _race_form(cont_pct)
+    hills = sum(1 for w in out for x in w["sessions"] if x["type"] in HILL_TYPES and x["type"] != "rappel")
+    longs = sum(1 for w in out for x in w["sessions"] if x["type"] == "sortie longue")
     pre_taper = [w["fitness_end"] for w in out if w["kind"] in ("charge", "allégée")]
     return {"version": PLAN_VERSION, "start_fitness": round(sim["today_fitness"], 1),
             "peak_fitness": round(max(pre_taper) if pre_taper else sim["peak_fitness"], 1),
             "race_form": round(sim["race_form"], 1), "race_form_pct": round(form_pct),
             "race_form_zone": form_key,
+            "continue": {"peak_fitness": round(max((p["fitness"] for p in cont["series"]),
+                                                   default=cont["race_fitness"]), 1),
+                         "race_fitness": round(cont["race_fitness"], 1),
+                         "race_form": round(cont["race_form"], 1),
+                         "race_form_pct": round(cont_pct), "race_form_zone": cont_key,
+                         "race_form_label": cont_label, "weekly_load": cont["weekly_load"],
+                         "median_week": cont["median_week"]},
+            "series": [{**p, "continue_fitness": c["fitness"], "continue_form": c["form"]}
+                       for p, c in zip(sim["series"], cont["series"], strict=True)],
+            "hill_sessions": hills, "long_runs": longs,
             "race_form_label": form_label, "peak_12m": state["peak_12m"],
             "capacity_limited": bool(capped), "capacity_fitness": round(max_load / 7, 1),
             "cap_fitness": round(cap_fitness, 1) if cap_fitness else None, "rates": rates,

@@ -544,3 +544,5 @@ details.tracked-add > summary { cursor: pointer; font-weight: 600; margin: 12px 
 .coach-sessions-list .coach-steps li { display: list-item; }
 .coach-steps .step-work > span:first-child { font-weight: 600; }
 .coach-steps .step-recovery, .coach-steps .step-warmup, .coach-steps .step-cooldown { color: var(--muted); }
+.coach-glance-title { margin: 4px 0 8px; }
+.chart-small { height: 240px; margin-bottom: 12px; }
