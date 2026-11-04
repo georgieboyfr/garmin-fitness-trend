@@ -89,7 +89,8 @@ def fitness_state(acts, today: date) -> dict:
             "peak_12m": round(peak, 1), "daily": daily}
 
 
-CONTINUE_WEEKS = 12             # « sans plan » : charge moyenne des 12 dernières semaines pleines
+CONTINUE_WEEKS = 12             # « sans plan » : charge moyenne des semaines pleines passées, autant
+CONTINUE_MAX_WEEKS = 52         # que le plan en compte, entre 12 et 52
 
 
 def _run(state: dict, start: date, race_date: date, today: date, future) -> dict:
@@ -116,7 +117,8 @@ def _run(state: dict, start: date, race_date: date, today: date, future) -> dict
     return out
 
 
-def simulate(state: dict, weeks: list[dict], rates: dict, today: date, race_date: date) -> dict:
+def simulate(state: dict, weeks: list[dict], rates: dict, today: date, race_date: date,
+             baseline: dict | None = None) -> dict:
     """Plan : séances prévues à partir d'aujourd'hui. Comparaison « sans plan » : la charge moyenne
     des 12 dernières semaines pleines, celle qui entretient la fitness actuelle, sans affûtage ;
     semaine médiane de ces semaines, pour la régularité."""
@@ -127,12 +129,17 @@ def simulate(state: dict, weeks: list[dict], rates: dict, today: date, race_date
                 planned[s["date"]] = planned.get(s["date"], 0.0) + session_load(s, rates)
     start = date.fromisoformat(weeks[0]["monday"])
     out = _run(state, start, race_date, today, lambda d: planned.get(d.isoformat(), 0.0))
-    weeks_load = [sum(state["daily"].get(start - timedelta(weeks=w, days=-i), 0.0) for i in range(7))
-                  for w in range(1, CONTINUE_WEEKS + 1)]
-    mean = sum(weeks_load) / CONTINUE_WEEKS
+    # « sans plan » : la charge moyenne d'une période aussi longue que le plan (12 semaines au moins,
+    # 52 au plus), pour ne pas prolonger un été en montagne sur tout un hiver
+    n = min(CONTINUE_MAX_WEEKS, max(CONTINUE_WEEKS, len(weeks)))
+    base = state["daily"] if baseline is None else baseline       # charge par jour, sans l'exceptionnel
+    weeks_load = [sum(base.get(start - timedelta(weeks=w, days=-i), 0.0) for i in range(7))
+                  for w in range(1, n + 1)]
+    mean = sum(weeks_load) / n
     out["continue"] = _run(state, start, race_date, today, lambda d: mean / 7)
     out["continue"]["weekly_load"] = round(mean)
     out["continue"]["median_week"] = round(median(weeks_load))
+    out["continue"]["weeks"] = n
     return out
 
 
@@ -177,17 +184,32 @@ def _run_kind(a: dict) -> str | None:
     return "easy" if hard < EASY_MAX_HARD_SHARE else "hard" if hard >= QUALITY_MIN_HARD_SHARE else "steady"
 
 
+def ordinary(acts, today: date, race_ids=(), keep_races: bool = False) -> list[dict]:
+    """Sorties ordinaires d'avant aujourd'hui : sans les sorties exceptionnelles (plus de 3 h, ou
+    charge au-delà du 97e centile, comme un séjour en montagne) ni, sauf keep_races, les courses
+    confirmées (qui, elles, restent comptées même longues quand keep_races)."""
+    past = [a for a in acts if a["start"].date() < today]
+    loads = [a["hrss"] for a in past if a.get("hrss")]
+    cut = quantiles(loads, n=100)[EXCEPTIONAL_PCTL - 1] if len(loads) >= 30 else math.inf
+    out = []
+    for a in past:
+        race = a.get("id") in race_ids
+        if race and not keep_races:
+            continue
+        if not race and ((a.get("hrss") or 0) > cut or (a.get("moving_duration_s") or 0) > EXCEPTIONAL_S):
+            continue
+        out.append(a)
+    return out
+
+
 def rising_periods(acts, today: date, race_ids=()) -> dict | None:
     """Ce qui a fait monter la fitness du coureur : périodes de 8 semaines où sa fitness, calculée
     sans les courses ni les sorties exceptionnelles (charge au-delà du 97e centile, plus de 3 h), a
     gagné au moins 5 points, sans chevauchement ; sorties, temps et charge par semaine, charge par
     heure et part du temps facile, soutenu et en séance. None sous 2 périodes."""
-    with_load = [a for a in acts if a.get("hrss") and a["start"].date() < today]
-    if len(with_load) < 30:
+    if sum(1 for a in acts if a.get("hrss") and a["start"].date() < today) < 30:
         return None
-    cut = quantiles([a["hrss"] for a in with_load], n=100)[EXCEPTIONAL_PCTL - 1]
-    normal = [a for a in with_load if a.get("id") not in race_ids and a["hrss"] <= cut
-              and (a.get("moving_duration_s") or 0) <= EXCEPTIONAL_S]
+    normal = [a for a in ordinary(acts, today, race_ids) if a.get("hrss")]
     daily = {}
     for a in normal:
         daily[a["start"].date()] = daily.get(a["start"].date(), 0.0) + a["hrss"]
@@ -363,6 +385,9 @@ def race_calendar(others: list[dict], start: date, race_date: date) -> dict:
             out["rest"].add(d - timedelta(days=1))
             out["easy"].update(d - timedelta(days=k) for k in range(2, B_TAPER_DAYS + 1))
         n = recovery_days(r)
+        # lendemain au repos complet (course B, ou C d'au moins une heure), puis récupération
+        if r.get("priority") != "C" or (r.get("duration_s") or 0) >= 3600:
+            out["rest"].add(d + timedelta(days=1))
         out["recovery"].update(d + timedelta(days=k) for k in range(1, n + 1))
         out["recovery_end"][r["race_date"]] = (d + timedelta(days=n)).isoformat()
     out["easy"] |= out["recovery"]
@@ -737,6 +762,63 @@ def long_extensions(weeks: list[dict], days: list[dict], race: dict, enabled: bo
     return out
 
 
+READY_WEEKS = 8                 # « aujourd'hui » : les 8 dernières semaines pleines
+
+
+def readiness(acts, today: date, weeks: list[dict], race: dict, n_days: int) -> list[dict]:
+    """Ce que la course demande, ce que le coureur fait aujourd'hui (8 dernières semaines pleines,
+    courses comprises) et ce que le plan lui fait faire : sortie la plus longue, sorties longues,
+    D+ par semaine (trail), séances par mois, semaines régulières, fraîcheur du jour J. Chaque
+    repère : now, plan, need (None si sans objet), et ok quand le plan atteint le besoin."""
+    start = monday(today) - timedelta(weeks=READY_WEEKS)
+    recent = [a for a in acts if start <= a["start"].date() < monday(today)]
+    race_min = (race.get("duration_s") or 0) / 60
+    long_need = min(LONG_RACE_SHARE * race_min, LONG_MAX_MIN) if race_min else None
+    long_min = max(60.0, 0.5 * race_min) if race_min else 90.0
+    pre = [w for w in weeks if w["kind"] in ("charge", "allégée")]
+    last8 = pre[-READY_WEEKS:]
+    sess = [x for w in weeks for x in w["sessions"] if x["type"] != "course"]
+    by_week = {}
+    for a in recent:
+        k = (a["start"].date() - start).days // 7
+        by_week.setdefault(k, []).append(a)
+    weekly_gain = sorted(sum(a.get("gain_m") or 0 for a in by_week.get(k, [])) for k in range(READY_WEEKS))
+    spec = [w["gain_m"] for w in weeks if w["phase"] == "spécifique" and w["kind"] == "charge"]
+    hard_recent = sum(1 for a in recent if _run_kind(a) == "hard")
+    hard_plan = sum(1 for w in pre for x in w["sessions"] if x["hard"] and x["type"] != "course")
+    regular = max(1, n_days)
+    out = [
+        {"key": "long", "label": "Sortie la plus longue", "unit": "min",
+         "now": round(max(((a.get("moving_duration_s") or 0) / 60 for a in recent), default=0)),
+         "plan": max((x["minutes"] or 0 for x in sess if x["type"] == "sortie longue"), default=0),
+         "need": round(long_need) if long_need else None,
+         "why": "La durée de la course s'apprend en sortie longue : jusqu'à 90 % de son temps, 3 h au plus."},
+        {"key": "longs", "label": f"Sorties de {round(long_min)} min et plus", "unit": "en 8 sem.",
+         "now": sum(1 for a in recent if (a.get("moving_duration_s") or 0) / 60 >= long_min),
+         "plan": sum(1 for w in last8 for x in w["sessions"]
+                     if x["type"] == "sortie longue" and (x["minutes"] or 0) >= long_min),
+         "need": None, "why": "Sur les 8 semaines avant l'affûtage : la moitié de la durée de la course."},
+        {"key": "hard", "label": "Séances par mois", "unit": "",
+         "now": round(hard_recent / READY_WEEKS * 4, 1),
+         "plan": round(hard_plan / max(1, len(pre)) * 4, 1), "need": None,
+         "why": "Séances de qualité (au moins 20 % du temps en zone 3 et plus), courses comprises."},
+        {"key": "regular", "label": f"Semaines d'au moins {regular} sorties", "unit": "sur 8",
+         "now": sum(1 for k in range(READY_WEEKS) if len(by_week.get(k, [])) >= regular),
+         "plan": sum(1 for w in last8 if len([x for x in w["sessions"] if not x.get("optional")]) >= regular),
+         "need": None, "why": "La régularité fait progresser plus que les grosses semaines isolées."},
+    ]
+    if is_trail(race) and race.get("gain_m"):
+        out.insert(1, {"key": "gain", "label": "D+ par semaine", "unit": "m",
+                       "now": round(weekly_gain[len(weekly_gain) // 2], -1),
+                       "plan": round(sorted(spec)[len(spec) // 2], -1) if spec else 0,
+                       "need": round(race["gain_m"], -1),
+                       "why": "Semaine médiane ; en phase spécifique, le plan vise le D+ de la course."})
+    for r in out:
+        r["ok"] = r["need"] is not None and r["plan"] >= 0.95 * r["need"]
+        r["better"] = r["plan"] > r["now"]
+    return out
+
+
 def _spread(index: int, per_week: float) -> int:
     """Nombre d'occurrences en semaine `index` d'une chose prévue `per_week` fois par semaine en
     moyenne, réparties régulièrement (0,5 : une semaine sur deux)."""
@@ -850,7 +932,11 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
                                                       or built["planned_load"] < load - CAPPED_MARGIN)
         fitness = fitness_after(fitness, built["planned_load"])
         out.append(built)
-    sim = simulate(state, out, rates, today, race_date)
+    baseline = {}
+    for a in ordinary(acts, today, race_ids, keep_races=True):
+        if a.get("hrss"):
+            baseline[a["start"].date()] = baseline.get(a["start"].date(), 0.0) + a["hrss"]
+    sim = simulate(state, out, rates, today, race_date, baseline)
     for w in out:
         w["fitness_end"] = round(sim["week_end"].get(w["monday"], fitness), 1)
     capped = [w for w in out if w.get("capped")]
@@ -876,10 +962,12 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
                          "race_form": round(cont["race_form"], 1),
                          "race_form_pct": round(cont_pct), "race_form_zone": cont_key,
                          "race_form_label": cont_label, "weekly_load": cont["weekly_load"],
-                         "median_week": cont["median_week"]},
+                         "median_week": cont["median_week"], "weeks": cont["weeks"]},
             "series": [{**p, "continue_fitness": c["fitness"], "continue_form": c["form"]}
                        for p, c in zip(sim["series"], cont["series"], strict=True)],
             "hill_sessions": hills, "long_runs": longs, "longest_run": longest, "history": history,
+            "readiness": readiness(ordinary(acts, today, race_ids, keep_races=True), today, out, race,
+                                   len([d for d in days if d.get("status") != "optionnel"])),
             "steady_runs": sum(1 for w in out for x in w["sessions"] if x["type"] == "footing soutenu"),
             "options": {"ramp_pct": ramp_pct, "long_extension": extend},
             "race_form_label": form_label, "peak_12m": state["peak_12m"],

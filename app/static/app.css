@@ -543,6 +543,7 @@ details.tracked-add > summary { cursor: pointer; font-weight: 600; margin: 12px 
 .coach-plan-races .coach-banner { margin-bottom: 8px; }
 .coach-plan-races .is-main b { font-size: 1.05em; }
 .coach-week.has-race > summary { font-weight: 600; }
+.coach-ready td.state-good { color: var(--up); }
 .coach-period-list { list-style: none; padding: 0; margin: 0 0 12px; }
 .coach-period-list li { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0; }
 .coach-kpis { margin-bottom: 12px; }

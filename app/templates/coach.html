@@ -49,21 +49,33 @@
   </ul>
   {% set c = plan.continue %}
   {% set week_load = plan.weeks | selectattr("kind", "equalto", "charge") | map(attribute="planned_load") | max if plan.weeks | selectattr("kind", "equalto", "charge") | list else none %}
-  <h3 class="coach-glance-title">Le plan en un coup d'œil {{ tip("Comparé à « sans plan » : tu continues avec ta charge moyenne des 12 dernières semaines, sans affûtage. Même modèle que la page Forme (fitness sur 6 semaines, fatigue sur une semaine), mêmes chiffres de départ.") }}</h3>
+  <h3 class="coach-glance-title">Le plan en un coup d'œil {{ tip("Comparé à « sans plan » : tu continues avec ta charge moyenne d'une période passée aussi longue que le plan (12 à 52 semaines), sans affûtage. Même modèle que la page Forme (fitness sur 6 semaines, fatigue sur une semaine), mêmes chiffres de départ.") }}</h3>
   <section class="kpis coach-kpis">
-    <article class="kpi state-{{ 'good' if plan.race_form_zone in ('fresh', 'transition') else 'warn' }}"><header>Le jour J {{ tip("La fraîcheur (fitness moins fatigue, comme sur la page Forme), rapportée à ta fitness pour valoir quel que soit ton volume : de 5 à 25 %, frais et prêt pour une course. C'est elle qui fait la performance du jour : l'affûtage échange un peu de fitness contre beaucoup de fraîcheur.") }}</header>
-      <div class="kpi-value">{{ '+' if plan.race_form > 0 }}{{ plan.race_form | string | replace(".", ",") }}</div>
-      <footer class="muted">{{ plan.race_form_label | lower }} ({{ plan.race_form_pct }} % de ta fitness) · sans plan : {{ '+' if c.race_form > 0 }}{{ c.race_form | string | replace(".", ",") }}, {{ c.race_form_label | lower }}</footer></article>
-    {% if week_load %}<article class="kpi state-good"><header>Régularité {{ tip("La charge (HRSS) d'une semaine de charge du plan, face à ta semaine médiane des 12 dernières semaines : c'est la régularité, plus que les grosses semaines isolées, qui fait progresser.") }}</header>
-      <div class="kpi-value">{{ week_load }}<span class="kpi-unit">par sem.</span></div>
-      <footer class="muted">ta semaine médiane : {{ c.median_week }} (moyenne {{ c.weekly_load }}, portée par quelques grosses semaines)</footer></article>{% endif %}
-    <article class="kpi state-good"><header>Travail spécifique</header>
-      <div class="kpi-value">{{ plan.hill_sessions }}<span class="kpi-unit">séances en côte</span></div>
-      <footer class="muted">et {{ plan.long_runs }} sortie{{ "s" if plan.long_runs > 1 }} longue{{ "s" if plan.long_runs > 1 }}, d'ici la course</footer></article>
-    <article class="kpi"><header>Fitness {{ tip("La fitness se construit sur environ 6 semaines : sur un plan court, elle bouge peu, et l'affûtage la fait un peu reculer. Tes disponibilités fixent aussi le niveau qu'elle peut atteindre.") }}</header>
-      <div class="kpi-value">{{ plan.start_fitness | string | replace(".", ",") }} → {{ plan.peak_fitness | string | replace(".", ",") }}</div>
-      <footer class="muted">au plus haut avant l'affûtage · sans plan : {{ c.peak_fitness | string | replace(".", ",") }}</footer></article>
+    <article class="kpi state-{{ 'good' if plan.race_form_zone in ('fresh', 'transition') else 'warn' }}"><header>Fraîcheur le jour J {{ tip("La fraîcheur (fitness moins fatigue, comme sur la page Forme), rapportée à ta fitness pour valoir quel que soit ton volume : de 5 à 25 %, frais et prêt pour une course. C'est elle qui fait la performance du jour : l'affûtage échange un peu de fitness contre beaucoup de fraîcheur.") }}</header>
+      <div class="kpi-value">{{ plan.race_form_pct }} %</div>
+      <footer class="muted">{{ plan.race_form_label | lower }} · sans plan : {{ c.race_form_pct }} %, {{ c.race_form_label | lower }}</footer></article>
+    <article class="kpi state-{{ 'good' if plan.race_fitness >= c.race_fitness else 'warn' }}"><header>Fitness le jour J {{ tip("La fitness du matin de la course, après l'affûtage. Sans plan : ta charge moyenne des dernières semaines (autant que le plan en compte) prolongée jusqu'à la course.") }}</header>
+      <div class="kpi-value">{{ plan.race_fitness | string | replace(".", ",") }}</div>
+      <footer class="muted">aujourd'hui {{ plan.start_fitness | string | replace(".", ",") }}, au plus haut {{ plan.peak_fitness | string | replace(".", ",") }} · sans plan : {{ c.race_fitness | string | replace(".", ",") }} (moyenne de tes {{ c.weeks }} dernières semaines)</footer></article>
   </section>
+  {% if plan.readiness %}
+  <h3 class="coach-glance-title">Prêt pour le jour J {{ tip("Ce que tu fais aujourd'hui (tes 8 dernières semaines pleines), ce que le plan te fait faire d'ici la course, et ce que la course demande quand c'est mesurable.") }}</h3>
+  <div class="table-wrap">
+    <table class="data coach-ready">
+      <thead><tr><th></th><th>Tes 8 dernières semaines</th><th>Avec le plan</th><th>La course demande</th></tr></thead>
+      <tbody>
+        {% for r in plan.readiness %}
+        <tr>
+          <td>{{ r.label }} {{ tip(r.why) }}</td>
+          <td>{{ r.now | string | replace(".0", "") | replace(".", ",") }} {{ r.unit }}</td>
+          <td class="strong {{ 'state-good' if r.ok or (r.need is none and r.better) }}">{{ r.plan | string | replace(".0", "") | replace(".", ",") }} {{ r.unit }}{% if r.better %} ↑{% endif %}</td>
+          <td class="muted">{% if r.need is not none %}{{ r.need | string | replace(".0", "") }} {{ r.unit }}{% if r.ok %} ✓{% endif %}{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
   {% if plan.history %}{% set h = plan.history %}{% set charge = plan.weeks | selectattr("kind", "equalto", "charge") | list %}
   <p class="small muted">Tes hausses passées {{ tip("Les périodes de 8 semaines où ta fitness a gagné au moins 5 points, sans compter les courses ni les sorties exceptionnelles (les 3 % les plus chargées, plus de 3 h). Le plan reprend leur mélange : la part du temps facile, soutenu et en séance fixe la charge que peut porter ton temps disponible, et une part de sorties soutenues.") }} ({{ h.periods }} périodes de 8 semaines) : {{ h.runs_per_week | string | replace(".", ",") }} sorties, {{ h.weekly_min }} min et {{ h.weekly_load }} de charge par semaine ; {{ (h.time_share.easy * 100) | round | int }} % du temps facile, {{ (h.time_share.steady * 100) | round | int }} % soutenu, {{ (h.time_share.hard * 100) | round | int }} % dans des séances.{% if charge %} Le plan, semaine de charge médiane : {{ (charge | map(attribute="minutes") | sort | list)[charge | length // 2] }} min et {{ (charge | map(attribute="planned_load") | sort | list)[charge | length // 2] }} de charge, {{ plan.steady_runs }} sorties soutenues d'ici la course.{% endif %}</p>
   {% endif %}
@@ -322,7 +334,7 @@
       series: [
         { name: "Fitness, plan", type: "line", symbol: "none", lineStyle: { width: 3, color: t.accent },
           itemStyle: { color: t.accent }, data: pts.map((p) => p.fitness) },
-        { name: "Fitness, sans plan", type: "line", symbol: "none",
+        { name: "Fitness, sans plan (ta moyenne)", type: "line", symbol: "none",
           lineStyle: { width: 2, type: "dashed", color: t.accent }, itemStyle: { color: t.accent },
           data: pts.map((p) => p.continue_fitness) },
         { name: "Fraîcheur, plan", type: "line", symbol: "none", lineStyle: { width: 3, color: t.series[2] },

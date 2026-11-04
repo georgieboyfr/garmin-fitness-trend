@@ -438,3 +438,23 @@ def test_plan_follows_periods_with_a_reprise_after_illness():
     assert by["2026-12-07"]["periods"][0]["kind"] == "reprise"
     assert by["2026-12-07"]["target_load"] < ref["2026-12-07"]["target_load"]
     assert plan["race_fitness"] < alone["race_fitness"]
+
+
+def test_readiness_compares_recent_weeks_plan_and_race():
+    acts = [run(TODAY - timedelta(days=i), 60, 90, 0.0) for i in range(1, 200, 2)]
+    days = avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 60), (5, "oui", 150))
+    plan = cp.build_plan({**RACE, "race_date": "2027-03-28", "duration_s": 3 * 3600}, TODAY, acts, days, None,
+                         [], {}, 170)
+    by = {r["key"]: r for r in plan["readiness"]}
+    assert {"long", "gain", "longs", "hard", "regular"} <= set(by)
+    assert by["long"]["need"] == 162 and by["gain"]["need"] == 1500
+    assert by["long"]["now"] == 90 and by["long"]["plan"] > 90
+    assert plan["continue"]["weeks"] == min(52, max(12, len(plan["weeks"])))
+
+
+def test_day_after_a_race_is_a_rest_day():
+    cal = cp.race_calendar([side_race(date(2026, 12, 13), "B")], date(2026, 11, 2), date(2027, 5, 22))
+    assert date(2026, 12, 14) in cal["rest"]
+    short_c = cp.race_calendar([side_race(date(2026, 12, 13), "C", minutes=40)], date(2026, 11, 2),
+                               date(2027, 5, 22))
+    assert date(2026, 12, 14) not in short_c["rest"]
