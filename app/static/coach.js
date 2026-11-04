@@ -160,6 +160,12 @@
     }));
   }
 
+  // deux propositions par séance : la seconde choisie, ou retour à celle du coach
+  document.querySelectorAll("[data-choice]").forEach((btn) => btn.addEventListener("click", () => {
+    send("/coach/choix", { date: btn.dataset.choice, label: btn.dataset.label || null },
+         btn.parentElement.querySelector("[role=status]"), "semaine");
+  }));
+
   // habitudes gardées
   const habits = document.querySelector("form.coach-habits");
   if (habits) habits.addEventListener("submit", (ev) => {

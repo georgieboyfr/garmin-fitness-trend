@@ -423,3 +423,35 @@ def test_coach_settings_show_orientation_and_period_effect(client, config):
     assert client.post("/coach/profil", json={"orientation": "sprint"}).status_code == 400
     r = client.get("/coach?vue=plan")
     assert r.status_code == 200
+
+
+def test_coach_choice_and_library(client, config):
+    assert client.post("/coach/choix", json={"date": "2026-11-05", "label": "Seuil"}).status_code == 401
+    login(client)
+    assert client.post("/coach/choix", json={"date": "jeudi", "label": "Seuil"}).status_code == 400
+    assert client.post("/coach/choix", json={"date": "2026-11-05", "label": "Seuil"}).status_code == 200
+    from app import coach
+    conn = db.connect(config.db_path)
+    assert coach.choices(conn) == {"2026-11-05": "Seuil"}
+    assert client.post("/coach/choix", json={"date": "2026-11-05", "label": None}).status_code == 200
+    assert coach.choices(conn) == {}
+    conn.close()
+    r = client.get("/coach?vue=seances")
+    assert r.status_code == 200 and "Bibliothèque de séances" in r.text and "Pyramide" in r.text
+
+
+def test_coach_race_page_shows_km_splits(client, config):
+    from app import coach
+    conn = db.connect(config.db_path)
+    with conn:
+        race_id = coach.create(conn, {"name": "10 km du lac", "race_date": "2027-02-14", "priority": "A",
+                                      "gpx_id": None, "distance_m": 10000.0, "gain_m": 0.0,
+                                      "target_s": 2700.0})
+    conn.close()
+    assert client.get(f"/coach/courses/{race_id}", follow_redirects=False).status_code in (302, 303, 307)
+    login(client)
+    r = client.get(f"/coach/courses/{race_id}")
+    assert r.status_code == 200 and "10 km du lac" in r.text and "estimateur?distance=10" in r.text
+    assert client.get("/coach/courses/999").status_code == 404
+    r = client.get("/coach?vue=echeances")
+    assert f'href="/coach/courses/{race_id}"' in r.text

@@ -579,3 +579,87 @@ def with_gain(s: dict, p: dict) -> dict:
         s["gain_m"] = round(minutes / 60 * p.get("easy_vam", 0) * factor, -1)
     s.setdefault("gain_m", 0)
     return s
+
+
+# ---------- deux propositions par séance (étape 9) ----------
+
+HILLY = {"côtes", "côtes longues", "vma en côte", "montée au seuil", "marche en côte", "descente",
+         "sprints en côte"}
+
+
+def alternative(phase: str, kind: str, rank: int, trail: bool, week_in_phase: int, p: dict, day_max: float,
+                main: dict) -> dict | None:
+    """Seconde proposition pour une séance de qualité, au même rôle : la variante suivante du
+    catalogue de la semaine, sur l'autre terrain si possible (côtes contre plat), sinon simplement
+    d'un autre type. Aucune en semaine d'affûtage ou de course (le rappel est la séance)."""
+    if kind in ("affûtage", "course"):
+        return None
+    if kind == "allégée":
+        options = LIGHT
+    elif rank == 0:
+        options = QUALITY[(phase, trail)]
+    else:
+        options = SECOND
+    hilly = main["type"] in HILLY
+    candidates = []
+    for shift in range(1, len(options)):
+        make, level = rotate(options, week_in_phase, shift)
+        s = with_gain(fit(lambda lv, compact=False, m=make: m(lv, p, compact), level, day_max), p)
+        if s["type"] != main["type"]:
+            candidates.append(s)
+    if not candidates:
+        return None
+    other = [s for s in candidates if (s["type"] in HILLY) != hilly]
+    return (other or candidates)[0]
+
+
+def long_alternative(phase: str, kind: str, trail: bool, week_in_phase: int, variant: str, minutes: float,
+                     p: dict, km: bool) -> dict | None:
+    """Seconde proposition pour la sortie longue : une autre variante de la phase (ou, à défaut,
+    progressive sur route, avec descentes en trail), même durée, en endurance."""
+    phase_key = (phase, trail) if (phase, trail) in LONG else None
+    options = list(LONG[phase_key]) if phase_key else []
+    options += ["vallonnée", "descentes"] if trail else ["progressive", "classique"]
+    other = next((v for v in options if v != variant), None)
+    return long_run(other, minutes, p, km) if other else None
+
+
+def easy_alternative(s: dict, p: dict) -> dict:
+    """Seconde proposition pour un footing : vallonné au lieu du plat, ou l'inverse, même durée."""
+    hilly = s["type"] == "footing vallonné"
+    return easy_run(s["minutes"], p, not hilly, km=hilly)
+
+
+# ---------- bibliothèque de séances (étape 9) ----------
+
+def library(p: dict) -> list[dict]:
+    """Toutes les séances du coach par famille, au premier palier et au plus haut, avec les allures
+    et la FC du coureur : pour choisir, remplacer ou simplement s'inspirer."""
+    def both(make):
+        first, last = make(0, p), make(9, p)
+        same = last["label"] == first["label"] and last["minutes"] == first["minutes"]
+        return [first] if same else [first, last]
+    return [
+        {"family": "Endurance", "why": "La base : 80 % du temps, en aisance respiratoire.",
+         "sessions": [easy_run(45, p, False), easy_run(50, p, True), steady_run(50, p), strides(40, p)]},
+        {"family": "Sorties longues",
+         "why": "L'endurance pour durer ; une fin rapide apprend à accélérer fatigué.",
+         "sessions": [long_run("classique", 90, p), long_run("progressive", 90, p),
+                      long_run("classique", 90, p, steady_finish=True),
+                      long_run("vallonnée", 100, p, km=False),
+                      long_run("descentes", 100, p, km=False), long_run("spécifique", 110, p, km=False)]},
+        {"family": "Fartlek et pyramide", "why": "Des changements d'allure au feeling, pour varier.",
+         "sessions": both(fartlek) + both(pyramid)},
+        {"family": "Seuil et tempo",
+         "why": "L'allure qu'on tiendrait une heure : le moteur des courses longues.",
+         "sessions": both(seuil) + both(tempo)},
+        {"family": "VMA", "why": "Courtes et vives : la vitesse maximale aérobie, pour le 10 km et moins.",
+         "sessions": both(vma)},
+        {"family": "Côtes", "why": "Force et puissance, et le terrain des trails.",
+         "sessions": [with_gain(s, p) for s in both(hill_sprints) + both(hills_short) + both(hills_medium)
+                      + both(hills_long)]},
+        {"family": "Trail", "why": "Monter longtemps, marcher vite, descendre sans se faire mal.",
+         "sessions": [with_gain(s, p) for s in both(uphill_tempo) + both(power_hike) + both(downhill)]},
+        {"family": "Allure course et tests", "why": "Les sensations du jour J, et un repère de forme.",
+         "sessions": both(race_pace) + [test_run(False, p), test_run(True, p)]},
+    ]

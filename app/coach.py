@@ -109,6 +109,22 @@ def keep_target(conn, race_id: int, week: date):
         conn.execute("UPDATE coach_races SET target_kept_week=? WHERE id=?", (week.isoformat(), race_id))
 
 
+def choices(conn) -> dict[str, str]:
+    """Choix du coureur entre les deux propositions d'une séance : {jour : libellé du coach}."""
+    return {r["day"]: r["label"] for r in conn.execute("SELECT day, label FROM coach_choices")}
+
+
+def save_choice(conn, day: date, label: str | None):
+    """Seconde proposition choisie pour la séance d'un jour (label : celle du coach à ce moment),
+    ou retour à la proposition du coach (None)."""
+    with conn:
+        if label:
+            conn.execute("INSERT OR REPLACE INTO coach_choices (day, label, chosen_at) VALUES (?, ?, ?)",
+                         (day.isoformat(), label[:200], _now()))
+        else:
+            conn.execute("DELETE FROM coach_choices WHERE day=?", (day.isoformat(),))
+
+
 def predictions(conn, race_id: int) -> list[dict]:
     return [dict(r) for r in conn.execute(
         "SELECT * FROM coach_predictions WHERE race_id=? ORDER BY week", (race_id,))]
@@ -377,6 +393,61 @@ def proposed_target(cfg, race: dict, today: date, data: dict, factors: dict, dem
         return None
     factor = factors["trail" if race.get("gpx_id") else "road"]
     return {k: round(result[k] * factor) for k in ("optimistic_s", "realistic_s", "prudent_s")}
+
+
+# ---------- temps de passage km par km (fiche d'une échéance) ----------
+
+LAST_KM_MIN = 0.05              # dernier km partiel compté au-delà de 50 m
+
+
+def km_splits(km: list[float], time: list[float], distance_m: float,
+              altitude: list[float] | None = None) -> list[dict]:
+    """Passages à chaque km à partir du temps cumulé le long du parcours (km, temps en s, altitude
+    facultative) : temps du km, allure, passage, D+ et D− du km ; le dernier km partiel compte
+    s'il dépasse 50 m."""
+    total_km = distance_m / 1000
+    marks = [float(k) for k in range(1, int(total_km) + 1)]
+    if not marks or total_km - marks[-1] > LAST_KM_MIN:
+        marks.append(total_km)
+    passages = np.interp(marks, km, time)
+    alts = np.interp(marks, km, altitude) if altitude else None
+    rows, prev_k, prev_t = [], 0.0, 0.0
+    for i, (k, t) in enumerate(zip(marks, passages, strict=True)):
+        gain = loss = 0.0
+        if altitude:
+            inside = [a for x, a in zip(km, altitude, strict=True) if prev_k < x < k]
+            start = float(np.interp(prev_k, km, altitude))
+            path = [start, *inside, float(alts[i])]
+            diffs = np.diff(path)
+            gain, loss = float(diffs[diffs > 0].sum()), float(-diffs[diffs < 0].sum())
+        length = k - prev_k
+        rows.append({"km": round(k, 2), "length_km": round(length, 2), "split_s": round(float(t) - prev_t, 1),
+                     "passage_s": round(float(t), 1), "pace_s_km": round((float(t) - prev_t) / length, 1),
+                     "gain_m": round(gain), "loss_m": round(loss)})
+        prev_k, prev_t = k, float(t)
+    return rows
+
+
+def race_splits(cfg, race: dict, today: date, data: dict, dem=None) -> dict | None:
+    """Passages km par km d'une échéance pour le temps réaliste de l'estimateur : sur un GPX, le
+    profil des temps de l'estimateur trail (pente, fatigue, arrêts aux ravitos) ; sur route, une
+    allure régulière. base_s : le temps qu'ils somment, à mettre à l'échelle d'un autre temps."""
+    if race.get("gpx_id"):
+        result = tracked.predict(cfg, race, today, data, dem)
+        if not result or not result.get("chart"):
+            return None
+        chart = result["chart"]
+        rows = km_splits(chart["km"], chart["time"], result["distance_m"], chart["altitude"])
+        return {"kind": "gpx", "distance_m": result["distance_m"], "gain_m": result["gain_m"],
+                "base_s": rows[-1]["passage_s"], "kms": rows, "aid": chart.get("aid") or []}
+    if not race.get("distance_m"):
+        return None
+    est = proposed_target(cfg, race, today, data, {"road": 1.0, "trail": 1.0}, dem)
+    if not est:
+        return None
+    rows = km_splits([0.0, race["distance_m"] / 1000], [0.0, est["realistic_s"]], race["distance_m"])
+    return {"kind": "road", "distance_m": race["distance_m"], "gain_m": race.get("gain_m") or 0,
+            "base_s": est["realistic_s"], "kms": rows, "aid": []}
 
 
 # ---------- temps prévu le jour J (étape 5) ----------

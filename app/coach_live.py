@@ -21,6 +21,7 @@ from . import (
     coach_plan,
     coach_review,
     coach_week,
+    coach_workouts,
     estimator,
     metrics_job,
     physio,
@@ -46,6 +47,7 @@ class Coach:
         self.lthr_est = metrics_job.lthr_estimate(conn, today)
         self.hr_max = metrics_job.params_of(cfg, conn)["hr_max"]
         self.reviews = coach_review.all_reviews(conn)
+        self.choices = coach.choices(conn)
         self.cal = coach.calendar(self.races, today)
         self.inferred = coach.availability_from_history(self.data["acts"], today)
         self.habits = coach.effective_habits(self.profile["habits"],
@@ -68,7 +70,7 @@ class Coach:
         physio_now = physio.physiology(self.data["efforts"], day, self.lthr_est, self.hr_max,
                                        self.data["trend"])
         if not main:
-            return self.maintenance_on(day, cal, physio_now, adjust)
+            return coach_plan.apply_choices(self.maintenance_on(day, cal, physio_now, adjust), self.choices)
         others = [r for r in cal["upcoming"] if r["id"] != main["id"]] + [
             r for r in cal["past"]
             if (day - date.fromisoformat(r["race_date"])).days <= coach_plan.RECOVERY_LOOKBACK_DAYS]
@@ -76,8 +78,9 @@ class Coach:
                    "periods": self.profile["periods"], "start": coach.plan_start(main, cal["past"]),
                    "nuance": self.profile.get("nuance"),
                    "adjust": [a for a in adjust if a]}
-        return coach.plan_for(self.cfg, main, day, self.data, self.availability,
+        plan = coach.plan_for(self.cfg, main, day, self.data, self.availability,
                               self.profile["max_sessions"], self.habits, physio_now, options, others)
+        return coach_plan.apply_choices(plan, self.choices)
 
     def maintenance_on(self, day: date, cal: dict, physio_now: dict, adjust=()) -> dict:
         """Maintien de forme sans course à venir : récupération de la dernière course d'abord,
@@ -89,6 +92,15 @@ class Coach:
                    "orientation": self.profile.get("orientation")}
         return coach.maintenance_for(self.cfg, day, self.data, self.availability,
                                      self.profile["max_sessions"], self.habits, physio_now, options, recent)
+
+    def library(self) -> list[dict]:
+        """Bibliothèque de séances avec les allures, la FC et la vitesse de montée du coureur."""
+        physio_now = physio.physiology(self.data["efforts"], self.today, self.lthr_est, self.hr_max,
+                                       self.data["trend"])
+        rates = coach_plan.load_rates(self.data["acts"], self.today)
+        paces = {**coach._paces(physio_now), "lthr": self.data.get("lthr"), "easy": rates["easy_pace"],
+                 "easy_vam": rates["easy_vam"], "race": None}
+        return coach_workouts.library(paces)
 
     def week_plan(self, monday_: date, depth: int = 0) -> dict | None:
         """Plan calculé le lundi d'une semaine (proposition d'objectif de la veille), réajustement

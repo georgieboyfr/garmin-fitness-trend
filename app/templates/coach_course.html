@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% from "_estimateur.html" import tip %}
+{% block title %}{{ race.name }} · Coach · Fitness Trend{% endblock %}
+
+{% block content %}
+{% set r = race %}
+<section class="hero">
+  <p class="small"><a href="/coach?vue=echeances">← Coach</a></p>
+  <h1>{{ r.name }}</h1>
+  <p class="muted"><span class="pill priority-{{ r.priority }}">{{ r.priority }}</span> <span data-short-date="{{ r.race_date }}"></span> · {% if r.days_left == 0 %}aujourd'hui{% elif r.days_left < 0 %}passée{% elif r.days_left < 14 %}dans {{ r.days_left }} jours{% else %}dans {{ r.weeks_left }} semaines{% endif %} · {{ r.route }} · <a href="{{ estimator_url }}">ouvrir dans l'estimateur</a></p>
+</section>
+
+<section class="card" id="temps">
+  <div class="estimate">
+    {% set p = r.projection or r.proposal %}
+    {% if p %}
+    <div class="estimate-main">
+      <span class="muted">{{ "Prévu le jour J" if r.projection else "Estimé aujourd'hui" }} {{ tip("Prévu le jour J : l'estimateur avec ta forme du dimanche soir, projeté sur la fitness que le plan te donne avant la course (recalculé chaque lundi). Estimé aujourd'hui : l'estimateur avec ta forme du jour. Correction de l'admin comprise.") }}</span>
+      <span class="estimate-time" data-chrono="{{ p.realistic_s }}"></span>
+    </div>
+    <div class="estimate-range">
+      <div><span class="muted">Optimiste</span> <b data-chrono="{{ p.optimistic_s }}"></b></div>
+      <div><span class="muted">Prudent</span> <b data-chrono="{{ p.prudent_s }}"></b></div>
+      {% if r.target_s %}<div><span class="muted">Objectif</span> <b data-chrono="{{ r.target_s }}"></b></div>{% endif %}
+    </div>
+    {% else %}<p class="muted">Estimation impossible pour l'instant.</p>{% endif %}
+  </div>
+</section>
+
+<section class="card" id="passages">
+  <div class="card-head">
+    <h2>Temps de passage km par km {{ tip("Sur un GPX, les passages suivent le profil de l'estimateur trail : chaque km selon sa pente et ton modèle allure-pente, la fatigue au-delà de 2 h et les arrêts aux ravitos. Sur route, une allure régulière. Change le temps visé : tous les passages sont mis à l'échelle, la répartition reste la même.") }}</h2>
+  </div>
+  {% if splits %}
+  {% set factor = (target_s / splits.base_s) if target_s else 1 %}
+  <form class="filters coach-splits-form" id="splits-form" data-base="{{ splits.base_s }}" data-distance="{{ splits.distance_m }}">
+    <label class="filter">Temps visé <input name="target" id="splits-target" inputmode="numeric" size="9" value=""></label>
+    <div class="segmented small">{% for label, v in choices %}<button type="button" data-target="{{ v }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ label }} <span data-chrono="{{ v }}"></span></button>{% endfor %}</div>
+    <span class="small muted" id="splits-status" role="status"></span>
+  </form>
+  <p class="small muted">Allure moyenne <b id="splits-pace" data-pace="{{ (target_s or splits.base_s) / splits.distance_m * 1000 }}"></b>{% if splits.kind == "gpx" %} · {{ (splits.distance_m / 1000) | round(1) | string | replace(".", ",") }} km, D+ {{ splits.gain_m }} m{% endif %}</p>
+  <div class="table-wrap">
+    <table class="data coach-splits">
+      <thead><tr><th>Km</th><th>Temps du km</th><th>Allure</th><th>Passage</th>{% if splits.kind == "gpx" %}<th>D+ / D−</th>{% endif %}</tr></thead>
+      <tbody>
+        {% for k in splits.kms %}
+        <tr data-split="{{ k.split_s }}" data-passage="{{ k.passage_s }}" data-length="{{ k.length_km }}">
+          <td class="strong">{{ k.km | string | replace(".0", "") | replace(".", ",") }}{% for a in splits.aid if a.km > k.km - k.length_km and a.km <= k.km %} <span class="pill priority-C" title="Ravitaillement">{{ a.name }}</span>{% endfor %}</td>
+          <td class="js-split" data-chrono="{{ k.split_s * factor }}"></td>
+          <td class="js-pace muted" data-pace="{{ k.pace_s_km * factor }}"></td>
+          <td class="js-passage strong" data-chrono="{{ k.passage_s * factor }}"></td>
+          {% if splits.kind == "gpx" %}<td class="muted">+{{ k.gain_m }} / −{{ k.loss_m }}</td>{% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Passages indisponibles : l'estimateur ne peut pas conclure sur ce parcours.</p>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    const form = document.getElementById("splits-form");
+    if (!form) return;
+    const base = Number(form.dataset.base), distance = Number(form.dataset.distance);
+    const input = document.getElementById("splits-target");
+    const status = document.getElementById("splits-status");
+    // « 1:45:00 », « 1h45 », « 45:30 » ou « 95 » (minutes) → secondes
+    const parse = (text) => {
+      const t = text.trim().toLowerCase().replace(/\s/g, "");
+      const m = t.match(/^(\d+)h(\d{1,2})?(?:m(?:in)?)?$/);
+      if (m) return Number(m[1]) * 3600 + Number(m[2] || 0) * 60;
+      const parts = t.split(":").map(Number);
+      if (!t || parts.some((p) => !Number.isFinite(p))) return NaN;
+      if (parts.length === 1) return parts[0] * 60;
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      return NaN;
+    };
+    const apply = (seconds) => {
+      const f = seconds / base;
+      document.querySelectorAll("tr[data-split]").forEach((tr) => {
+        tr.querySelector(".js-split").textContent = GFT.chrono(Number(tr.dataset.split) * f);
+        tr.querySelector(".js-pace").textContent = GFT.pace(Number(tr.dataset.split) * f / Number(tr.dataset.length));
+        tr.querySelector(".js-passage").textContent = GFT.chrono(Number(tr.dataset.passage) * f);
+      });
+      document.getElementById("splits-pace").textContent = GFT.pace(seconds / distance * 1000);
+    };
+    const buttons = form.querySelectorAll("[data-target]");
+    const pick = (seconds, btn) => {
+      input.value = GFT.chrono(seconds);
+      buttons.forEach((b) => b.setAttribute("aria-pressed", b === btn ? "true" : "false"));
+      status.textContent = "";
+      apply(seconds);
+    };
+    buttons.forEach((b) => b.addEventListener("click", () => pick(Number(b.dataset.target), b)));
+    if (buttons.length) input.value = GFT.chrono(Number(buttons[0].dataset.target));
+    else input.value = GFT.chrono(base);
+    input.addEventListener("input", () => {
+      const s = parse(input.value);
+      if (!Number.isFinite(s) || s <= 0) { status.textContent = "Format : 1:45:00, 1h45 ou 95 (minutes)."; return; }
+      status.textContent = "";
+      buttons.forEach((b) => b.setAttribute("aria-pressed", "false"));
+      apply(s);
+    });
+    form.addEventListener("submit", (ev) => ev.preventDefault());
+  })();
+</script>
+{% endblock %}

@@ -217,3 +217,13 @@ def test_clean_profile_takes_orientation_nuance_and_period_level():
     assert pain[0]["level"] is None
     with pytest.raises(ValueError):
         coach.clean_periods([{"kind": "noel", "start": "2026-12-24", "end": "2026-12-26", "level": "un peu"}])
+
+
+def test_km_splits_follow_the_cumulative_time_and_count_the_last_partial_km():
+    rows = coach.km_splits([0, 10.5], [0, 3150], 10500)                        # 5:00 /km régulier
+    assert [r["km"] for r in rows][-2:] == [10.0, 10.5] and len(rows) == 11
+    assert all(r["pace_s_km"] == pytest.approx(300) for r in rows)
+    assert rows[-1]["passage_s"] == pytest.approx(3150) and rows[-1]["split_s"] == pytest.approx(150)
+    hilly = coach.km_splits([0, 1, 2], [0, 600, 900], 2000, [100, 200, 150])    # une montée puis une descente
+    assert hilly[0]["split_s"] == 600 and hilly[0]["gain_m"] == 100 and hilly[1]["loss_m"] == 50
+    assert len(coach.km_splits([0, 2.03], [0, 600], 2030)) == 2                # 30 m de plus : pas de km

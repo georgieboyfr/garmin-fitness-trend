@@ -18,7 +18,7 @@ généraux (section 10 du brief) ; ce qui dépend du coureur est appris sur ses 
 """
 import math
 from datetime import date, timedelta
-from statistics import median, quantiles
+from statistics import median, pstdev, quantiles
 
 from . import coach_workouts as wk
 from . import estimator, stats
@@ -580,6 +580,11 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
         cost = q["minutes"] * (rates["quality"] if q["hard"] else rates["easy"]) / rates["easy"]
         if rank > 0 and budget - total_min + cost > QUALITY_MAX_SHARE * budget:
             break                                       # une seule séance : la seconde mangerait la semaine
+        alt = wk.alternative(phase, kind, rank, trail, week_in_phase, paces, d["max_min"], q)
+        if alt and kind == "charge" and alt["hard"] and rates.get("quality_min"):
+            alt = _fill(alt, min(d["max_min"], rates["quality_min"]), paces)
+        if alt:
+            q["alt"] = alt
         habit = habit_by_day.get(d["weekday"])
         if habit:
             q["label"] += f" ({habit['name']})"
@@ -645,6 +650,8 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
             s = wk.strides(max(MIN_EASY_MIN, minutes - 10), paces)
         else:
             s = wk.easy_run(minutes, paces, hilly, km=not hilly)
+            if not habit:
+                s["alt"] = wk.easy_alternative(s, paces)
         if habit:
             short = habit.get("moving_min") and minutes < habit["moving_min"] - 5
             s["label"] = f"{s['label']} : {habit['name']}"
@@ -654,6 +661,9 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
                          "habit": habit["name"] if habit else None})
     if long_day:
         s = wk.long_run(variant, long_min, paces, km=not trail, steady_finish=steady)
+        alt = wk.long_alternative(phase, kind, trail, week_in_phase, variant, long_min, paces, not trail)
+        if alt:
+            s["alt"] = alt
         s["level_min"] = level
         if long_min > long_day["max_min"]:
             s["extended"] = True
@@ -1157,6 +1167,7 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
         built["capped"] = w["kind"] == "charge" and not events and load >= week_cap(w) - 0.5
         fitness = fitness_after(fitness, built["planned_load"])
         out.append(built)
+    suggest_routes(out, habitual_routes(acts, today), today)
     baseline = smoothed_daily(acts, today, race_ids)
     sim = simulate(state, out, rates, today, race_date, baseline)
     for w in out:
@@ -1198,6 +1209,104 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
             "cap_fitness": round(cap_fitness, 1) if cap_fitness else None, "rates": rates,
             "days": days, "capacity_min": capacity_min, "weeks": out,
             "race_fitness": round(sim["race_fitness"], 1), "trail": is_trail(race)}
+
+
+# ---------- parcours habituels et monotonie (étape 9) ----------
+
+ROUTE_WEEKS = 52                # parcours habituels : courus au moins 3 fois sur l'année
+ROUTE_MIN_RUNS = 3
+ROUTE_FIT = 0.2                 # parcours proposé : durée habituelle à ±20 % de la séance
+ROUTE_TYPES = ("footing", "footing vallonné", "footing soutenu", "lignes droites", "sortie longue")
+ROUTE_FIELDS = ("name", "activity_id", "distance_km", "gain_m", "minutes", "runs")
+MONOTONY_WEEKS = 52             # monotonie : comparée aux semaines courues de l'année
+
+
+def habitual_routes(acts, today: date) -> list[dict]:
+    """Parcours habituels (regroupement des parcours similaires, phase 2) : courus au moins 3 fois
+    sur les 52 dernières semaines, avec leur durée, distance et D+ médians et la dernière sortie."""
+    since = today - timedelta(weeks=ROUTE_WEEKS)
+    by = {}
+    for a in acts:
+        if a.get("route_id") is not None and since <= a["start"].date() < today:
+            by.setdefault(a["route_id"], []).append(a)
+    out = []
+    for rid, runs in by.items():
+        if len(runs) < ROUTE_MIN_RUNS:
+            continue
+        last = max(runs, key=lambda a: a["start"])
+        km = median(a.get("distance_km") or 0 for a in runs)
+        gain = median(a.get("gain_m") or 0 for a in runs)
+        out.append({"id": rid, "name": last.get("name"), "activity_id": last.get("id"), "runs": len(runs),
+                    "distance_km": round(km, 1), "gain_m": round(gain),
+                    "minutes": round(median((a.get("moving_duration_s") or 0) / 60 for a in runs)),
+                    "hilly": km > 0 and gain / km >= stats.FLAT_MAX_GAIN_PER_KM,
+                    "last": last["start"].date()})
+    return out
+
+
+def suggest_routes(weeks: list[dict], routes: list[dict], today: date):
+    """Parcours proposé pour chaque footing et sortie longue à venir, hors habitudes : un parcours
+    habituel de durée proche (±20 %), plat ou vallonné comme la séance, le moins récemment couru
+    d'abord, pour varier sans rien imposer."""
+    if not routes:
+        return
+    last = {r["id"]: r["last"] for r in routes}
+    for w in weeks:
+        for s in w["sessions"]:
+            if (s["date"] < today.isoformat() or s.get("habit") or s["type"] not in ROUTE_TYPES
+                    or not s.get("minutes")):
+                continue
+            hilly = (s["type"] == "footing vallonné"
+                     or (s["type"] == "sortie longue" and bool(s.get("gain_m"))))
+            fits = [r for r in routes if r["hilly"] == hilly and r["minutes"]
+                    and abs(r["minutes"] / s["minutes"] - 1) <= ROUTE_FIT]
+            if not fits:
+                continue
+            r = min(fits, key=lambda r: (last[r["id"]], r["id"]))
+            s["route"] = {k: r[k] for k in ROUTE_FIELDS}
+            s["route"]["last"] = last[r["id"]].isoformat()
+            last[r["id"]] = date.fromisoformat(s["date"])
+
+
+def foster(loads: list[float]) -> float | None:
+    """Monotonie de Foster (1998) d'une semaine : moyenne / écart-type des charges des 7 jours,
+    repos compris. Haute quand tous les jours se ressemblent."""
+    mean = sum(loads) / len(loads)
+    sd = pstdev(loads)
+    return round(mean / sd, 2) if sd > 0 and mean > 0 else None
+
+
+def monotony(acts, today: date, week: dict | None = None, rates: dict | None = None) -> dict | None:
+    """Monotonie de la semaine dernière et de la semaine prévue, face aux semaines courues de
+    l'année du coureur ; alerte au-delà de sa borne haute de Tukey (Q3 + 1,5 × écart interquartile) :
+    le seuil de 2 souvent cité n'est pas confirmé, chacun a le sien."""
+    daily = {}
+    for a in acts:
+        if a.get("hrss") and a["start"].date() < today:
+            daily[a["start"].date()] = daily.get(a["start"].date(), 0.0) + a["hrss"]
+    this = monday(today)
+    values = []
+    for k in range(MONOTONY_WEEKS, 0, -1):
+        m = this - timedelta(weeks=k)
+        v = foster([daily.get(m + timedelta(days=i), 0.0) for i in range(7)])
+        if v is not None:
+            values.append((m, v))
+    if len(values) < SPIKE_MIN_WEEKS:
+        return None
+    q1, _, q3 = quantiles([v for _, v in values], n=4)
+    fence = round(q3 + 1.5 * (q3 - q1), 2)
+    last_week = this - timedelta(weeks=1)
+    last = next((v for m, v in values if m == last_week), None)
+    planned = None
+    if week and rates:
+        loads = [0.0] * 7
+        for x in week["sessions"]:
+            if not x.get("main") and not x.get("optional") and x.get("minutes"):
+                loads[x["weekday"]] += session_load(x, rates)
+        planned = foster(loads)
+    return {"last": last, "planned": planned, "usual": [round(q1, 2), round(q3, 2)], "fence": fence,
+            "high_last": last is not None and last > fence,
+            "high_planned": planned is not None and planned > fence}
 
 
 # ---------- orientation et nuance (étape 8) ----------
@@ -1480,6 +1589,7 @@ def build_maintenance(today: date, acts, availability: list[dict], max_sessions:
         if w["kind"] == "charge":
             level = fitness
         out.append(built)
+    suggest_routes(out, habitual_routes(acts, today), today)
     planned = {}
     for w in out:
         for s in w["sessions"]:
@@ -1506,3 +1616,28 @@ def build_maintenance(today: date, acts, availability: list[dict], max_sessions:
             "capacity_fitness": round(capacity_min / 60 * blended / 7, 1), "long_usual": long_usual,
             "history": history, "options": {"ramp_pct": ramp_pct},
             "orientation": options.get("orientation") or "maintien", "orientation_label": orient["label"]}
+
+
+def apply_choices(plan: dict | None, choices: dict, rates: dict | None = None) -> dict | None:
+    """Choix du coureur entre les deux propositions d'une séance (étape 9) : {jour : libellé de la
+    proposition du coach au moment du choix} ; la seconde proposition prend sa place (la première
+    devient l'autre choix) si la séance de ce jour est toujours la même. Charge, minutes et D+ de
+    la semaine recalculés : le reste du plan en tient compte."""
+    if not plan or not choices:
+        return plan
+    rates = rates or plan.get("rates")
+    for w in plan["weeks"]:
+        changed = False
+        for j, x in enumerate(w["sessions"]):
+            label = choices.get(x["date"])
+            if label and x.get("alt") and x["label"] == label:
+                main = {k: v for k, v in x.items() if k != "alt"}
+                keep = {k: x[k] for k in ("weekday", "date", "day", "key", "habit", "optional") if k in x}
+                w["sessions"][j] = {**x["alt"], **keep, "alt": main, "chosen": True}
+                changed = True
+        if changed and rates:
+            counted = [x for x in w["sessions"] if not x.get("main") and not x.get("optional")]
+            w["planned_load"] = round(sum(session_load(x, rates) for x in counted))
+            w["minutes"] = sum(x["minutes"] or 0 for x in counted)
+            w["gain_m"] = round(sum(x.get("gain_m") or 0 for x in counted), -1)
+    return plan

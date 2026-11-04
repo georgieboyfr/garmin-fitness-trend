@@ -697,3 +697,73 @@ def test_orientation_changes_what_maintenance_works_on():
     assert reprise["weeks"][0]["phase"] == "reprise" or reprise["start_fitness"] >= reprise["band"]["center"]
     trail = cp.build_maintenance(TODAY, acts, MAINT_DAYS, None, [], {}, 170, {"orientation": "trail"})
     assert trail["trail"] and {w["phase"] for w in trail["weeks"]} == {"trail"}
+
+
+# ---------- deux propositions, parcours, monotonie (étape 9) ----------
+
+def test_each_session_has_a_second_proposal_with_the_same_role():
+    days = cp.chosen_days(avail((0, "oui", 50), (1, "oui", 60), (3, "oui", 70), (5, "oui", 150)), None)
+    w = cp.build_week(week(), days, 300, RATES, RACE, {}, [], 170, 0)
+    q = next(s for s in w["sessions"] if s["hard"])
+    assert q["alt"]["hard"] and q["alt"]["type"] != q["type"]
+    assert (q["type"] in cp.wk.HILLY) != (q["alt"]["type"] in cp.wk.HILLY)       # l'autre terrain
+    long = next(s for s in w["sessions"] if s["type"] == "sortie longue")
+    assert long["alt"]["type"] == "sortie longue" and long["alt"]["label"] != long["label"]
+    easy = [s for s in w["sessions"] if s["type"] in ("footing", "footing vallonné")]
+    assert all(s["alt"]["type"] != s["type"] and s["alt"]["minutes"] == s["minutes"] for s in easy)
+
+
+def test_choosing_the_second_proposal_replaces_it_while_the_session_is_the_same():
+    acts = [run(TODAY - timedelta(days=i), 60, 90, 0.0) for i in range(1, 200, 2)]
+    days = avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 60), (5, "oui", 150))
+    plan = cp.build_plan({**RACE, "race_date": "2027-03-28"}, TODAY, acts, days, None, [], {}, 170)
+    w = plan["weeks"][1]
+    q = next(s for s in w["sessions"] if s["hard"] and s.get("alt"))
+    alt_label, before = q["alt"]["label"], w["planned_load"]
+    cp.apply_choices(plan, {q["date"]: q["label"], "2026-12-25": "Autre chose"})
+    chosen = next(s for s in w["sessions"] if s["date"] == q["date"] and s["hard"])
+    assert chosen["label"] == alt_label and chosen["chosen"] and chosen["alt"]["label"] == q["label"]
+    assert chosen["key"] == q["key"] and isinstance(w["planned_load"], int)
+    assert before > 0
+    stale = cp.build_plan({**RACE, "race_date": "2027-03-28"}, TODAY, acts, days, None, [], {}, 170)
+    cp.apply_choices(stale, {q["date"]: "Une séance qui n'existe plus"})
+    assert not any(s.get("chosen") for w in stale["weeks"] for s in w["sessions"])
+
+
+def test_routes_rotate_among_the_runner_habitual_routes():
+    acts = []
+    for k, (rid, minutes) in enumerate([(1, 45), (2, 50), (3, 120)] * 4):
+        acts.append({**run(TODAY - timedelta(days=3 + 5 * k), 50, minutes, 0.0), "id": 100 + k,
+                     "route_id": rid, "distance_km": minutes / 6, "gain_m": 20, "name": f"Parcours {rid}"})
+    routes = cp.habitual_routes(acts, TODAY)
+    assert {r["id"] for r in routes} == {1, 2, 3} and all(r["runs"] == 4 for r in routes)
+    on = lambda d: (TODAY + timedelta(days=d)).isoformat()  # noqa: E731
+    weeks = [{"sessions": [{"date": on(d), "type": "footing", "minutes": 45},
+                           {"date": on(d + 1), "type": "footing",
+                            "minutes": 50, "habit": "Bastille"}]} for d in (1, 8)]
+    cp.suggest_routes(weeks, routes, TODAY)
+    picked = [w["sessions"][0]["route"]["name"] for w in weeks]
+    assert picked[0] != picked[1]                                         # on varie
+    assert "route" not in weeks[0]["sessions"][1]                         # l'habitude reste l'habitude
+
+
+def test_monotony_compares_the_week_with_the_runner_own_weeks():
+    assert cp.foster([50] * 7) is None                                    # écart-type nul
+    assert cp.foster([60, 0, 60, 0, 60, 0, 120]) < cp.foster([60, 50, 60, 50, 60, 50, 60])
+    acts = []
+    start = cp.monday(TODAY) - timedelta(weeks=30)
+    for w in range(30):
+        pattern = [60, 0, 40, 0, 50, 0, 100] if w < 29 else [50, 45, 50, 45, 50, 45, 50]
+        for k, load in enumerate(pattern):
+            if load:
+                acts.append(run(start + timedelta(weeks=w, days=k), load, 60, 0.0))
+    m = cp.monotony(acts, TODAY)
+    assert m["high_last"] and m["last"] > m["fence"]
+    assert cp.monotony(acts[:10], TODAY) is None
+
+
+def test_library_lists_every_family_with_the_runner_paces():
+    lib = cp.wk.library({"lthr": 170, "threshold": 290, "vma": 250, "easy": 360, "easy_vam": 400})
+    assert len(lib) >= 7 and all(f["sessions"] for f in lib)
+    labels = {s["label"] for f in lib for s in f["sessions"]}
+    assert {"Fartlek", "Pyramide", "Seuil", "Tempo", "Côtes courtes", "Sortie longue progressive"} <= labels

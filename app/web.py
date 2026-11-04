@@ -544,7 +544,7 @@ def coach_page(request: Request, vue: str = ""):
                   or settings.get_state(conn, "garmin_last_auto_day") == today.isoformat())
         co = coach_live.Coach(cfg, conn, today, dem, synced)
         cal = co.cal
-        if vue not in ("semaine", "plan", "echeances", "reglages"):
+        if vue not in ("semaine", "plan", "echeances", "reglages", "seances"):
             vue = "semaine"
         # temps prévu le jour J, chaque semaine (forme du dimanche soir projetée sur la fitness du
         # plan) ; les courses s'informent entre elles : l'estimation suit la forme, résultats des
@@ -568,7 +568,8 @@ def coach_page(request: Request, vue: str = ""):
                             if not r["race_date"] or r["race_date"] >= today.isoformat()]
         effects = co.period_effects() if vue == "reglages" else {}
         plan = week = bilan = next_week = maintenance = None
-        week_races, suggestions = [], []
+        week_races, suggestions, monotony = [], [], None
+        library = co.library() if vue == "seances" else None
         if vue in ("semaine", "plan"):
             # la semaine en cours est celle du plan du lundi (forme et proposition de la veille) :
             # elle ne bouge pas au fil des sorties de la semaine ; le plan affiche la même.
@@ -592,6 +593,7 @@ def coach_page(request: Request, vue: str = ""):
                 if plan and plan["weeks"] and plan["weeks"][0]["monday"] == frozen["weeks"][0]["monday"]:
                     plan["weeks"][0] = frozen["weeks"][0]
                 week = co.week_view(monday_, frozen)
+                monotony = coach_plan.monotony(co.data["acts"], today, frozen["weeks"][0], frozen["rates"])
                 # aperçu de la semaine suivante : celle du plan du lundi, et le dimanche celle qui
                 # tient compte des réponses du bilan du jour (ce que lundi affichera)
                 next_monday = (monday_ + timedelta(days=7)).isoformat()
@@ -617,7 +619,7 @@ def coach_page(request: Request, vue: str = ""):
     return render(request, "coach.html", "/coach", calendar=cal, vue=vue,
                   availability=co.availability, plan=plan, week=week, bilan=bilan,
                   week_races=week_races, next_week=next_week, maintenance=maintenance,
-                  suggestions=suggestions,
+                  suggestions=suggestions, monotony=monotony, library=library,
                   next_week_choices=coach_review.NEXT_WEEK, feeling_choices=coach_review.FEELINGS,
                   inferred=co.inferred, availability_saved=co.profile["availability"] is not None,
                   max_sessions=co.profile["max_sessions"], plan_options=co.profile,
@@ -628,6 +630,71 @@ def coach_page(request: Request, vue: str = ""):
                   priorities=coach.PRIORITIES, gpx_recent=gpx_store.recent(cfg),
                   tracked_races=upcoming_tracked,
                   today=today.isoformat())
+
+
+@router.get("/coach/courses/{race_id}")
+def coach_race_page(request: Request, race_id: int):
+    """Fiche d'une échéance : temps prévu, passages km par km pour un temps au choix (prévu par
+    défaut), lien vers l'estimateur complet."""
+    if (redirect := _login_redirect(request)):
+        return redirect
+    cfg = request.app.state.config
+    today = _today(request)
+    dem = getattr(request.app.state, "dem", None)
+    conn = db.connect(cfg.db_path)
+    try:
+        race = coach.get(conn, race_id)
+        if race is None:
+            return HTMLResponse(TEMPLATES.get_template("not_found.html").render(
+                version=__version__, asset_version=ASSET_VERSION,
+                nav=[(path, label) for path, label, ready in PAGES if ready], active=""),
+                status_code=404)
+        row = coach.calendar([race], today)
+        race = (row["upcoming"] or row["past"])[0]
+        data = tracked.load_data(cfg, conn)
+        factors = tracked.corrections(conn)
+        predictions = coach.predictions(conn, race_id)
+    finally:
+        conn.close()
+    race["route"] = tracked._route_label(cfg, race)
+    race["proposal"] = coach.proposed_target(cfg, race, today, data, factors, dem)
+    race["projection"] = predictions[-1] if predictions else None
+    splits = coach.race_splits(cfg, race, today, data, dem)
+    predicted = (race["projection"] or race["proposal"] or {}).get("realistic_s")
+    choices = [(label, round(v)) for label, v in (
+        ("Prévu le jour J" if race["projection"] else "Estimé aujourd'hui", predicted),
+        ("Objectif", race.get("target_s")),
+        ("Optimiste", (race["projection"] or race["proposal"] or {}).get("optimistic_s")),
+        ("Prudent", (race["projection"] or race["proposal"] or {}).get("prudent_s"))) if v]
+    if race["gpx_id"]:
+        estimator_url = f"/estimateur?gpx={race['gpx_id']}#trail"
+    else:
+        gain = f"&gain={round(race['gain_m'])}" if race.get("gain_m") else ""
+        estimator_url = f"/estimateur?distance={race['distance_m'] / 1000:g}{gain}"
+    return render(request, "coach_course.html", "/coach", race=race, splits=splits,
+                  target_s=choices[0][1] if choices else None, choices=choices, estimator_url=estimator_url)
+
+
+@router.post("/coach/choix")
+async def coach_choice(request: Request):
+    """Choix entre les deux propositions d'une séance : la seconde (label : celle du coach), ou
+    retour à celle du coach (label null)."""
+    if (error := _session_error(request)):
+        return error
+    try:
+        body = await request.json()
+        day = date.fromisoformat(body.get("date") or "")
+        label = body.get("label")
+        if label is not None and (not isinstance(label, str) or not label.strip()):
+            raise ValueError
+    except (ValueError, AttributeError, TypeError):
+        return JSONResponse({"error": "Date et séance attendues."}, status_code=400)
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        coach.save_choice(conn, day, label)
+    finally:
+        conn.close()
+    return {"ok": True}
 
 
 @router.post("/coach/bilan/{monday_}")
