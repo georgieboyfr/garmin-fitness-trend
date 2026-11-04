@@ -32,6 +32,8 @@ OPTIONAL_SHARE = 0.25        # optionnel : une semaine sur quatre
 PLACE_CELL_M = 200.0         # case d'un lieu de passage, de l'ordre de la précision des tracés résumés
 PLACE_START_M = 2 * PLACE_CELL_M   # abords du départ, exclus (on y passe à chaque sortie)
 STATUSES = ("oui", "optionnel", "non")
+DRIFT_SHARE = 0.03           # objectif à revoir : estimation du jour à plus de 3 % de l'objectif
+DRIFT_SINCE_DAYS = 28        # course passée récente, citée comme cause possible
 RAMP_CHOICES = (10, 15)      # montée du volume, % par semaine (repère courant contre les blessures : 10)
 PRIORITIES = {"A": "Objectif principal", "B": "Course importante", "C": "Préparation"}
 WEEKDAYS = ("Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche")
@@ -75,6 +77,13 @@ def update(conn, race_id: int, race: dict):
              race["gain_m"], race["target_s"], race_id))
 
 
+def set_priority(conn, race_id: int, priority: str):
+    if priority not in PRIORITIES:
+        raise ValueError("Priorité A, B ou C.")
+    with conn:
+        conn.execute("UPDATE coach_races SET priority=? WHERE id=?", (priority, race_id))
+
+
 def set_target(conn, race_id: int, target_s: float | None):
     with conn:
         conn.execute("UPDATE coach_races SET target_s=? WHERE id=?", (target_s, race_id))
@@ -103,8 +112,11 @@ def calendar(races: list[dict], today: date) -> dict:
                "priority_label": PRIORITIES[r["priority"]]}
         (upcoming if d >= today else past).append(row)
     past.sort(key=lambda r: r["race_date"], reverse=True)
-    main = next((r for r in upcoming if r["priority"] == "A"), None)
-    return {"upcoming": upcoming, "past": past, "main": main}
+    # course principale : la prochaine A ; sans A, la prochaine course (après la course A, le plan
+    # se reconstruit ainsi autour de la suivante)
+    main = next((r for r in upcoming if r["priority"] == "A"), upcoming[0] if upcoming else None)
+    return {"upcoming": upcoming, "past": past, "main": main,
+            "conflicts": coach_plan.conflicts(upcoming)}
 
 
 # ---------- disponibilités et habitudes ----------
@@ -289,10 +301,9 @@ def proposed_target(cfg, race: dict, today: date, data: dict, factors: dict, dem
 
 # ---------- plan vers la course A ----------
 
-def plan_for(cfg, race: dict, today: date, data: dict, availability: list[dict], max_sessions: int | None,
-             habits: list[dict], physio_now: dict, options: dict | None = None) -> dict | None:
-    """Plan périodisé vers la course A (coach_plan) : durée visée (objectif, sinon temps proposé),
-    allures du coureur, habitudes non refusées."""
+def race_facts(cfg, race: dict, data: dict) -> dict:
+    """Course avec sa durée visée (objectif, sinon temps proposé), sa distance et son D+ (tirés du
+    GPX s'il existe) et son objectif en texte."""
     duration = race.get("target_s") or (race.get("proposal") or {}).get("realistic_s")
     distance, gain = race.get("distance_m"), race.get("gain_m") or 0.0
     if race.get("gpx_id") and gpx_store.exists(cfg, race["gpx_id"]):
@@ -300,6 +311,22 @@ def plan_for(cfg, race: dict, today: date, data: dict, availability: list[dict],
         profile = trail.route_profile(lats, lons, eles, dem_profile, data.get("params"))
         if profile:
             distance, gain = float(profile["distance"][-1]), profile.get("gain_m", 0.0)
+    target_text = None
+    if race.get("target_s"):
+        s = round(race["target_s"])
+        target_text = f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}"
+    return {**race, "duration_s": duration, "target_text": target_text, "distance_m": distance,
+            "gain_m": gain}
+
+
+def plan_for(cfg, race: dict, today: date, data: dict, availability: list[dict], max_sessions: int | None,
+             habits: list[dict], physio_now: dict, options: dict | None = None,
+             others: list[dict] | None = None) -> dict | None:
+    """Plan périodisé vers la course principale (coach_plan) : durée visée (objectif, sinon temps
+    proposé), allures du coureur, habitudes non refusées ; others : les autres courses du
+    calendrier (à venir et passées récentes), dont le plan tient compte."""
+    full = race_facts(cfg, race, data)
+    duration, distance, gain = full["duration_s"], full["distance_m"], full["gain_m"]
     threshold, vma = physio_now.get("threshold_pace"), physio_now.get("vma")
     trail_race = coach_plan.is_trail({**race, "distance_m": distance, "gain_m": gain})
     paces = {"threshold": threshold["pace_s_km"] if threshold else None,
@@ -309,11 +336,6 @@ def plan_for(cfg, race: dict, today: date, data: dict, availability: list[dict],
     kept = [{"weekday": h["weekday"], "name": h["label_name"] or h["label"],
              "hilly": h["distance_km"] > 0 and h["gain_m"] / h["distance_km"] > HILLY_GAIN_PER_KM,
              "moving_min": h["moving_min"]} for h in habits if h["keep"] is not False]
-    target_text = None
-    if race.get("target_s"):
-        s = round(race["target_s"])
-        target_text = f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}"
-    full = {**race, "duration_s": duration, "target_text": target_text, "distance_m": distance,
-            "gain_m": gain}
+    side = [race_facts(cfg, r, data) for r in others or []]
     return coach_plan.build_plan(full, today, data["acts"], availability, max_sessions, kept, paces,
-                                 data.get("lthr"), options)
+                                 data.get("lthr"), options, side)

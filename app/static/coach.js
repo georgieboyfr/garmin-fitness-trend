@@ -111,6 +111,12 @@
                                                           "disponibilites"));
   }
 
+  // conflits du calendrier : priorité changée au choix du coureur
+  document.querySelectorAll("[data-priority]").forEach((btn) => {
+    btn.addEventListener("click", () => send(btn.dataset.priority, { priority: btn.dataset.value },
+                                             btn.parentElement.querySelector("[role=status]")));
+  });
+
   // réglages du plan : montée du volume, sorties longues allongées
   const opts = document.querySelector("form.coach-plan-options");
   if (opts) opts.addEventListener("submit", (ev) => {

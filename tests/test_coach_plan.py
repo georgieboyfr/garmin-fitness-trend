@@ -264,3 +264,79 @@ def test_race_week_reminder_three_or_four_days_before_never_the_day_before_yeste
         days = cp.chosen_days(avail(*[(d, "oui", 60) for d in open_days]), 4)
         w = cp.build_week(wk, days, 80, RATES, race, {}, [], None, 0)
         assert next(s["weekday"] for s in w["sessions"] if s["type"] == "rappel") == expected
+
+
+def side_race(day, priority, km=20, gain=800, minutes=120, id_=9):
+    return {"id": id_, "name": f"Course {priority}", "race_date": day.isoformat(), "priority": priority,
+            "distance_m": km * 1000, "gain_m": gain, "duration_s": minutes * 60, "target_text": None}
+
+
+def test_recovery_grows_with_effort_and_is_halved_for_a_c_race():
+    assert cp.effort_km({"distance_m": 24000, "gain_m": 1400}) == pytest.approx(38)
+    assert cp.recovery_days({"distance_m": 24000, "gain_m": 1400, "priority": "B"}) == 13
+    assert cp.recovery_days({"distance_m": 24000, "gain_m": 1400, "priority": "C"}) == 6
+    assert cp.recovery_days({"distance_m": 5000, "gain_m": 0, "priority": "B"}) == 2          # au moins 2
+    assert cp.recovery_days({"distance_m": 160000, "gain_m": 10000, "priority": "B"}) == 21   # au plus 21
+    assert cp.recovery_days({"duration_s": 3600, "priority": "B"}) == 3          # 10 km à 6 min/km
+
+
+def test_b_race_gets_a_mini_taper_rest_the_day_before_and_a_recovery_after():
+    days = cp.chosen_days(avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 60), (5, "oui", 150)), 4)
+    race_day = date(2026, 12, 13)                                       # dimanche
+    cal = cp.race_calendar([side_race(race_day, "B")], date(2026, 11, 2), date(2027, 5, 22))
+    assert race_day - timedelta(days=1) in cal["rest"]
+    assert {race_day - timedelta(days=k) for k in (2, 3)} <= cal["easy"]
+    assert len(cal["recovery"]) == cp.recovery_days(side_race(race_day, "B"))
+    w = cp.build_week(week(phase="développement", monday=date(2026, 12, 7)), days, 120, RATES, RACE, {}, [],
+                      170, 0, None, cal)
+    by = {s["weekday"]: s for s in w["sessions"]}
+    assert by[6]["type"] == "course" and by[6]["priority"] == "B" and not by[6]["main"]
+    assert 5 not in by                                                  # veille au repos
+    assert all(not s["hard"] for d, s in by.items() if d in (3, 4))     # mini-affûtage
+    assert sum(1 for s in w["sessions"] if s["hard"] and s["type"] != "course") <= 1
+    assert w["planned_load"] > 120                                      # la course s'ajoute
+    after = cp.build_week(week(phase="développement", monday=date(2026, 12, 14)), days, 120, RATES, RACE, {},
+                          [], 170, 0, None, cal)
+    assert not any(s["hard"] or s["type"] == "sortie longue" for s in after["sessions"])   # récupération
+
+
+def test_c_race_replaces_the_key_session_and_the_long_run():
+    days = cp.chosen_days(avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 60), (5, "oui", 150)), 4)
+    c = side_race(date(2026, 12, 12), "C", minutes=90)
+    cal = cp.race_calendar([c], date(2026, 11, 2), date(2027, 5, 22))
+    w = cp.build_week(week(phase="développement", monday=date(2026, 12, 7)), days, 150, RATES, RACE, {}, [],
+                      170, 0, None, cal)
+    assert [s["type"] for s in w["sessions"] if s["hard"]] == ["course"]
+    assert not any(s["type"] == "sortie longue" for s in w["sessions"])
+    assert next(s for s in w["sessions"] if s["type"] == "course")["key"]
+
+
+def test_plan_counts_side_races_and_shows_their_recovery():
+    acts = [run(TODAY - timedelta(days=i), 60, 90, 0.0) for i in range(1, 200, 2)]
+    days = avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 60), (5, "oui", 150))
+    b = side_race(date(2026, 11, 29), "B")
+    plan = cp.build_plan({**RACE, "race_date": "2027-03-28"}, TODAY, acts, days, None, [], {}, 170, None, [b])
+    race_week = next(w for w in plan["weeks"] if w["monday"] == "2026-11-23")
+    assert any(s["type"] == "course" and not s["main"] for s in race_week["sessions"])
+    nxt = next(w for w in plan["weeks"] if w["monday"] == "2026-11-30")
+    assert nxt["events"] and nxt["events"][0]["name"] == "Course B" and not race_week["events"]
+    alone = cp.build_plan({**RACE, "race_date": "2027-03-28"}, TODAY, acts, days, None, [], {}, 170)
+    assert nxt["target_load"] < next(w for w in alone["weeks"] if w["monday"] == "2026-11-30")["target_load"]
+    past = side_race(TODAY - timedelta(days=3), "B")          # course passée : récupération en cours
+    after = cp.build_plan({**RACE, "race_date": "2027-03-28"}, TODAY, acts, days, None, [], {}, 170, None,
+                          [past])
+    assert after["weeks"][0]["events"]
+
+
+def test_conflicts_offer_solutions_to_choose_from():
+    a1 = {"id": 1, "name": "A1", "race_date": "2027-03-01", "priority": "A"}
+    a2 = {"id": 2, "name": "A2", "race_date": "2027-04-01", "priority": "A"}
+    b = {"id": 3, "name": "B1", "race_date": "2027-02-20", "priority": "B"}
+    c = {"id": 4, "name": "C1", "race_date": "2027-02-26", "priority": "C"}
+    found = cp.conflicts([b, c, a1, a2])
+    assert len(found) == 3
+    two_a = next(x for x in found if "deux courses A" in x["text"])
+    assert {(s["race_id"], s["priority"]) for s in two_a["solutions"]} == {(1, "B"), (2, "B")}
+    assert next(x for x in found if "B1" in x["text"])["solutions"][0]["priority"] == "C"
+    assert next(x for x in found if "C1" in x["text"])["solutions"][0]["delete"]
+    assert cp.conflicts([{**b, "race_date": "2027-01-10"}, a1]) == []

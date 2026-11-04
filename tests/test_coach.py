@@ -158,6 +158,10 @@ def test_coach_races_are_stored(tmp_path):
     assert coach.get(conn, rid)["target_s"] == 12600.0
     coach.update(conn, rid, {**race, "priority": "B", "target_s": 12000.0})
     assert coach.all_races(conn)[0]["priority"] == "B"
+    coach.set_priority(conn, rid, "C")
+    assert coach.get(conn, rid)["priority"] == "C"
+    with pytest.raises(ValueError):
+        coach.set_priority(conn, rid, "D")
     coach.delete(conn, rid)
     assert coach.get(conn, rid) is None
 
@@ -167,3 +171,12 @@ def test_clean_profile_takes_the_two_plan_questions():
                                                                                "long_extension": False}
     with pytest.raises(ValueError):
         coach.clean_profile({"ramp_pct": 30})
+
+
+def test_without_an_a_race_the_plan_aims_at_the_next_race():
+    races = [{"id": 1, "name": "B", "race_date": "2026-12-06", "priority": "B"},
+             {"id": 2, "name": "C", "race_date": "2027-01-10", "priority": "C"},
+             {"id": 3, "name": "A passée", "race_date": "2026-10-01", "priority": "A"}]
+    cal = coach.calendar(races, TODAY)
+    assert cal["main"]["id"] == 1 and cal["conflicts"] == []
+    assert coach.calendar([], TODAY)["main"] is None

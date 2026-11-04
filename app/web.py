@@ -20,6 +20,7 @@ from fastapi.templating import Jinja2Templates
 from . import (
     __version__,
     coach,
+    coach_plan,
     courses,
     db,
     detail,
@@ -547,9 +548,18 @@ def coach_page(request: Request, vue: str = ""):
         conn.close()
     cal = coach.calendar(races, today)
     dem = getattr(request.app.state, "dem", None)
+    # les courses s'informent entre elles : l'estimation suit la forme du jour, résultats des
+    # courses passées compris ; un objectif qui s'en écarte de plus de 3 % est signalé
+    recent_past = next((r for r in cal["past"]
+                        if (today - date.fromisoformat(r["race_date"])).days <= coach.DRIFT_SINCE_DAYS), None)
     for r in cal["upcoming"]:
         r["proposal"] = coach.proposed_target(cfg, r, today, data, factors, dem)
         r["route"] = tracked._route_label(cfg, r)
+        if r["proposal"] and r.get("target_s"):
+            drift = r["proposal"]["realistic_s"] / r["target_s"] - 1
+            if abs(drift) >= coach.DRIFT_SHARE:
+                r["drift_pct"] = round(drift * 100)
+                r["drift_since"] = recent_past["name"] if recent_past else None
     inferred = coach.availability_from_history(data["acts"], today)
     habits = coach.effective_habits(profile["habits"], coach.habits_from_history(data["acts"], tracks, today))
     upcoming_tracked = [r for r in tracked_races if not r["race_date"] or r["race_date"] >= today.isoformat()]
@@ -557,9 +567,12 @@ def coach_page(request: Request, vue: str = ""):
     plan = None
     if cal["main"]:
         physio_now = physio.physiology(data["efforts"], today, lthr_est, hr_max, data["trend"])
+        others = [r for r in cal["upcoming"] if r is not cal["main"]] + [
+            r for r in cal["past"]
+            if (today - date.fromisoformat(r["race_date"])).days <= coach_plan.RECOVERY_LOOKBACK_DAYS]
         plan = coach.plan_for(cfg, cal["main"], today, data, availability, profile["max_sessions"], habits,
                               physio_now, {"ramp_pct": profile["ramp_pct"],
-                                           "long_extension": profile["long_extension"]})
+                                           "long_extension": profile["long_extension"]}, others)
     if vue not in ("plan", "echeances", "reglages"):
         vue = "plan" if cal["main"] else "echeances"
     return render(request, "coach.html", "/coach", calendar=cal, vue=vue,
@@ -626,6 +639,24 @@ async def coach_target(request: Request, race_id: int):
         if coach.get(conn, race_id) is None:
             return JSONResponse({"detail": "Course inconnue."}, status_code=404)
         coach.set_target(conn, race_id, float(target) if target is not None else None)
+    finally:
+        conn.close()
+    return {"id": race_id}
+
+
+@router.post("/coach/courses/{race_id}/priorite")
+async def coach_priority(request: Request, race_id: int):
+    """Priorité changée, par exemple pour résoudre un conflit du calendrier."""
+    if (error := _session_error(request)):
+        return error
+    body = await request.json()
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        if coach.get(conn, race_id) is None:
+            return JSONResponse({"detail": "Course inconnue."}, status_code=404)
+        coach.set_priority(conn, race_id, body.get("priority") if isinstance(body, dict) else None)
+    except ValueError as e:
+        return JSONResponse({"detail": str(e)}, status_code=400)
     finally:
         conn.close()
     return {"id": race_id}

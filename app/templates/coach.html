@@ -15,6 +15,19 @@
   <a href="?vue=reglages" {% if vue == "reglages" %}aria-current="true"{% endif %}>Disponibilités et habitudes</a>
 </nav>
 
+{% if cal.conflicts %}
+<section class="card notice coach-conflicts">
+  <h2>Calendrier à arbitrer {{ tip("Le coach repère deux courses A à moins de 8 semaines, une course B moins de 3 semaines avant une A (sa récupération mange l'affûtage) et une course C dans la semaine d'une A. Il propose une solution ; c'est toi qui choisis, ou tu gardes ton calendrier tel quel.") }}</h2>
+  <ul>
+    {% for c in cal.conflicts %}
+    <li>{{ c.text }}
+      <div class="aid-actions">{% for sol in c.solutions %}<button class="btn-ghost" type="button" {% if sol.delete %}data-coach-delete="/coach/courses/{{ sol.race_id }}/supprimer"{% else %}data-priority="/coach/courses/{{ sol.race_id }}/priorite" data-value="{{ sol.priority }}"{% endif %}>{{ sol.label }}</button>{% endfor %}<span class="small muted" role="status"></span></div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 {% if vue == "plan" %}
 {% if plan %}
 {% set main = cal.main %}
@@ -23,7 +36,7 @@
     <h2>Ton plan {{ tip("Plan recalculé à chaque ouverture, à rebours depuis la course : affûtage (une semaine sous 1 h 30 de course, deux au-delà), puis phases spécifique, développement et foncier selon le temps qui reste, avec un cycle de 3 semaines de charge et 1 allégée (−30 %). La charge fait monter ta fitness (page Forme) d'au plus +5 par semaine, sans dépasser de plus de 10 % ton pic des 12 derniers mois, dans la limite de tes disponibilités. 80/20 : une séance de qualité par semaine (deux à partir de 5 séances), jamais à côté d'une autre séance dure ni de la sortie longue. Les durées viennent de ta charge par heure, mesurée sur tes sorties.") }}</h2>
   </div>
   <div class="coach-banner">
-    <span class="pill priority-A">A</span>
+    <span class="pill priority-{{ main.priority }}">{{ main.priority }}</span>
     <div>
       <b>{{ main.name }}</b> · <span data-short-date="{{ main.race_date }}"></span> · {% if main.days_left == 0 %}aujourd'hui{% elif main.days_left < 14 %}dans {{ main.days_left }} jours{% else %}dans {{ main.weeks_left }} semaines{% endif %}
       <div class="muted small">{{ main.route }} · objectif {% if main.target_s %}<b data-chrono="{{ main.target_s }}"></b>{% else %}<a href="?vue=echeances">à fixer</a>{% endif %}</div>
@@ -60,6 +73,7 @@
         · {{ w.phase }}{% if w.kind not in ("charge", w.phase) %} ({{ w.kind }}){% endif %}
         <span class="muted small">· {{ w.minutes }} min{% if w.gain_m %} · D+ {{ w.gain_m | int }} m{% if w.gain_target %} (visé {{ w.gain_target | int }}){% endif %}{% endif %} · charge {{ w.planned_load }} · fitness {{ w.fitness_end | string | replace(".", ",") }}</span>{% if w.sessions | selectattr("extended") | list %} <span class="pill priority-C">sortie longue à caler</span>{% endif %}
       </summary>
+      {% for e in w.events %}<p class="small muted coach-event">Récupération de {{ e.name }} jusqu'au <span data-short-date="{{ e.until }}"></span> : ni séance dure ni sortie longue, charge réduite.</p>{% endfor %}
       <ul class="coach-sessions-list">
         {% for x in w.sessions %}
         <li class="{{ 'muted' if x.date < today }}">
@@ -115,11 +129,12 @@
           <b data-chrono="{{ r.proposal.realistic_s }}"></b> <span class="muted">(<span data-chrono="{{ r.proposal.optimistic_s }}"></span> à <span data-chrono="{{ r.proposal.prudent_s }}"></span>)</span>
           {% if r.target_s != r.proposal.realistic_s %}<button class="btn-ghost" type="button" data-accept="/coach/courses/{{ r.id }}/objectif" data-value="{{ r.proposal.realistic_s }}">Accepter</button>{% else %}<span class="muted">· accepté</span>{% endif %}
           {% else %}<span class="muted">estimation impossible</span>{% endif %}</div>
+        {% if r.drift_pct %}<p class="small notice">Objectif à revoir : l'estimation du jour est {{ r.drift_pct | abs }} % plus {{ "lente" if r.drift_pct > 0 else "rapide" }}{% if r.drift_since %}, depuis {{ r.drift_since }}{% endif %}. Accepte la proposition ou garde ton objectif.</p>{% endif %}
       </div>
     </li>
     {% endfor %}
   </ul>
-  {% if not cal.main %}<p class="small muted">Aucune course A : le plan suivra le maintien de forme, en intégrant tes courses B et C.</p>{% endif %}
+  {% if cal.main and cal.main.priority != "A" %}<p class="small muted">Aucune course A : le plan vise ta prochaine course, {{ cal.main.name }}, et intègre les suivantes.</p>{% endif %}
   {% else %}
   <p class="muted">Aucune course à venir : le coach te proposera un maintien de forme. Ajoute une course pour qu'il prépare un plan vers elle.</p>
   {% endif %}
