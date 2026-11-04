@@ -196,13 +196,14 @@
   <form class="coach-availability" data-url="/coach/profil">
     <div class="table-wrap">
       <table class="data">
-        <thead><tr><th>Jour</th><th>Course</th><th>Durée max (min)</th><th>Ton historique</th></tr></thead>
+        <thead><tr><th>Jour</th><th>Course</th><th>Durée max (min)</th><th>Fréquence {{ tip("Pour un jour optionnel : une semaine sur combien tu es disponible. Le coach y place une séance ces semaines-là (la sortie longue si c'est ton jour le plus long), comptée dans le plan ; les autres semaines, le plan tient sur tes jours oui. Pré-remplie d'après ton historique.") }}</th><th>Ton historique</th></tr></thead>
         <tbody>
           {% for d in availability %}
           <tr data-weekday="{{ d.weekday }}">
             <td class="strong">{{ d.label }}</td>
             <td><select name="status" class="select" aria-label="Course le {{ d.label | lower }}">{% for st in ("oui", "optionnel", "non") %}<option value="{{ st }}" {% if d.status == st %}selected{% endif %}>{{ st }}</option>{% endfor %}</select></td>
             <td><input name="max_min" inputmode="numeric" size="4" value="{{ d.max_min or '' }}" aria-label="Durée maximale le {{ d.label | lower }}"></td>
+            <td><select name="every" class="select" aria-label="Fréquence le {{ d.label | lower }}" {% if d.status != "optionnel" %}disabled{% endif %}>{% for n, txt in ((1, "chaque semaine"), (2, "1 sur 2"), (3, "1 sur 3"), (4, "1 sur 4")) %}<option value="{{ n }}" {% if (d.every or 2) == n %}selected{% endif %}>{{ txt }}</option>{% endfor %}</select></td>
             <td class="muted small">{{ d.weeks }} semaine{{ "s" if d.weeks > 1 }} sur {{ inferred.weeks }}{% if d.usual_min %}, {{ d.usual_min }} min d'habitude{% endif %}</td>
           </tr>
           {% endfor %}

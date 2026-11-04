@@ -357,3 +357,23 @@ def test_optional_days_get_a_bonus_outside_the_plan():
     only = cp.chosen_days(avail((5, "optionnel", 120), (6, "optionnel", 90)), None)
     w2 = cp.build_week(week(phase="foncier"), only, 120, RATES, RACE, {}, [], 170, 0)
     assert not any(s.get("optional") for s in w2["sessions"])        # que des optionnels : le plan
+
+
+def test_an_optional_day_once_every_three_weeks_enters_the_plan_those_weeks():
+    a = avail((0, "oui", 50), (1, "oui", 60), (3, "oui", 80), (5, "optionnel", 120))
+    a[5]["every"] = 3
+    days = cp.chosen_days(a, 4)
+    assert [d["weekday"] for d in cp.week_days(days, 3)] == [0, 1, 3, 5]
+    assert cp.week_days(days, 3)[-1]["status"] == "oui"
+    assert [d["weekday"] for d in cp.week_days(days, 4)] == [0, 1, 3]
+    acts = [run(TODAY - timedelta(days=i), 60, 90, 0.0) for i in range(1, 200, 2)]
+    plan = cp.build_plan({**RACE, "race_date": "2027-05-22", "duration_s": 3 * 3600}, TODAY, acts, a, 4, [],
+                         {}, 170)
+    by_index = {w["index"]: w for w in plan["weeks"]}
+    sat = [i for i, w in by_index.items()
+           if any(s["weekday"] == 5 and s["type"] != "course" for s in w["sessions"])]
+    assert sat and all(i % 3 == 0 for i in sat)
+    assert not any(s.get("optional") for w in plan["weeks"] for s in w["sessions"])     # compté, pas en bonus
+    longs = [s for w in plan["weeks"] for s in w["sessions"] if s.get("extended")]
+    assert longs and all(s["weekday"] == 5 for s in longs)          # l'allongée tombe les weekends libres
+    assert plan["capacity_min"] == 190 + 40

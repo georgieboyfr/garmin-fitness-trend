@@ -34,6 +34,8 @@ PLACE_START_M = 2 * PLACE_CELL_M   # abords du départ, exclus (on y passe à ch
 STATUSES = ("oui", "optionnel", "non")
 DRIFT_SHARE = 0.03           # objectif à revoir : estimation du jour à plus de 3 % de l'objectif
 DRIFT_SINCE_DAYS = 28        # course passée récente, citée comme cause possible
+EVERY_CHOICES = (1, 2, 3, 4)  # jour optionnel : toutes les semaines, 1 sur 2, 1 sur 3, 1 sur 4
+DEFAULT_EVERY = 2
 RAMP_CHOICES = (10, 15)      # montée du volume, % par semaine (repère courant contre les blessures : 10)
 PRIORITIES = {"A": "Objectif principal", "B": "Course importante", "C": "Préparation"}
 WEEKDAYS = ("Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche")
@@ -141,6 +143,8 @@ def availability_from_history(acts, today: date, weeks: int = HISTORY_WEEKS) -> 
         status = "oui" if share >= HABIT_SHARE else "optionnel" if share >= OPTIONAL_SHARE else "non"
         days.append({"weekday": wd, "label": WEEKDAYS[wd], "weeks": len(week_set), "share": round(share, 2),
                      "habitual": status == "oui", "status": status,
+                     # fréquence d'un jour optionnel : une semaine sur n, d'après l'historique
+                     "every": 1 if status == "oui" else (min(4, max(2, round(1 / share))) if share else None),
                      "usual_min": round(median(durations) / 60) if durations else None})
     per_week = [sum(1 for a in recent if (a["start"].date() - start).days // 7 == w) for w in range(weeks)]
     return {"weeks": weeks, "days": days, "sessions_per_week": median(per_week) if recent else 0}
@@ -217,6 +221,7 @@ def effective_availability(stored: list | None, inferred: dict) -> list[dict]:
         s = by_day.get(d["weekday"])
         out.append({**d, "source": "saisie" if s else "historique",
                     "status": _status(s) if s else d["status"],
+                    "every": (s.get("every") or d.get("every") or DEFAULT_EVERY) if s else d.get("every"),
                     "max_min": s["max_min"] if s else (d["usual_min"] if d["status"] != "non" else None)})
     return out
 
@@ -244,8 +249,14 @@ def clean_profile(values: dict) -> dict:
             elif (isinstance(minutes, bool) or not isinstance(minutes, int | float)
                   or not 0 < minutes <= MAX_DAY_MIN):
                 raise ValueError(f"Durée maximale de 1 à {MAX_DAY_MIN} min.")
+            every = d.get("every")
+            if every in (None, "") or d["status"] != "optionnel":
+                every = None
+            elif every not in EVERY_CHOICES:
+                raise ValueError("Fréquence d'un jour optionnel : 1 à 4 semaines.")
             cleaned.append({"weekday": d["weekday"], "status": d["status"],
-                            "max_min": int(minutes) if minutes is not None else None})
+                            "max_min": int(minutes) if minutes is not None else None,
+                            "every": int(every) if every else None})
         availability = cleaned
     if "availability" in values:
         out["availability"] = availability

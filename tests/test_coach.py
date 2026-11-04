@@ -106,7 +106,7 @@ def test_effective_availability_prefers_what_greg_entered():
 def test_clean_profile_validates_and_only_returns_sent_fields():
     days = [{"weekday": d, "status": "oui", "max_min": 60} for d in range(7)]
     first = coach.clean_profile({"availability": days})["availability"][0]
-    assert first == {"weekday": 0, "status": "oui", "max_min": 60}
+    assert first == {"weekday": 0, "status": "oui", "max_min": 60, "every": None}
     assert "habits" not in coach.clean_profile({"availability": days})
     assert coach.clean_profile({"availability": None}) == {"availability": None}
     habit = {"weekday": 0, "place": [45.1985, 5.7254], "name": " Bastille ", "keep": True}
@@ -180,3 +180,12 @@ def test_without_an_a_race_the_plan_aims_at_the_next_race():
     cal = coach.calendar(races, TODAY)
     assert cal["main"]["id"] == 1 and cal["conflicts"] == []
     assert coach.calendar([], TODAY)["main"] is None
+
+
+def test_optional_days_carry_a_frequency():
+    days = [{"weekday": d, "status": "oui" if d < 5 else "optionnel", "max_min": 60, "every": 3}
+            for d in range(7)]
+    cleaned = coach.clean_profile({"availability": days})["availability"]
+    assert cleaned[0]["every"] is None and cleaned[5]["every"] == 3
+    with pytest.raises(ValueError):
+        coach.clean_profile({"availability": [{**d, "every": 6} for d in days]})

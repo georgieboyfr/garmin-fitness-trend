@@ -90,13 +90,20 @@
   // disponibilités par jour
   const avail = document.querySelector("form.coach-availability");
   if (avail) {
+    // la fréquence ne vaut que pour un jour optionnel
+    avail.querySelectorAll("tr[data-weekday]").forEach((tr) => {
+      const st = tr.querySelector("[name=status]");
+      st.addEventListener("change", () => { tr.querySelector("[name=every]").disabled = st.value !== "optionnel"; });
+    });
     const status = avail.querySelector("[role=status]");
     avail.addEventListener("submit", (ev) => {
       ev.preventDefault();
       const days = [...avail.querySelectorAll("tr[data-weekday]")].map((tr) => {
         const minutes = tr.querySelector("[name=max_min]").value.trim();
-        return { weekday: Number(tr.dataset.weekday), status: tr.querySelector("[name=status]").value,
-                 max_min: minutes ? Number(minutes) : null };
+        const status = tr.querySelector("[name=status]").value;
+        return { weekday: Number(tr.dataset.weekday), status,
+                 max_min: minutes ? Number(minutes) : null,
+                 every: status === "optionnel" ? Number(tr.querySelector("[name=every]").value) : null };
       });
       if (days.some((d) => d.max_min !== null && !Number.isFinite(d.max_min))) {
         status.textContent = "Durée en minutes, par exemple 60."; return;
