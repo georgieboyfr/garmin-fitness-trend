@@ -114,7 +114,7 @@
     {% set week_races = w.sessions | selectattr("type", "equalto", "course") | list %}
     <details class="coach-week kind-{{ w.kind }}{% if week_races %} has-race{% endif %}{% if w.periods %} has-period{% endif %}" {% if loop.index <= 2 %}open{% endif %}>
       <summary>
-        <span class="strong">S{{ w.index }}</span> · semaine du <span data-short-date="{{ w.monday }}"></span>
+        {% if not plan.maintenance %}<span class="strong">S{{ w.index }}</span> · {% endif %}semaine du <span data-short-date="{{ w.monday }}"></span>
         · {{ w.phase }}{% if w.kind not in ("charge", w.phase) %} ({{ w.kind }}){% endif %}{% for x in week_races %} <span class="pill priority-{{ x.priority or 'A' }}">{{ x.label }}</span>{% endfor %}
         <span class="muted small">· {{ w.minutes }} min{% if w.gain_m %} · D+ {{ w.gain_m | int }} m{% if w.gain_target %} (visé {{ w.gain_target | int }}){% endif %}{% endif %} · charge {{ w.planned_load }} · fitness {{ w.fitness_end | string | replace(".", ",") }}</span>{% if w.sessions | selectattr("extended") | list %} <span class="pill priority-C">sortie longue à caler</span>{% endif %}
       </summary>
@@ -282,7 +282,7 @@
 </section>
 {% if suggestions %}
 <section class="card" id="envie">
-  <div class="card-head"><h2>Envie de courir une course ? {{ tip("Le temps de l'estimateur avec ta forme d'aujourd'hui (correction de l'admin comprise). Une distance est cohérente avec ta forme quand ta plus longue sortie des 8 dernières semaines atteint la sortie longue que le plan viserait pour elle : 90 % de sa durée, 3 h au plus." ~ (" En trail, le D+ suit ton D+ par km habituel sur tes sorties trail." if plan.trail else "")) }}</h2></div>
+  <div class="card-head"><h2>Envie de courir une course ? {{ tip("Le temps de l'estimateur avec ta forme d'aujourd'hui (correction de l'admin comprise). Une distance est cohérente avec ta forme, sans préparation, quand ta plus longue sortie des 8 dernières semaines atteint les deux tiers de sa durée. Au-delà, ajoute la course dans Échéances : le coach prépare le plan." ~ (" En trail, le D+ suit ton D+ par km habituel sur tes sorties trail." if plan.trail else "")) }}</h2></div>
   <ul class="coach-suggestions">
     {% for x in suggestions %}
     <li class="{{ 'strong' if x.suggested }}">{{ (x.distance_m / 1000) | round(1) | string | replace(".0", "") | replace(".", ",") }} km{% if x.gain_m %} et {{ x.gain_m | int }} m D+{% endif %} : <span data-chrono="{{ x.realistic_s }}"></span> <span class="muted">(<span data-chrono="{{ x.optimistic_s }}"></span> à <span data-chrono="{{ x.prudent_s }}"></span>)</span> · {% if x.ready %}<span class="state-good">cohérent avec ta forme</span>{% if x.suggested %} <span class="pill priority-B">suggéré</span>{% endif %}{% else %}<span class="muted">à préparer : sortie longue de {{ x.need_min }} min</span>{% endif %}</li>

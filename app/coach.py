@@ -562,12 +562,13 @@ def maintenance_for(cfg, today: date, data: dict, availability: list[dict], max_
 
 
 ROAD_DISTANCES = (5000, 10000, 21097.5, 42195)
+READY_SHARE = 2 / 3             # prêt sans préparation : plus longue sortie récente ≥ 2/3 de la course
 
 
 def race_suggestions(cfg, today: date, data: dict, factors: dict, trail: bool, dem=None) -> list[dict]:
     """Envie de courir une course : distances classiques, avec le temps de l'estimateur aujourd'hui
-    et si la forme du moment suffit (plus longue sortie ordinaire des 8 dernières semaines au moins
-    égale à la sortie longue que le plan viserait : 90 % de la durée, 3 h au plus). En trail, le D+
+    et si la forme du moment suffit, sans préparation : plus longue sortie ordinaire des 8 dernières
+    semaines au moins égale aux deux tiers de la durée de la course (repère courant). En trail, le D+
     suit le D+ par km habituel du coureur sur ses sorties trail des 12 dernières semaines."""
     since = coach_plan.monday(today) - timedelta(weeks=coach_plan.READY_WEEKS)
     acts = coach_plan.ordinary(data["acts"], today, data.get("confirmed") or (), keep_races=True)
@@ -586,7 +587,7 @@ def race_suggestions(cfg, today: date, data: dict, factors: dict, trail: bool, d
         est = proposed_target(cfg, race, today, data, factors, dem)
         if not est:
             continue
-        need = min(coach_plan.LONG_RACE_SHARE * est["realistic_s"] / 60, coach_plan.LONG_MAX_MIN)
+        need = READY_SHARE * est["realistic_s"] / 60
         out.append({"distance_m": d, "gain_m": race["gain_m"], **est, "need_min": round(need),
                     "ready": longest >= need})
     best = [x for x in out if x["ready"]]
