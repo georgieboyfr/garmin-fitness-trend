@@ -541,6 +541,8 @@ def coach_page(request: Request):
         factors = tracked.corrections(conn)
         tracked_races = tracked.all_races(conn)
         tracks = queries.track_signatures(conn)
+        lthr_est = metrics_job.lthr_estimate(conn, today)
+        hr_max = metrics_job.params_of(cfg, conn)["hr_max"]
     finally:
         conn.close()
     cal = coach.calendar(races, today)
@@ -551,8 +553,14 @@ def coach_page(request: Request):
     inferred = coach.availability_from_history(data["acts"], today)
     habits = coach.effective_habits(profile["habits"], coach.habits_from_history(data["acts"], tracks, today))
     upcoming_tracked = [r for r in tracked_races if not r["race_date"] or r["race_date"] >= today.isoformat()]
+    availability = coach.effective_availability(profile["availability"], inferred)
+    plan = None
+    if cal["main"]:
+        physio_now = physio.physiology(data["efforts"], today, lthr_est, hr_max, data["trend"])
+        plan = coach.plan_for(cfg, cal["main"], today, data, availability, profile["max_sessions"], habits,
+                              physio_now)
     return render(request, "coach.html", "/coach", calendar=cal,
-                  availability=coach.effective_availability(profile["availability"], inferred),
+                  availability=availability, plan=plan,
                   inferred=inferred, availability_saved=profile["availability"] is not None,
                   max_sessions=profile["max_sessions"],
                   habits=habits,

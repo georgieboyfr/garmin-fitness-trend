@@ -88,6 +88,43 @@
   {% endif %}
 </section>
 
+{% if plan %}
+{% set main = cal.main %}
+<section class="card" id="plan">
+  <div class="card-head">
+    <h2>Plan vers {{ main.name }} {{ tip("Plan recalculé à chaque ouverture, à rebours depuis la course : affûtage (une semaine sous 1 h 30 de course, deux au-delà), puis phases spécifique, développement et foncier selon le temps qui reste, avec un cycle de 3 semaines de charge et 1 allégée (−30 %). La charge fait monter ta fitness (page Forme) d'au plus +5 par semaine, sans dépasser de plus de 10 % ton pic des 12 derniers mois, dans la limite de tes disponibilités. 80/20 : une séance de qualité par semaine (deux à partir de 5 séances), jamais à côté d'une autre séance dure ni de la sortie longue. Les durées viennent de ta charge par heure, mesurée sur tes sorties.") }}</h2>
+  </div>
+  <p class="small">{{ plan.weeks | length }} semaine{{ "s" if plan.weeks | length > 1 }} · fitness <b>{{ plan.start_fitness | string | replace(".", ",") }}</b> aujourd'hui → <b>{{ plan.race_fitness | string | replace(".", ",") }}</b> le jour J
+    <span class="muted">(pic des 12 derniers mois {{ plan.peak_12m | string | replace(".", ",") }}{% if plan.cap_fitness %}, plafond {{ plan.cap_fitness | string | replace(".", ",") }}{% endif %})</span></p>
+  {% if plan.capacity_limited %}
+  <p class="small notice">Tes disponibilités limitent la charge : {{ plan.capacity_min }} min par semaine sur tes {{ plan.days | length }} jours retenus, de quoi tenir une fitness d'environ {{ plan.capacity_fitness | string | replace(".", ",") }}. Pour progresser davantage, allonge un jour ou ajoute une séance.</p>
+  {% endif %}
+  <p class="small muted">Charge par heure {% if plan.rates.personal %}mesurée sur tes sorties des 12 derniers mois{% else %}par défaut (pas assez de sorties avec FC){% endif %} : {{ plan.rates.easy | round | int }} en endurance, {{ plan.rates.quality | round | int }} en séance (HRSS par heure, 100 = une heure au seuil).</p>
+  <div class="coach-weeks">
+    {% for w in plan.weeks %}
+    <details class="coach-week kind-{{ w.kind }}" {% if loop.index <= 2 %}open{% endif %}>
+      <summary>
+        <span class="strong">S{{ w.index }}</span> · semaine du <span data-short-date="{{ w.monday }}"></span>
+        · {{ w.phase }}{% if w.kind not in ("charge", w.phase) %} ({{ w.kind }}){% endif %}
+        <span class="muted small">· {{ w.minutes }} min · charge {{ w.planned_load }} · fitness {{ w.fitness_end | string | replace(".", ",") }}</span>
+      </summary>
+      <ul class="coach-sessions-list">
+        {% for x in w.sessions %}
+        <li class="{{ 'muted' if x.date < today }}">
+          <span class="coach-day">{{ x.day }} <span class="muted small" data-short-date="{{ x.date }}"></span></span>
+          <div>
+            <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{% if x.key %} <span class="pill priority-B">séance clé</span>{% endif %}{% if x.date < today %} <span class="small">· passé</span>{% endif %}
+            <div class="small muted">{{ x.description }}</div>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 <section class="card" id="disponibilites">
   <div class="card-head">
     <h2>Disponibilités <span class="muted small">facultatif</span> {{ tip("Pour chaque jour : oui (le coach peut y placer une séance), optionnel (seulement si la semaine le demande, une séance qui peut sauter) ou non, et le temps maximal. Sans saisie, le coach les déduit de tes 12 dernières semaines : oui si tu y as couru au moins une semaine sur deux, optionnel au moins une semaine sur quatre, avec ta durée habituelle (médiane) ce jour-là.") }}</h2>
@@ -151,7 +188,7 @@
   {% endif %}
 </section>
 
-<p class="small muted">Prochaine étape du coach : le plan périodisé vers ta course A, construit sur ces réglages.</p>
+<p class="small muted">Prochaine étape du coach : l'écran « Cette semaine », avec les séances faites détectées automatiquement.</p>
 {% endblock %}
 
 {% block scripts %}

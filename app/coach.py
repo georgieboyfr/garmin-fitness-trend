@@ -21,7 +21,8 @@ from statistics import median
 
 import numpy as np
 
-from . import tracked
+from . import coach_plan, gpx_store, tracked, trail
+from .stats import FLAT_MAX_GAIN_PER_KM as HILLY_GAIN_PER_KM
 
 COACH_VERSION = 1
 HISTORY_WEEKS = 12
@@ -276,3 +277,33 @@ def proposed_target(cfg, race: dict, today: date, data: dict, factors: dict, dem
         return None
     factor = factors["trail" if race.get("gpx_id") else "road"]
     return {k: round(result[k] * factor) for k in ("optimistic_s", "realistic_s", "prudent_s")}
+
+
+# ---------- plan vers la course A ----------
+
+def plan_for(cfg, race: dict, today: date, data: dict, availability: list[dict], max_sessions: int | None,
+             habits: list[dict], physio_now: dict) -> dict | None:
+    """Plan périodisé vers la course A (coach_plan) : durée visée (objectif, sinon temps proposé),
+    allures du coureur, habitudes non refusées."""
+    duration = race.get("target_s") or (race.get("proposal") or {}).get("realistic_s")
+    distance, gain = race.get("distance_m"), race.get("gain_m") or 0.0
+    if race.get("gpx_id") and gpx_store.exists(cfg, race["gpx_id"]):
+        lats, lons, eles, dem_profile = gpx_store.route(cfg, race["gpx_id"])
+        profile = trail.route_profile(lats, lons, eles, dem_profile, data.get("params"))
+        if profile:
+            distance, gain = float(profile["distance"][-1]), profile.get("gain_m", 0.0)
+    threshold, vma = physio_now.get("threshold_pace"), physio_now.get("vma")
+    paces = {"threshold": threshold["pace_s_km"] if threshold else None,
+             "vma": vma["pace_s_km"] if vma else None,
+             "race": duration / distance * 1000 if duration and distance else None}
+    kept = [{"weekday": h["weekday"], "name": h["label_name"] or h["label"],
+             "hilly": h["distance_km"] > 0 and h["gain_m"] / h["distance_km"] > HILLY_GAIN_PER_KM,
+             "moving_min": h["moving_min"]} for h in habits if h["keep"] is not False]
+    target_text = None
+    if race.get("target_s"):
+        s = round(race["target_s"])
+        target_text = f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}"
+    full = {**race, "duration_s": duration, "target_text": target_text, "distance_m": distance,
+            "gain_m": gain}
+    return coach_plan.build_plan(full, today, data["acts"], availability, max_sessions, kept, paces,
+                                 data.get("lthr"))

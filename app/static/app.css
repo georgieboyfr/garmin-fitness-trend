@@ -529,3 +529,11 @@ details.tracked-add > summary { cursor: pointer; font-weight: 600; margin: 12px 
                    background: var(--surface); color: var(--text); text-align: center; }
 .coach-sessions p { margin: 0; flex: 1 1 200px; }
 .coach-road[hidden] { display: none; }
+.coach-weeks { display: grid; gap: 8px; }
+.coach-week { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.coach-week summary { cursor: pointer; }
+.coach-week.kind-allégée, .coach-week.kind-affûtage { background: var(--surface-2); }
+.coach-week.kind-course { border-color: var(--accent); }
+.coach-sessions-list { list-style: none; padding: 0; margin: 10px 0 4px; display: grid; gap: 10px; }
+.coach-sessions-list li { display: grid; grid-template-columns: 7.5em 1fr; gap: 8px; }
+.notice { border-left: 3px solid var(--warn); padding-left: 8px; }
