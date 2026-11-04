@@ -9,6 +9,64 @@
   <p class="muted">Démarrage en 5 minutes : tes courses à venir, et si tu veux tes disponibilités et tes habitudes. Rien d'autre n'est obligatoire : sans réponse, le coach part de tes 12 dernières semaines.</p>
 </section>
 
+<nav class="segmented coach-tabs" aria-label="Sections du coach">
+  <a href="?vue=plan" {% if vue == "plan" %}aria-current="true"{% endif %}>Plan</a>
+  <a href="?vue=echeances" {% if vue == "echeances" %}aria-current="true"{% endif %}>Échéances{% if cal.upcoming %} ({{ cal.upcoming | length }}){% endif %}</a>
+  <a href="?vue=reglages" {% if vue == "reglages" %}aria-current="true"{% endif %}>Disponibilités et habitudes</a>
+</nav>
+
+{% if vue == "plan" %}
+{% if plan %}
+{% set main = cal.main %}
+<section class="card" id="plan">
+  <div class="card-head">
+    <h2>Ton plan {{ tip("Plan recalculé à chaque ouverture, à rebours depuis la course : affûtage (une semaine sous 1 h 30 de course, deux au-delà), puis phases spécifique, développement et foncier selon le temps qui reste, avec un cycle de 3 semaines de charge et 1 allégée (−30 %). La charge fait monter ta fitness (page Forme) d'au plus +5 par semaine, sans dépasser de plus de 10 % ton pic des 12 derniers mois, dans la limite de tes disponibilités. 80/20 : une séance de qualité par semaine (deux à partir de 5 séances), jamais à côté d'une autre séance dure ni de la sortie longue. Les durées viennent de ta charge par heure, mesurée sur tes sorties.") }}</h2>
+  </div>
+  <div class="coach-banner">
+    <span class="pill priority-A">A</span>
+    <div>
+      <b>{{ main.name }}</b> · <span data-short-date="{{ main.race_date }}"></span> · {% if main.days_left == 0 %}aujourd'hui{% elif main.days_left < 14 %}dans {{ main.days_left }} jours{% else %}dans {{ main.weeks_left }} semaines{% endif %}
+      <div class="muted small">{{ main.route }} · objectif {% if main.target_s %}<b data-chrono="{{ main.target_s }}"></b>{% else %}<a href="?vue=echeances">à fixer</a>{% endif %}</div>
+    </div>
+  </div>
+  <section class="kpis coach-kpis">
+    <article class="kpi"><header>Fitness aujourd'hui</header><div class="kpi-value">{{ plan.start_fitness | string | replace(".", ",") }}</div><footer class="muted">pic des 12 mois {{ plan.peak_12m | string | replace(".", ",") }}</footer></article>
+    <article class="kpi"><header>Au plus haut {{ tip("La fitness la plus haute du plan, atteinte à la fin des semaines de charge, juste avant l'affûtage. Elle monte d'au plus +5 par semaine, sans dépasser de plus de 10 % ton pic des 12 derniers mois, dans la limite de tes disponibilités.") }}</header><div class="kpi-value">{{ plan.peak_fitness | string | replace(".", ",") }}</div><footer class="muted">avant l'affûtage</footer></article>
+    <article class="kpi state-{{ 'good' if plan.race_form_zone in ('fresh', 'transition') else 'warn' }}"><header>Le jour J {{ tip("Pendant l'affûtage, la charge baisse : ta fitness recule un peu (elle se construit sur 6 semaines), mais ta fatigue (sur une semaine) baisse bien plus vite. La fraîcheur, fitness moins fatigue comme sur la page Forme, remonte : c'est elle qui fait la performance du jour. Rapportée à ta fitness pour valoir quel que soit ton volume : de 5 à 25 % de ta fitness, frais et prêt pour une course.") }}</header><div class="kpi-value">{{ '+' if plan.race_form > 0 }}{{ plan.race_form | string | replace(".", ",") }}</div><footer class="muted">fraîcheur, {{ plan.race_form_pct }} % de ta fitness ({{ plan.race_fitness | string | replace(".", ",") }}) : {{ plan.race_form_label | lower }}</footer></article>
+  </section>
+  {% if plan.capacity_limited %}
+  <p class="small notice">Tes disponibilités limitent la charge : {{ plan.capacity_min }} min par semaine sur tes {{ plan.days | length }} jours retenus, de quoi tenir une fitness d'environ {{ plan.capacity_fitness | string | replace(".", ",") }}. Pour progresser davantage, allonge un jour ou ajoute une séance.</p>
+  {% endif %}
+  <p class="small muted">Charge par heure {% if plan.rates.personal %}mesurée sur tes sorties des 12 derniers mois{% else %}par défaut (pas assez de sorties avec FC){% endif %} : {{ plan.rates.easy | round | int }} en endurance, {{ plan.rates.quality | round | int }} en séance (HRSS par heure, 100 = une heure au seuil).</p>
+  <div class="coach-weeks">
+    {% for w in plan.weeks %}
+    <details class="coach-week kind-{{ w.kind }}" {% if loop.index <= 2 %}open{% endif %}>
+      <summary>
+        <span class="strong">S{{ w.index }}</span> · semaine du <span data-short-date="{{ w.monday }}"></span>
+        · {{ w.phase }}{% if w.kind not in ("charge", w.phase) %} ({{ w.kind }}){% endif %}
+        <span class="muted small">· {{ w.minutes }} min · charge {{ w.planned_load }} · fitness {{ w.fitness_end | string | replace(".", ",") }}</span>
+      </summary>
+      <ul class="coach-sessions-list">
+        {% for x in w.sessions %}
+        <li class="{{ 'muted' if x.date < today }}">
+          <span class="coach-day">{{ x.day }} <span class="muted small" data-short-date="{{ x.date }}"></span></span>
+          <div>
+            <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{% if x.key %} <span class="pill priority-B">séance clé</span>{% endif %}{% if x.date < today %} <span class="small">· passé</span>{% endif %}
+            <div class="small muted">{{ x.description }}</div>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endfor %}
+  </div>
+</section>
+{% else %}
+<section class="card">
+  <p>{% if cal.upcoming %}Aucune course A dans ton calendrier : donne la priorité A à ton objectif principal dans <a href="?vue=echeances">Échéances</a> pour que le coach construise un plan vers elle.{% else %}Aucune course à venir : ajoute ton objectif dans <a href="?vue=echeances">Échéances</a>. Sans course, le coach proposera bientôt un maintien de forme.{% endif %}</p>
+</section>
+{% endif %}
+{% elif vue == "echeances" %}
 <section class="card" id="echeances">
   <div class="card-head">
     <h2>Tes échéances {{ tip("Le calendrier du coach, séparé des courses suivies de l'estimateur. Priorité A : objectif principal, le plan entier est construit pour elle, avec un affûtage complet. B : course importante, mini-affûtage de quelques jours puis récupération. C : course de préparation, courue comme une grosse séance, juste une semaine un peu allégée.") }}</h2>
@@ -87,44 +145,7 @@
   <p class="small muted">Courses passées du calendrier : {% for r in cal.past %}{{ r.priority }} {{ r.name }} (<span data-short-date="{{ r.race_date }}"></span>){{ ", " if not loop.last }}{% endfor %}.</p>
   {% endif %}
 </section>
-
-{% if plan %}
-{% set main = cal.main %}
-<section class="card" id="plan">
-  <div class="card-head">
-    <h2>Plan vers {{ main.name }} {{ tip("Plan recalculé à chaque ouverture, à rebours depuis la course : affûtage (une semaine sous 1 h 30 de course, deux au-delà), puis phases spécifique, développement et foncier selon le temps qui reste, avec un cycle de 3 semaines de charge et 1 allégée (−30 %). La charge fait monter ta fitness (page Forme) d'au plus +5 par semaine, sans dépasser de plus de 10 % ton pic des 12 derniers mois, dans la limite de tes disponibilités. 80/20 : une séance de qualité par semaine (deux à partir de 5 séances), jamais à côté d'une autre séance dure ni de la sortie longue. Les durées viennent de ta charge par heure, mesurée sur tes sorties.") }}</h2>
-  </div>
-  <p class="small">{{ plan.weeks | length }} semaine{{ "s" if plan.weeks | length > 1 }} · fitness <b>{{ plan.start_fitness | string | replace(".", ",") }}</b> aujourd'hui → <b>{{ plan.race_fitness | string | replace(".", ",") }}</b> le jour J
-    <span class="muted">(pic des 12 derniers mois {{ plan.peak_12m | string | replace(".", ",") }}{% if plan.cap_fitness %}, plafond {{ plan.cap_fitness | string | replace(".", ",") }}{% endif %})</span></p>
-  {% if plan.capacity_limited %}
-  <p class="small notice">Tes disponibilités limitent la charge : {{ plan.capacity_min }} min par semaine sur tes {{ plan.days | length }} jours retenus, de quoi tenir une fitness d'environ {{ plan.capacity_fitness | string | replace(".", ",") }}. Pour progresser davantage, allonge un jour ou ajoute une séance.</p>
-  {% endif %}
-  <p class="small muted">Charge par heure {% if plan.rates.personal %}mesurée sur tes sorties des 12 derniers mois{% else %}par défaut (pas assez de sorties avec FC){% endif %} : {{ plan.rates.easy | round | int }} en endurance, {{ plan.rates.quality | round | int }} en séance (HRSS par heure, 100 = une heure au seuil).</p>
-  <div class="coach-weeks">
-    {% for w in plan.weeks %}
-    <details class="coach-week kind-{{ w.kind }}" {% if loop.index <= 2 %}open{% endif %}>
-      <summary>
-        <span class="strong">S{{ w.index }}</span> · semaine du <span data-short-date="{{ w.monday }}"></span>
-        · {{ w.phase }}{% if w.kind not in ("charge", w.phase) %} ({{ w.kind }}){% endif %}
-        <span class="muted small">· {{ w.minutes }} min · charge {{ w.planned_load }} · fitness {{ w.fitness_end | string | replace(".", ",") }}</span>
-      </summary>
-      <ul class="coach-sessions-list">
-        {% for x in w.sessions %}
-        <li class="{{ 'muted' if x.date < today }}">
-          <span class="coach-day">{{ x.day }} <span class="muted small" data-short-date="{{ x.date }}"></span></span>
-          <div>
-            <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{% if x.key %} <span class="pill priority-B">séance clé</span>{% endif %}{% if x.date < today %} <span class="small">· passé</span>{% endif %}
-            <div class="small muted">{{ x.description }}</div>
-          </div>
-        </li>
-        {% endfor %}
-      </ul>
-    </details>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
-
+{% else %}
 <section class="card" id="disponibilites">
   <div class="card-head">
     <h2>Disponibilités <span class="muted small">facultatif</span> {{ tip("Pour chaque jour : oui (le coach peut y placer une séance), optionnel (seulement si la semaine le demande, une séance qui peut sauter) ou non, et le temps maximal. Sans saisie, le coach les déduit de tes 12 dernières semaines : oui si tu y as couru au moins une semaine sur deux, optionnel au moins une semaine sur quatre, avec ta durée habituelle (médiane) ce jour-là.") }}</h2>
@@ -187,8 +208,7 @@
   <p class="muted">Aucune habitude nette sur tes 26 dernières semaines : aucun lieu n'est traversé par la moitié des sorties d'un même jour habituel.</p>
   {% endif %}
 </section>
-
-<p class="small muted">Prochaine étape du coach : l'écran « Cette semaine », avec les séances faites détectées automatiquement.</p>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}

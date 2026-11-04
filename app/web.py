@@ -528,7 +528,7 @@ async def save_aid_stations(request: Request, gpx_id: str):
 # ---------- coach ----------
 
 @router.get("/coach")
-def coach_page(request: Request):
+def coach_page(request: Request, vue: str = ""):
     if (redirect := _login_redirect(request)):
         return redirect
     cfg = request.app.state.config
@@ -559,7 +559,9 @@ def coach_page(request: Request):
         physio_now = physio.physiology(data["efforts"], today, lthr_est, hr_max, data["trend"])
         plan = coach.plan_for(cfg, cal["main"], today, data, availability, profile["max_sessions"], habits,
                               physio_now)
-    return render(request, "coach.html", "/coach", calendar=cal,
+    if vue not in ("plan", "echeances", "reglages"):
+        vue = "plan" if cal["main"] else "echeances"
+    return render(request, "coach.html", "/coach", calendar=cal, vue=vue,
                   availability=availability, plan=plan,
                   inferred=inferred, availability_saved=profile["availability"] is not None,
                   max_sessions=profile["max_sessions"],

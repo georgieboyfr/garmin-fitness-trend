@@ -122,3 +122,25 @@ def test_plan_flags_when_availability_limits_the_load():
     plan = cp.build_plan({**RACE, "race_date": "2027-03-28"}, TODAY, acts, days, None, [], {}, 170)
     assert plan["capacity_limited"] and plan["capacity_min"] == 80
     assert cp.build_plan({**RACE, "race_date": "2026-10-01"}, TODAY, acts, days, None, [], {}, 170) is None
+
+
+def test_trail_reminder_is_on_hills_and_road_reminder_at_race_pace():
+    days = cp.chosen_days(avail((0, "oui", 50), (1, "oui", 50), (3, "oui", 70), (5, "oui", 120)), 4)
+    taper = week(kind="affûtage", phase="affûtage")
+    trail = cp.build_week(taper, days, 100, RATES, RACE, {"race": None}, [], None, 0)
+    q = next(s for s in trail["sessions"] if s["hard"])
+    assert q["label"] == "Rappel en côte" and "/km" not in q["description"]
+    road_race = {**RACE, "gain_m": 50, "distance_m": 21100}
+    road = cp.build_week(taper, days, 100, RATES, road_race, {"race": 300}, [], None, 0)
+    q = next(s for s in road["sessions"] if s["hard"])
+    assert q["label"] == "Rappel d'allure" and "5:00 /km" in q["description"]
+
+
+def test_taper_lowers_fitness_a_little_but_leaves_the_runner_fresh_on_race_day():
+    acts = [run(TODAY - timedelta(days=i), 60, 90, 0.0) for i in range(1, 200, 2)]
+    days = avail((0, "oui", 120), (1, "oui", 120), (3, "oui", 120), (5, "oui", 240))
+    plan = cp.build_plan({**RACE, "race_date": "2027-01-31"}, TODAY, acts, days, None, [], {}, 170)
+    assert plan["race_fitness"] < plan["peak_fitness"]                  # l'affûtage coûte un peu de fitness
+    assert plan["race_form"] > 0 and plan["race_form_pct"] > 5        # mais on arrive frais
+    assert plan["race_form_zone"] in ("fresh", "transition") and "frais" in plan["race_form_label"].lower()
+    assert plan["start_fitness"] > 0

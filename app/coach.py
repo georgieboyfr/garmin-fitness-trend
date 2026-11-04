@@ -293,9 +293,11 @@ def plan_for(cfg, race: dict, today: date, data: dict, availability: list[dict],
         if profile:
             distance, gain = float(profile["distance"][-1]), profile.get("gain_m", 0.0)
     threshold, vma = physio_now.get("threshold_pace"), physio_now.get("vma")
+    trail_race = coach_plan.is_trail({**race, "distance_m": distance, "gain_m": gain})
     paces = {"threshold": threshold["pace_s_km"] if threshold else None,
              "vma": vma["pace_s_km"] if vma else None,
-             "race": duration / distance * 1000 if duration and distance else None}
+             # allure moyenne de course : sans objet en trail, où le dénivelé la fausse
+             "race": duration / distance * 1000 if duration and distance and not trail_race else None}
     kept = [{"weekday": h["weekday"], "name": h["label_name"] or h["label"],
              "hilly": h["distance_km"] > 0 and h["gain_m"] / h["distance_km"] > HILLY_GAIN_PER_KM,
              "moving_min": h["moving_min"]} for h in habits if h["keep"] is not False]
