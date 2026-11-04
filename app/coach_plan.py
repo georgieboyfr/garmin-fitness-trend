@@ -30,6 +30,7 @@ RAMP_PER_WEEK = 5.0             # fitness gagnée au plus par semaine de charge 
 PEAK_MARGIN = 1.10              # jamais plus de 10 % au-dessus du pic des 12 derniers mois
 RECOVERY_LOAD = 0.7             # semaine allégée : −30 % (choix de Greg)
 CYCLE = 4                       # 3 semaines de charge, 1 allégée
+MIN_CHARGE_BEFORE_LIGHT = 2     # pas de semaine allégée avant 2 semaines de charge du plan
 PHASE_SHARES = (0.4, 0.3, 0.3)  # foncier, développement, spécifique
 TAU = stats.TAU_FITNESS
 WEEK_DECAY = math.exp(-7 / TAU)  # fitness gardée d'une semaine sur l'autre sans charge
@@ -171,7 +172,9 @@ def skeleton(today: date, race_date: date, race_duration_s: float | None) -> lis
     weeks = []
     for i, phase in enumerate(phases):
         from_taper = m - 1 - i            # 0 : la semaine juste avant l'affûtage
-        weeks.append({"phase": phase, "kind": "allégée" if from_taper % CYCLE == CYCLE - 1 else "charge"})
+        # une semaine allégée récupère de semaines chargées : jamais avant 2 semaines de charge du plan
+        light = from_taper % CYCLE == CYCLE - 1 and i >= MIN_CHARGE_BEFORE_LIGHT
+        weeks.append({"phase": phase, "kind": "allégée" if light else "charge"})
     if taper == 2:
         weeks.append({"phase": "affûtage", "kind": "affûtage"})
     weeks.append({"phase": "course", "kind": "course"})
