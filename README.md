@@ -61,6 +61,19 @@ Course à pied uniquement (route, trail, tapis) : les autres sports sont ignoré
     95 % (l'écart dans lequel finissent 95 % des courses).
   - **Courses suivies** : prédiction enregistrée chaque semaine, courbe avec fourchette et
     objectif, puis résultat une fois la course courue et reliée à sa sortie.
+- **Coach** (pré-version 1.0.0-alpha, règles explicites, sans LLM) :
+  - Échéances A, B ou C avec objectif proposé par l'estimateur, fiche de chaque course
+    (temps prévu, temps de passage km par km) ; disponibilités et habitudes déduites de
+    l'historique, modifiables.
+  - Plan périodisé vers la course A (foncier, développement, spécifique, affûtage), cycle
+    3 + 1, hausse de fitness plafonnée, séances structurées avec tes allures et ta FC, deux
+    propositions par séance, bibliothèque de séances, parcours habituels variés, monotonie.
+  - Plusieurs courses (mini-affûtage en B, séance en C, récupération, conflits signalés) ;
+    maintien de forme sans course ; orientation au choix et périodes particulières
+    (vacances, maladie, blessure, douleur…).
+  - **Cette semaine** : séances faites détectées dans les sorties, bilan du dimanche et
+    réajustement de la semaine suivante, notification ntfy ; temps prévu le jour J avec la
+    fitness projetée, objectif à revoir si l'écart dure 3 semaines.
 
 | Fiche de sortie | Sorties |
 | --- | --- |
@@ -133,7 +146,7 @@ Seul l'export le plus récent compte ; un fichier déjà traité n'est pas relu.
 | 1. Socle | Synchro Garmin, lecture des FIT, D+, import Strava, admin, image Docker | Terminée (v0.1) |
 | 2. Statistiques | Pages Volume, Sorties, Performance, Forme, Courses ; fiche de sortie ; détection des courses | Terminée (v0.2) |
 | 3. Estimateur | Temps de course estimé depuis un GPX ou une distance et la forme actuelle (route : Riegel, références ajustées par la FC ; trail : modèle allure-pente personnel par tronçon, fatigue, arrêts), validé sur les courses passées, courses suivies semaine après semaine | Terminée (v0.3, compléments en v0.4 : confiance, limites à 95 %, repères de la page Forme) |
-| 4. Coach | Plan d'entraînement adaptatif autour des courses prévues (ou maintien de forme), séances détectées, bilan du dimanche, réajustement ; coach conversationnel qui propose sans imposer | À venir |
+| 4. Coach | Plan d'entraînement adaptatif autour des courses prévues (ou maintien de forme), séances détectées, bilan du dimanche, réajustement ; coach conversationnel qui propose sans imposer | En cours (pré-version v1.0.0-alpha ; restent les unités au choix, la séance de remplacement, le bilan détaillé, la validation sur 2 semaines réelles, puis le coach conversationnel) |
 | 5. Extensions | Temps par tronçon en trail, envoi des séances vers la montre, idées en attente (météo, carte de toutes les traces, suivi des chaussures…) | À venir |
 
 Le détail et les décisions prises sont dans le cahier des charges,
@@ -172,4 +185,6 @@ construit l'image pour amd64 et arm64 et la publie sur
   effort de 5 min sur route et reste sous-estimée sans effort de 5 min couru à fond
   récemment (la VO2max en découle) ; la FC au seuil est la meilleure heure de course, qui
   peut être gonflée par la chaleur ou la dérive cardiaque.
+- Le coach est en pré-version : ses repères (hausse de charge, affûtage, récupération,
+  détection des séances faites) n'ont pas encore été validés sur un plan suivi en réel.
 - Un seul utilisateur.

@@ -2,7 +2,7 @@ services:
   garmin-fitness-trend:
     # image publiée sur GitHub (Intel/AMD et ARM)
     # Pour construire depuis le code source à la place : remplacer par `build: .`
-    image: ghcr.io/georgieboyfr/garmin-fitness-trend:0.2.0
+    image: ghcr.io/georgieboyfr/garmin-fitness-trend:1.0.0-alpha
     container_name: garmin-fitness-trend
     restart: unless-stopped
     # utilisateur propriétaire du dossier data (voir PUID/PGID dans .env)

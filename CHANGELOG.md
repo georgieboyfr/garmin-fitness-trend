@@ -4,6 +4,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 
 ## [Non publié]
 
+## [1.0.0-alpha] - 2026-11-04
+
+Pré-version de la phase 4 (coach) pour la tester sur le serveur avant la fin de la phase : étapes 1 à 9 bis faites, restent les unités au choix, la séance de remplacement, le bilan de semaine détaillé et la validation sur 2 semaines réelles. Image `1.0.0-alpha` seulement (pas `latest`). Au premier démarrage, la base passe en version 19 (calendrier du coach, bilans, temps prévus, choix des séances). Notification du dimanche : `NTFY_URL` et `NTFY_TOKEN` à ajouter au `.env`.
+
 ### Ajouté
 - Coach, fiche de chaque échéance (demande de Greg) : le nom de la course mène à son temps prévu, à un lien vers l'estimateur et à ses temps de passage km par km (allure, passage, D+ et D− sur un GPX, ravitos), pour le temps prévu, l'objectif, la fourchette ou un temps saisi à la main.
 - Coach, choix et variété des séances (phase 4, étape 9) : deux propositions par séance au même rôle (l'autre terrain pour une séance de qualité, une autre variante de sortie longue, footing plat ou vallonné), à choisir dans Cette semaine, le plan en tenant compte (base en version 19) ; bibliothèque de séances par famille avec tes allures (sous-onglet Séances) ; parcours habituels proposés pour les footings et sorties longues, le moins récemment couru d'abord ; indicateur de monotonie (Foster) de la semaine passée et prévue, comparé à tes semaines de l'année.
