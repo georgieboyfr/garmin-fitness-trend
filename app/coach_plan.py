@@ -39,6 +39,8 @@ DEFAULT_RATES = (60.0, 85.0)    # HRSS par heure à défaut : endurance, séance
 RATE_DAYS = 365
 DEFAULT_DAY_MIN = 60            # jour possible sans durée connue
 MIN_EASY_MIN = 30               # un footing dure au moins 30 min
+TRAIL_GAIN_PER_KM = 15.0        # sortie de trail : plus de 15 m de D+ par km
+DEFAULT_EASY_VAM = 300          # m de D+ par heure en endurance, à défaut de sorties trail faciles
 QUALITY_MAX_SHARE = 0.6         # deux séances de qualité seulement si elles laissent 40 % de la charge
 LONG_SHARE = 0.35               # sortie longue : environ un tiers du temps de la semaine
 WEEKDAYS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
@@ -96,7 +98,7 @@ def load_rates(acts, today: date) -> dict:
     """Charge par heure (HRSS/h) des sorties faciles et des séances du coureur sur 12 mois, et son
     allure habituelle en endurance (sorties faciles sur route plate), pour donner une distance."""
     since = today - timedelta(days=RATE_DAYS)
-    easy, quality, paces = [], [], []
+    easy, quality, paces, climbs = [], [], [], []
     for a in acts:
         moving = a.get("moving_duration_s") or 0
         zones = [a.get(f"zone{i}_s") or 0 for i in range(1, 6)]
@@ -107,6 +109,8 @@ def load_rates(acts, today: date) -> dict:
         if hard < EASY_MAX_HARD_SHARE:
             easy.append(rate)
             km = a.get("distance_km")
+            if km and (a.get("gain_m") or 0) / km > TRAIL_GAIN_PER_KM:
+                climbs.append(a["gain_m"] / (moving / 3600))
             if km and a.get("terrain") == "road" and (a.get("gain_m") or 0) / km < stats.FLAT_MAX_GAIN_PER_KM:
                 paces.append(moving / a["distance_km"])
         elif hard >= QUALITY_MIN_HARD_SHARE:
@@ -114,7 +118,9 @@ def load_rates(acts, today: date) -> dict:
     return {"easy": round(median(easy), 1) if len(easy) >= 3 else DEFAULT_RATES[0],
             "quality": round(median(quality), 1) if len(quality) >= 3 else DEFAULT_RATES[1],
             "personal": len(easy) >= 3, "easy_n": len(easy), "quality_n": len(quality),
-            "easy_pace": round(median(paces), 1) if len(paces) >= 3 else None}
+            "easy_pace": round(median(paces), 1) if len(paces) >= 3 else None,
+            "easy_vam": round(median(climbs)) if len(climbs) >= 3 else DEFAULT_EASY_VAM,
+            "easy_vam_personal": len(climbs) >= 3}
 
 
 def weekly_load_for(fitness_now: float, fitness_next: float) -> float:
@@ -172,27 +178,8 @@ def chosen_days(availability: list[dict], max_sessions: int | None) -> list[dict
 
 # ---------- séances ----------
 
-def _quality(phase: str, kind: str, rank: int, trail: bool, level: int, paces: dict, on_hills: bool,
-             day_max: float) -> dict:
-    """Séance de qualité selon la phase, prise dans la bibliothèque (coach_workouts), au palier de
-    la semaine dans la phase, ramenée au temps du jour. En trail, rien à une allure course en
-    min/km (elle ne veut rien dire avec du dénivelé) : montées à l'effort."""
-    if kind in ("affûtage", "course"):
-        s = wk.reminder(trail, paces)
-        return s if s["minutes"] <= day_max else wk.reminder(trail, paces, compact=True)
-    if phase == "foncier" or (kind == "allégée" and rank == 0):
-        if on_hills:
-            return wk.fit(lambda lv, compact=False: wk.hills_short(lv, paces, compact), level, day_max)
-        return wk.strides(min(40, max(30, wk.floor5(day_max) - 10)), paces)
-    if phase == "développement":
-        if rank == 0:
-            return wk.fit(lambda lv, compact=False: wk.seuil(lv, paces, compact), level, day_max)
-        return wk.fit(lambda lv, compact=False: wk.vma(lv, paces, compact), level, day_max)
-    if rank == 0 and trail:
-        return wk.fit(lambda lv, compact=False: wk.hills_long(lv, paces, compact), level, day_max)
-    if rank == 0:
-        return wk.fit(lambda lv, compact=False: wk.race_pace(lv, paces, compact), level, day_max)
-    return wk.fit(lambda lv, compact=False: wk.seuil(lv, paces, compact), level + 2, day_max)
+HILL_TYPES = {"côtes", "côtes longues", "vma en côte", "montée au seuil", "marche en côte", "descente",
+              "sprints en côte", "rappel"}
 
 
 def _adjacent(a: int, b: int) -> bool:
@@ -210,39 +197,36 @@ def _race_session(race: dict) -> dict:
     return {"weekday": date.fromisoformat(race["race_date"]).weekday(), "type": "course",
             "label": f"Course : {race['name']}",
             "minutes": round(race["duration_s"] / 60) if race.get("duration_s") else None,
-            "description": "L'objectif du plan." + target, "key": True, "hard": True}
+            "description": "L'objectif du plan." + target, "key": True, "hard": True, "steps": []}
 
 
-def _quality_days(usable, long_day, n_quality, phase, kind, trail, race_wd, habit_by_day):
-    """Jours des séances de qualité : jamais à côté de la sortie longue, d'une autre séance dure ou
-    de la course ; côtes sur le jour d'une habitude vallonnée, les autres séances ailleurs."""
+def _pick_day(candidates, long_day, picked, kind, race_wd, habit_by_day, hills: bool):
+    """Jour d'une séance de qualité : jamais à côté de la sortie longue, d'une autre séance dure ou
+    de la course ; séance en côte sur le jour d'une habitude vallonnée, les autres ailleurs ; en
+    semaine de course, le plus tard possible (2 à 4 jours avant)."""
     hilly = {wd for wd, h in habit_by_day.items() if h.get("hilly")}
-    others = [d for d in usable if not long_day or d["weekday"] != long_day["weekday"]]
-    picked = []
-    for rank in range(n_quality):
-        candidates = [d for d in others if d not in picked
-                      and not (long_day and _adjacent(d["weekday"], long_day["weekday"]))
-                      and not any(_adjacent(d["weekday"], q["weekday"]) for q in picked)
-                      and not (kind == "course" and _adjacent(d["weekday"], race_wd))]
-        if not candidates:
-            break
-        hills = phase == "foncier" or (phase == "spécifique" and trail and rank == 0)
+    ok = [d for d in candidates if d not in picked
+          and not (long_day and _adjacent(d["weekday"], long_day["weekday"]))
+          and not any(_adjacent(d["weekday"], q["weekday"]) for q in picked)
+          and not (kind == "course" and _adjacent(d["weekday"], race_wd))]
+    if not ok:
+        return None
 
-        def rank_key(d, hills=hills):
-            avoid = (d["weekday"] not in hilly) if hills else (d["weekday"] in habit_by_day)
-            # semaine de course : le rappel le plus tard possible (2 à 4 jours avant), sinon au plus tôt
-            return (-d["weekday"],) if kind == "course" else (avoid, d["weekday"])
-        candidates.sort(key=rank_key)
-        picked.append(candidates[0])
-    return picked, hilly
+    def key(d):
+        if kind == "course":
+            return (-d["weekday"],)
+        avoid = (d["weekday"] not in hilly) if hills else (d["weekday"] in habit_by_day)
+        return avoid, d["weekday"]
+    return min(ok, key=key)
 
 
 def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dict, paces: dict,
                habits: list[dict], lthr: float | None, week_in_phase: int) -> dict:
-    """Séances d'une semaine pour une charge visée : sortie longue, qualité, footings. Durées
-    rondes (5 min) ; un footing dure au moins MIN_EASY_MIN, sinon un jour de footing saute."""
+    """Séances d'une semaine pour une charge visée : sortie longue, qualité, footings, prises dans
+    le catalogue de coach_workouts et variées d'une semaine à l'autre. Durées rondes (5 min) ; un
+    footing dure au moins MIN_EASY_MIN, sinon un jour de footing saute."""
     phase, kind = week["phase"], week["kind"]
-    paces = {"lthr": lthr, **paces}
+    paces = {"lthr": lthr, "easy_vam": DEFAULT_EASY_VAM, **paces}
     trail = is_trail(race)
     race_wd = date.fromisoformat(race["race_date"]).weekday()
     habit_by_day = {h["weekday"]: h for h in habits}
@@ -260,23 +244,27 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
         n_quality = 0
     else:
         n_quality = 2 if len(usable) >= 5 and kind == "charge" else 1
-    quality_days, hilly = _quality_days(usable, long_day, n_quality, phase, kind, trail, race_wd,
-                                        habit_by_day)
+    others = [d for d in usable if d is not long_day]
     total_min = budget = load * 60 / rates["easy"]                       # en minutes d'endurance
-    q_sessions = []
-    for rank, d in enumerate(quality_days):
-        q = _quality(phase, kind, rank, trail, week_in_phase, paces, d["weekday"] in hilly, d["max_min"])
-        habit = habit_by_day.get(d["weekday"])
-        if habit:
-            q["label"] += f" ({habit['name']})"
+    q_sessions, quality_days = [], []
+    for rank in range(n_quality):
+        proto = wk.quality(phase, kind, rank, trail, week_in_phase, paces, 999)
+        hills = proto["type"] in HILL_TYPES
+        d = _pick_day(others, long_day, quality_days, kind, race_wd, habit_by_day, hills)
+        if d is None:
+            break
+        q = wk.quality(phase, kind, rank, trail, week_in_phase, paces, d["max_min"])
         cost = q["minutes"] * (rates["quality"] if q["hard"] else rates["easy"]) / rates["easy"]
         if rank > 0 and budget - total_min + cost > QUALITY_MAX_SHARE * budget:
             break                                       # une seule séance : la seconde mangerait la semaine
+        habit = habit_by_day.get(d["weekday"])
+        if habit:
+            q["label"] += f" ({habit['name']})"
         q_sessions.append({"weekday": d["weekday"], **q, "key": rank == 0,
                            "habit": habit["name"] if habit else None})
+        quality_days.append(d)
         total_min -= cost
-    quality_days = [d for d in quality_days if any(q["weekday"] == d["weekday"] for q in q_sessions)]
-    easy_days = [d for d in usable if d not in quality_days and d is not long_day]
+    easy_days = [d for d in others if d not in quality_days]
     long_min = 0
     if long_day:
         # la sortie longue d'abord, la plus longue de la semaine ; ce sont les footings qui sautent
@@ -290,32 +278,33 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
     while len(easy_days) > 1 and total_min / len(easy_days) < MIN_EASY_MIN:
         easy_days.remove(min(easy_days, key=lambda d: (d["weekday"] in habit_by_day, d["max_min"])))
     per_easy = total_min / len(easy_days) if easy_days else 0
-    for d in easy_days:
+    for i, d in enumerate(easy_days):
         habit = habit_by_day.get(d["weekday"])
         minutes = max(MIN_EASY_MIN, wk.floor5(min(d["max_min"], per_easy + 2.5)))
-        keep = ""
+        # variété : en trail, footings vallonnés et sur le plat en alternance ; en foncier et en
+        # développement, un footing sur deux semaines finit par des lignes droites
+        hilly = bool(habit and habit.get("hilly")) or (trail and (i + week["index"]) % 2 == 0)
+        nxt = d["weekday"] + 1
+        before_hard = (any(q["weekday"] == nxt for q in q_sessions)
+                       or (long_day and long_day["weekday"] == nxt))
+        if (not habit and kind == "charge" and phase in ("foncier", "développement")
+                and i == len(easy_days) - 1 and week["index"] % 2 == 0 and not before_hard):
+            s = wk.strides(max(MIN_EASY_MIN, minutes - 10), paces)
+        else:
+            s = wk.easy_run(minutes, paces, hilly, km=not hilly)
         if habit:
             short = habit.get("moving_min") and minutes < habit["moving_min"] - 5
-            keep = (" Ta sortie habituelle en version courte, à allure facile."
-                    if short else " Garde ta sortie habituelle, à allure facile.")
-        sessions.append({"weekday": d["weekday"], "type": "footing",
-                         "label": "Footing" + (f" : {habit['name']}" if habit else ""),
-                         "minutes": minutes, "steps": wk.easy_steps(minutes, paces, km=not habit),
-                         "description": ("En aisance respiratoire : tu peux parler." + keep).strip(),
-                         "key": False, "hard": False, "habit": habit["name"] if habit else None})
+            s["label"] = f"{s['label']} : {habit['name']}"
+            s["description"] += (" Ta sortie habituelle en version courte." if short
+                                 else " Garde ta sortie habituelle, à allure facile.")
+        sessions.append({"weekday": d["weekday"], **s, "key": False,
+                         "habit": habit["name"] if habit else None})
     if long_day:
-        gain = ""
-        specific = phase in ("spécifique", "développement")
-        with_gain = trail and race.get("duration_s") and race.get("gain_m") and specific
-        if with_gain:
-            meters = round(race["gain_m"] * long_min * 60 / race["duration_s"], -1)
-            gain = (f" Avec environ {meters:.0f} m de D+, le dénivelé par heure de la course : "
-                    "marche active dans les fortes pentes, comme en course.")
+        variant = wk.long_variant(phase, kind, trail, week_in_phase)
+        s = wk.long_run(variant, long_min, paces, km=not trail)
         habit = habit_by_day.get(long_day["weekday"])
-        sessions.append({"weekday": long_day["weekday"], "type": "sortie longue", "label": "Sortie longue",
-                         "minutes": long_min, "steps": wk.easy_steps(long_min, paces, km=not with_gain),
-                         "description": "Régulière du début à la fin, en aisance respiratoire." + gain,
-                         "key": not q_sessions, "hard": False, "habit": habit["name"] if habit else None})
+        sessions.append({"weekday": long_day["weekday"], **s, "key": not q_sessions,
+                         "habit": habit["name"] if habit else None})
     sessions.extend(q_sessions)
     return _finish(week, sessions, load, rates)
 
@@ -343,7 +332,7 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
         return None
     days = chosen_days(availability, max_sessions)
     rates = load_rates(acts, today)
-    paces = {**paces, "lthr": lthr, "easy": rates["easy_pace"]}
+    paces = {**paces, "lthr": lthr, "easy": rates["easy_pace"], "easy_vam": rates["easy_vam"]}
     state = fitness_state(acts, today)
     weeks = skeleton(today, race_date, race.get("duration_s"))
     cap_fitness = state["peak_12m"] * PEAK_MARGIN if state["peak_12m"] else None

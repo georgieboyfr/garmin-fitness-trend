@@ -60,7 +60,7 @@ def test_load_rates_are_learnt_from_easy_runs_and_sessions():
     acts += [run(TODAY - timedelta(days=i), 70, 60, 0.5) for i in range(10, 14)]
     r = cp.load_rates(acts, TODAY)
     assert r == {"easy": 40.0, "quality": 70.0, "personal": True, "easy_n": 5, "quality_n": 4,
-                 "easy_pace": None}
+                 "easy_pace": None, "easy_vam": cp.DEFAULT_EASY_VAM, "easy_vam_personal": False}
     assert cp.load_rates([], TODAY)["easy"] == cp.DEFAULT_RATES[0]
 
 
@@ -97,7 +97,7 @@ def test_hill_sessions_go_on_a_hilly_habit_day_flat_sessions_elsewhere():
                         None, 0)
     q = next(s for s in dev["sessions"] if s["hard"])
     assert q["weekday"] != 0 and q["type"] == "seuil" and "4:52 à 5:04 /km" in text(q)
-    assert next(s for s in dev["sessions"] if s["weekday"] == 0)["label"] == "Footing : Bastille"
+    assert next(s for s in dev["sessions"] if s["weekday"] == 0)["label"] == "Footing vallonné : Bastille"
 
 
 def test_race_week_rests_the_day_before_and_keeps_a_short_reminder():
@@ -151,3 +151,26 @@ def test_taper_lowers_fitness_a_little_but_leaves_the_runner_fresh_on_race_day()
     assert plan["race_form"] > 0 and plan["race_form_pct"] > 5        # mais on arrive frais
     assert plan["race_form_zone"] in ("fresh", "transition") and "frais" in plan["race_form_label"].lower()
     assert plan["start_fitness"] > 0
+
+
+def test_key_sessions_and_long_runs_vary_from_week_to_week():
+    days = cp.chosen_days(avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 70), (5, "oui", 150)), 4)
+    keys, longs = [], []
+    for i in range(4):
+        w = cp.build_week({**week(phase="spécifique"), "index": i + 1}, days, 220, RATES, RACE, {}, [],
+                          170, i)
+        keys.append(next(s["type"] for s in w["sessions"] if s["key"]))
+        longs.append(next(s["label"] for s in w["sessions"] if s["type"] == "sortie longue"))
+    assert all(a != b for a, b in zip(keys, keys[1:], strict=False)), keys
+    assert len(set(longs)) >= 2, longs
+
+
+def test_trail_long_run_climbs_at_the_runner_easy_rate_not_race_rate():
+    days = cp.chosen_days(avail((1, "oui", 60), (5, "oui", 120)), 2)
+    paces = {"easy_vam": 360}
+    w = cp.build_week(week(phase="développement"), days, 120, RATES, RACE, paces, [], 170, 0)
+    long = next(s for s in w["sessions"] if s["type"] == "sortie longue")
+    hours = long["minutes"] / 60
+    assert f"environ {round(360 * hours, -1):.0f} m de D+" in text(long)  # 360 m/h, pas 375 m/h (course)
+    assert "marcher dans les montées" in text(long)
+

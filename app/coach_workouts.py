@@ -7,7 +7,12 @@ rien dire. Paliers de progression ; durée totale tirée de la structure, arrond
 Formats classiques de l'entraînement en course à pied (seuil en blocs, VMA en 30/30 ou en
 fractions de 400 à 1 000 m, côtes courtes et longues, allure spécifique), rédigés pour ce projet.
 Inspirations : présentation des séances de time-to-run (MIT), étapes typées avec répétitions et
-cibles en plage d'OpenAthlete (idée seulement, aucun code repris).
+cibles en plage d'OpenAthlete (idée seulement, aucun code repris). Séances de trail d'après les
+repères courants (World Athletics, TrainingPeaks, vert.run, campus.coach, u-run) : sprints en côte
+de moins de 10 s, côtes courtes de 30 s à 1 min, longues de 3 min et plus, montée continue au
+seuil, marche rapide en forte pente, descente travaillée à introduire progressivement ;
+récupération en redescendant au trot, de l'ordre de 1 à 3 fois l'effort. Variété : chaque créneau
+a plusieurs variantes, qui tournent d'une semaine à l'autre ; le palier monte à chaque tour.
 """
 import math
 
@@ -159,7 +164,7 @@ def hills_short(level: int, p: dict, compact: bool = False) -> dict:
     steps = [_warmup(warm(compact), lthr),
              step("work", f"{reps} × 30 s de montée vive, pente moyenne", reps * 0.5,
                   target(HILL_SHORT, lthr)),
-             step("recovery", "retour en descendant au trot, environ 1 min 30", reps * 1.5,
+             step("recovery", "récupération : redescente au trot, 1 min 30 (3 fois l'effort)", reps * 1.5,
                   target(RECOVERY, lthr)),
              _cooldown(cool(compact), lthr)]
     return _session("côtes", "Côtes courtes", steps, "Travail de force : genoux hauts, appuis dynamiques, "
@@ -172,7 +177,8 @@ def hills_long(level: int, p: dict, compact: bool = False) -> dict:
     lthr = p.get("lthr")
     steps = [_warmup(warm(compact), lthr),
              step("work", f"{reps} × {work} min de montée", reps * work, target(THRESHOLD, lthr)),
-             step("recovery", f"redescente au trot, environ {_minutes(rest)}", reps * rest,
+             step("recovery", f"récupération : redescente au trot, environ {_minutes(rest)}, repartir dès "
+                              "que le souffle est revenu", reps * rest,
                   target(RECOVERY, lthr)),
              _cooldown(cool(compact), lthr)]
     return _session("côtes longues", "Côtes longues", steps,
@@ -225,3 +231,220 @@ def fit(make, level: int, day_max: float) -> dict:
         if s["minutes"] <= day_max:
             return s
     return make(0, compact=True)
+
+
+# ---------- séances supplémentaires (variété) ----------
+
+TEMPO = [20, 25, 30, 35]                          # min en continu
+FARTLEK = [8, 10, 12]                             # × 1 min vif / 1 min footing
+HILL_SPRINTS = [6, 8, 10]                         # × 10 s
+HILLS_MEDIUM = [6, 8, 10]                         # × 1 min
+UPHILL_TEMPO = [15, 20, 25, 30]                   # min de montée continue
+POWER_HIKE = [(4, 4), (5, 4), (4, 6), (5, 6)]     # × min de marche rapide
+DOWNHILL = [4, 6, 8]                              # × 1 min 30 de descente
+STEADY = {"hr": (0.90, 0.95), "rpe": "5 à 6"}     # zone 3 : soutenu mais confortable
+WALK = "marcher dans les montées raides pour rester sous la FC visée"
+
+
+def tempo(level: int, p: dict, compact: bool = False) -> dict:
+    minutes = TEMPO[min(level, len(TEMPO) - 1)]
+    lthr = p.get("lthr")
+    pace = pace_band(p["threshold"] * 1.04) if p.get("threshold") else ""
+    steps = [_warmup(warm(compact), lthr),
+             step("work", f"{minutes} min en continu, allure soutenue", minutes, target(STEADY, lthr, pace)),
+             _cooldown(cool(compact), lthr)]
+    return _session("tempo", "Tempo", steps, "Un cran sous le seuil : soutenu mais régulier, la respiration "
+                                             "rythmée sans être haletante.")
+
+
+def fartlek(level: int, p: dict, compact: bool = False) -> dict:
+    reps = FARTLEK[min(level, len(FARTLEK) - 1)]
+    lthr = p.get("lthr")
+    steps = [_warmup(warm(compact), lthr),
+             step("work", f"{reps} × 1 min vif", reps, target({"hr": None, "rpe": "7 à 8"}, lthr)),
+             step("recovery", "récupération 1 min en footing, sans s'arrêter", reps - 1, target(EASY, lthr)),
+             _cooldown(cool(compact), lthr)]
+    return _session("fartlek", "Fartlek", steps, "Au gré du terrain : les accélérations à la sensation, "
+                                                 "plus vite que le seuil, moins vite qu'un sprint.")
+
+
+def hill_sprints(level: int, p: dict, compact: bool = False) -> dict:
+    reps = HILL_SPRINTS[min(level, len(HILL_SPRINTS) - 1)]
+    lthr = p.get("lthr")
+    base = 10 if compact else 25
+    steps = [step("steady", f"{base} min de footing", base, target(EASY, lthr)),
+             step("work", f"{reps} × 10 s de sprint en côte raide", reps * 10 / 60,
+                  "effort 9/10, très court"),
+             step("recovery", "récupération complète : redescente en marchant, 1 min 30", (reps - 1) * 1.5,
+                  target(RECOVERY, lthr)),
+             _cooldown(cool(compact), lthr)]
+    s = _session("sprints en côte", "Footing et sprints en côte", steps,
+                 "Puissance et foulée sans fatigue : l'effort est trop court pour faire monter la FC.")
+    s["hard"] = False
+    return s
+
+
+def hills_medium(level: int, p: dict, compact: bool = False) -> dict:
+    reps = HILLS_MEDIUM[min(level, len(HILLS_MEDIUM) - 1)]
+    lthr = p.get("lthr")
+    steps = [_warmup(warm(compact), lthr),
+             step("work", f"{reps} × 1 min de montée vive", reps, target({"hr": None, "rpe": "8 à 9"}, lthr)),
+             step("recovery", "récupération : redescente au trot, 2 min", reps * 2, target(RECOVERY, lthr)),
+             _cooldown(cool(compact), lthr)]
+    return _session("vma en côte", "VMA en côte", steps, "Pente moyenne (5 à 8 %) : monter vite en restant "
+                                                         "relâché, la même vitesse à chaque répétition.")
+
+
+def uphill_tempo(level: int, p: dict, compact: bool = False) -> dict:
+    minutes = UPHILL_TEMPO[min(level, len(UPHILL_TEMPO) - 1)]
+    lthr = p.get("lthr")
+    steps = [_warmup(warm(compact), lthr),
+             step("work", f"{minutes} min de montée continue", minutes, target(THRESHOLD, lthr)),
+             step("recovery", "redescente souple au trot, sans forcer", minutes * 0.6,
+                  target(RECOVERY, lthr)),
+             _cooldown(cool(compact), lthr)]
+    return _session("montée au seuil", "Montée continue au seuil", steps,
+                    "Une longue montée à l'effort du seuil, en courant ou en marchant vite selon la pente. "
+                    "Sans montée assez longue, enchaîner les côtes du coin sans pause, au même effort.")
+
+
+def power_hike(level: int, p: dict, compact: bool = False) -> dict:
+    reps, work = POWER_HIKE[min(level, len(POWER_HIKE) - 1)]
+    lthr = p.get("lthr")
+    steps = [_warmup(warm(compact), lthr),
+             step("work", f"{reps} × {work} min de marche rapide en forte pente (plus de 15 %)", reps * work,
+                  target({"hr": (0.85, 0.95), "rpe": "6"}, lthr)),
+             step("recovery", f"récupération : redescente au trot, environ {_minutes(work * 0.6)}",
+                  reps * work * 0.6, target(RECOVERY, lthr)),
+             _cooldown(cool(compact), lthr)]
+    return _session("marche en côte", "Marche rapide en côte", steps,
+                    "Mains sur les cuisses ou bâtons, buste penché, pas courts et rapides : la marche "
+                    "efficace des fortes pentes de course.")
+
+
+def downhill(level: int, p: dict, compact: bool = False) -> dict:
+    reps = DOWNHILL[min(level, len(DOWNHILL) - 1)]
+    lthr = p.get("lthr")
+    steps = [_warmup(warm(compact, 20), lthr),
+             step("work", f"{reps} × 1 min 30 de descente rapide sur sentier", reps * 1.5,
+                  target({"hr": None, "rpe": "5 à 6"}, lthr)),
+             step("recovery", "récupération : remontée en marchant, environ 3 min", reps * 3,
+                  target(RECOVERY, lthr)),
+             _cooldown(cool(compact), lthr)]
+    return _session("descente", "Descente travaillée", steps,
+                    "Foulée courte et rapide, regard loin devant, relâché. Les cuisses travaillent beaucoup "
+                    "en descente : commencer avec peu de répétitions.")
+
+
+# ---------- footings et sorties longues ----------
+
+def _easy_session(type_: str, label: str, steps: list[dict], note: str) -> dict:
+    s = _session(type_, label, steps, note)
+    s["hard"] = False
+    return s
+
+
+def _gain_text(gain: float) -> str:
+    return f", environ {gain:.0f} m de D+" if gain else ""
+
+
+def easy_run(minutes: float, p: dict, hilly: bool, km: bool = True) -> dict:
+    """Footing, sur le plat ou vallonné (moitié de la vitesse de montée en endurance)."""
+    lthr = p.get("lthr")
+    if hilly:
+        gain = round(p.get("easy_vam", 0) * minutes / 60 * 0.5, -1)
+        text = f"{_minutes(minutes)} en endurance sur un parcours vallonné{_gain_text(gain)}"
+        return _easy_session("footing vallonné", "Footing vallonné", [step("steady", text, minutes,
+                             target(EASY, lthr))], f"Il faut {WALK} : c'est voulu.")
+    return _easy_session("footing", "Footing", easy_steps(minutes, p, km),
+                         "En aisance respiratoire : tu peux parler.")
+
+
+def long_run(variant: str, minutes: float, p: dict, km: bool = True) -> dict:
+    """Sortie longue : classique, progressive, vallonnée, spécifique trail ou avec descentes. Le D+
+    d'une sortie en endurance suit la vitesse de montée du coureur en endurance (easy_vam), pas
+    celle de la course."""
+    lthr = p.get("lthr")
+    gain = round(p.get("easy_vam", 0) * minutes / 60, -1)
+    if variant == "progressive":
+        end = 15 if minutes < 90 else 20
+        steps = easy_steps(minutes - end, p, km) + [
+            step("work", f"{end} min finales en allure soutenue", end, target(STEADY, lthr))]
+        return _easy_session("sortie longue", "Sortie longue progressive", steps,
+                             "Finir plus vite qu'au départ, sans jamais forcer : apprendre à accélérer "
+                             "fatigué.")
+    if variant == "vallonnée":
+        steps = [step("steady", f"{_minutes(minutes)} en endurance sur sentier{_gain_text(gain)}", minutes,
+                      target(EASY, lthr))]
+        return _easy_session("sortie longue", "Sortie longue vallonnée", steps,
+                             f"Le D+ correspond à ta vitesse de montée habituelle en endurance : {WALK}.")
+    if variant == "spécifique":
+        climb = 15 if minutes < 100 else 20
+        steps = [step("steady", f"{_minutes(minutes - climb)} en endurance sur sentier"
+                      f"{_gain_text(round(gain * 0.8, -1))}", minutes - climb, target(EASY, lthr)),
+                 step("work", f"au milieu, une montée de {climb} min à l'effort de course", climb,
+                      target(RACE_TRAIL, lthr))]
+        return _easy_session("sortie longue", "Sortie longue spécifique", steps,
+                             f"Le reste du temps en endurance ({WALK}) ; descentes relâchées, pour garder "
+                             "des cuisses pour la fin de course.")
+    if variant == "descentes":
+        steps = [step("steady", f"{_minutes(minutes)} en endurance sur sentier{_gain_text(gain)}", minutes,
+                      target(EASY, lthr)),
+                 step("work", "dans 3 ou 4 descentes, 2 à 3 min plus vite, relâché", 0,
+                      target({"hr": None, "rpe": "5 à 6"}, lthr))]
+        return _easy_session("sortie longue", "Sortie longue avec descentes", steps,
+                             f"En endurance le reste du temps ({WALK}) ; travailler les descentes sans "
+                             "se faire mal.")
+    return _easy_session("sortie longue", "Sortie longue", easy_steps(minutes, p, km),
+                         "Régulière du début à la fin, en aisance respiratoire.")
+
+
+# ---------- catalogue et rotation ----------
+
+def _q(make, shift: int = 0):
+    return lambda lv, p, compact=False: make(lv + shift, p, compact)
+
+
+QUALITY = {
+    ("foncier", False): [_q(fartlek), _q(hills_short)],
+    ("foncier", True): [_q(hills_short), _q(fartlek), _q(power_hike)],
+    ("développement", False): [_q(seuil), _q(tempo)],
+    ("développement", True): [_q(seuil), _q(hills_medium), _q(uphill_tempo)],
+    ("spécifique", False): [_q(race_pace), _q(tempo, 1)],
+    ("spécifique", True): [_q(hills_long), _q(uphill_tempo, 1), _q(downhill), _q(power_hike, 1)],
+}
+SECOND = [_q(vma), _q(seuil, 2)]
+LIGHT = [_q(hill_sprints), _q(fartlek)]
+LONG = {("foncier", False): ["classique"], ("développement", False): ["classique", "progressive"],
+        ("spécifique", False): ["progressive", "classique"],
+        ("foncier", True): ["vallonnée"], ("développement", True): ["vallonnée", "descentes"],
+        ("spécifique", True): ["spécifique", "vallonnée", "descentes"]}
+
+
+def rotate(options: list, week_in_phase: int, shift: int = 0):
+    """Variante de la semaine et palier : la variante change chaque semaine, le palier monte à
+    chaque tour complet des variantes."""
+    i = week_in_phase + shift
+    return options[i % len(options)], i // len(options)
+
+
+def quality(phase: str, kind: str, rank: int, trail: bool, week_in_phase: int, p: dict,
+            day_max: float) -> dict:
+    """Séance de qualité du créneau `rank` (0 : la séance clé), tournante, ramenée au temps du jour."""
+    if kind in ("affûtage", "course"):
+        s = reminder(trail, p)
+        return s if s["minutes"] <= day_max else reminder(trail, p, compact=True)
+    if kind == "allégée":
+        make, level = rotate(LIGHT, week_in_phase)
+    elif rank == 0:
+        make, level = rotate(QUALITY[(phase, trail)], week_in_phase)
+    else:
+        make, level = rotate(SECOND, week_in_phase)
+    return fit(lambda lv, compact=False: make(lv, p, compact), level, day_max)
+
+
+def long_variant(phase: str, kind: str, trail: bool, week_in_phase: int) -> str:
+    if kind in ("affûtage", "course", "allégée"):
+        return "vallonnée" if trail else "classique"
+    variant, _ = rotate(LONG[(phase, trail)], week_in_phase)
+    return variant

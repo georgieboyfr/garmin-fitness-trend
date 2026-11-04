@@ -36,3 +36,13 @@ def test_fit_steps_down_then_shortens_warmup_when_the_day_is_short():
     assert s["minutes"] <= 55 and "3 × 8 min" in s["steps"][1]["text"]
     tight = wk.fit(lambda lv, compact=False: wk.hills_long(lv, P, compact), 3, 45)
     assert tight["steps"][0]["text"].startswith("Échauffement 10 min")
+
+
+@pytest.mark.parametrize("name", ["hills_short", "hills_medium", "hills_long", "power_hike", "downhill",
+                                  "uphill_tempo"])
+def test_hill_sessions_always_say_how_and_how_long_to_recover(name):
+    s = getattr(wk, name)(1, P)
+    rest = next(x for x in s["steps"] if x["kind"] == "recovery")
+    assert any(w in rest["text"] for w in ("trot", "marchant")) and ("min" in rest["text"]
+                                                                     or "sans forcer" in rest["text"])
+
