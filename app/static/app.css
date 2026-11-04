@@ -523,4 +523,9 @@ details.tracked-add > summary { cursor: pointer; font-weight: 600; margin: 12px 
 .coach-route { overflow-wrap: anywhere; }
 .coach-race-goal { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
 .coach-road { display: contents; }
+.coach-sessions { margin-top: 12px; align-items: center; }
+.coach-max { display: inline-flex; align-items: center; gap: 6px; }
+.coach-max input { font: inherit; width: 3em; padding: 4px 6px; border: 1px solid var(--border); border-radius: 8px;
+                   background: var(--surface); color: var(--text); text-align: center; }
+.coach-sessions p { margin: 0; flex: 1 1 200px; }
 .coach-road[hidden] { display: none; }

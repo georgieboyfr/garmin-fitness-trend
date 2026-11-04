@@ -208,10 +208,11 @@ def effective_availability(stored: list | None, inferred: dict) -> list[dict]:
 
 
 def clean_profile(values: dict) -> dict:
-    """Disponibilités saisies (7 jours : oui, optionnel ou non, durée maximale) et habitudes
+    """Disponibilités saisies (7 jours : oui, optionnel ou non, durée maximale ; nombre maximal de
+    séances par semaine, facultatif) et habitudes
     (lieu, nom, gardée ou non), seulement les champs envoyés (null : retour à l'historique) ;
     ValueError si invalide."""
-    if not isinstance(values, dict) or not set(values) & {"availability", "habits"}:
+    if not isinstance(values, dict) or not set(values) & {"availability", "habits", "max_sessions"}:
         raise ValueError("Saisie invalide.")
     out = {}
     availability = values.get("availability")
@@ -233,6 +234,13 @@ def clean_profile(values: dict) -> dict:
         availability = cleaned
     if "availability" in values:
         out["availability"] = availability
+    if "max_sessions" in values:
+        n = values["max_sessions"]
+        if n in (None, ""):
+            n = None
+        elif isinstance(n, bool) or not isinstance(n, int | float) or n != int(n) or not 1 <= n <= 7:
+            raise ValueError("Nombre de séances par semaine de 1 à 7.")
+        out["max_sessions"] = int(n) if n is not None else None
     habits = values.get("habits")
     if habits is not None:
         if not isinstance(habits, list):

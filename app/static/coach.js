@@ -101,7 +101,10 @@
       if (days.some((d) => d.max_min !== null && !Number.isFinite(d.max_min))) {
         status.textContent = "Durée en minutes, par exemple 60."; return;
       }
-      send(avail.dataset.url, { availability: days }, status, "disponibilites");
+      const max = avail.querySelector("[name=max_sessions]").value.trim();
+      if (max && !/^[1-7]$/.test(max)) { status.textContent = "Séances par semaine : de 1 à 7."; return; }
+      send(avail.dataset.url, { availability: days, max_sessions: max ? Number(max) : null }, status,
+           "disponibilites");
     });
     const reset = avail.querySelector("[data-reset]");
     if (reset) reset.addEventListener("click", () => send(avail.dataset.url, { availability: null }, status,

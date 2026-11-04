@@ -118,6 +118,10 @@ def test_clean_profile_validates_and_only_returns_sent_fields():
         coach.clean_profile({"availability": [{**d, "status": "peut-être"} for d in days]})
     with pytest.raises(ValueError):
         coach.clean_profile({"availability": [{**d, "max_min": 0} for d in days]})
+    assert coach.clean_profile({"max_sessions": 4}) == {"max_sessions": 4}
+    assert coach.clean_profile({"max_sessions": None}) == {"max_sessions": None}
+    with pytest.raises(ValueError):
+        coach.clean_profile({"max_sessions": 8})
     with pytest.raises(ValueError):
         coach.clean_profile({})
 

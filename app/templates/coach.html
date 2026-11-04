@@ -109,6 +109,13 @@
         </tbody>
       </table>
     </div>
+    {% set n_yes = availability | selectattr("status", "equalto", "oui") | list | length %}
+    {% set n_opt = availability | selectattr("status", "equalto", "optionnel") | list | length %}
+    <div class="filters coach-sessions">
+      <label class="coach-max">Au plus <input name="max_sessions" inputmode="numeric" size="2" value="{{ max_sessions or '' }}" placeholder="{{ n_yes + n_opt }}"> séances par semaine</label>
+      {{ tip("Nombre maximal de séances par semaine, quel que soit le nombre de jours possibles : le coach remplit d'abord tes jours « oui », puis tes jours optionnels, sans dépasser ce nombre. Vide : pas de limite autre que tes jours.") }}
+      <p class="small muted">{{ n_yes }} jour{{ "s" if n_yes > 1 }} oui et {{ n_opt }} optionnel{{ "s" if n_opt > 1 }}{% if max_sessions %} : au plus {{ max_sessions }} séance{{ "s" if max_sessions > 1 }}{% if max_sessions < n_yes %}, moins que tes jours oui : le coach choisira parmi eux{% endif %}{% else %}, sans limite de séances{% endif %}.</p>
+    </div>
     <div class="aid-actions">
       <button class="btn-primary" type="submit">Enregistrer</button>
       {% if availability_saved %}<button class="btn-ghost" type="button" data-reset="availability">Revenir à l'historique</button>{% endif %}

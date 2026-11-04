@@ -30,7 +30,7 @@ DEFAULTS = {
     "estimator": {"correction_road": None, "correction_trail": None},
     # coach : disponibilités saisies (7 jours) et habitudes confirmées, vérifiées par
     # coach.clean_profile ; None = déduites de l'historique
-    "coach": {"availability": None, "habits": None},
+    "coach": {"availability": None, "habits": None, "max_sessions": None},
 }
 
 CORRECTION_LIMITS = (0.8, 1.2)
@@ -134,7 +134,11 @@ def _validate_coach(values: dict) -> dict:
     for key, value in values.items():
         if key not in DEFAULTS["coach"]:
             raise ValueError(f"réglage inconnu : {key}")
-        if value is not None and not isinstance(value, list):
+        if key == "max_sessions":
+            invalid = isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 7
+            if value is not None and invalid:
+                raise ValueError("max_sessions doit être un entier de 1 à 7, ou null")
+        elif value is not None and not isinstance(value, list):
             raise ValueError(f"{key} doit être une liste, ou null")
         out[key] = value
     return out

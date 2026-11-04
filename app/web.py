@@ -554,6 +554,7 @@ def coach_page(request: Request):
     return render(request, "coach.html", "/coach", calendar=cal,
                   availability=coach.effective_availability(profile["availability"], inferred),
                   inferred=inferred, availability_saved=profile["availability"] is not None,
+                  max_sessions=profile["max_sessions"],
                   habits=habits,
                   priorities=coach.PRIORITIES, gpx_recent=gpx_store.recent(cfg),
                   tracked_races=upcoming_tracked,
