@@ -367,6 +367,23 @@ def easy_run(minutes: float, p: dict, hilly: bool, km: bool = True) -> dict:
                          "En aisance respiratoire : tu peux parler.")
 
 
+def steady_run(minutes: float, p: dict, hilly: bool = False) -> dict:
+    """Sortie soutenue (endurance active, zone 3) : 15 min faciles, un bloc soutenu, 5 min de retour
+    au calme ; plus chargée qu'un footing, moins qu'une séance (ni récupération ni répétitions)."""
+    lthr = p.get("lthr")
+    block = max(15, round5(minutes - 20))
+    where = "sur un parcours vallonné, l'effort plutôt que l'allure" if hilly else "sur le plat"
+    steps = [step("warmup", "15 min en endurance", 15, target(EASY, lthr)),
+             step("work", f"{block} min en allure soutenue, {where}", block, target(STEADY, lthr)),
+             step("cooldown", "5 min au trot", 5, target(EASY, lthr))]
+    s = _easy_session("footing soutenu", "Sortie soutenue", steps,
+                      "Plus vite qu'un footing, sans être une séance : respiration marquée mais régulière, "
+                      "tu peux encore dire quelques mots.")
+    if hilly:
+        s["gain_m"] = round(p.get("easy_vam", 0) * (15 + block + 5) / 60 * 0.5, -1)
+    return s
+
+
 def long_run(variant: str, minutes: float, p: dict, km: bool = True, steady_finish: bool = False) -> dict:
     """Sortie longue : classique, progressive, vallonnée, spécifique trail ou avec descentes. Le D+
     d'une sortie en endurance suit la vitesse de montée du coureur en endurance (easy_vam), pas

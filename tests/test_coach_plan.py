@@ -59,7 +59,7 @@ def test_load_rates_are_learnt_from_easy_runs_and_sessions():
     acts = [run(TODAY - timedelta(days=i), 40, 60, 0.0) for i in range(1, 6)]
     acts += [run(TODAY - timedelta(days=i), 70, 60, 0.5) for i in range(10, 14)]
     r = cp.load_rates(acts, TODAY)
-    assert r == {"easy": 40.0, "quality": 70.0, "personal": True, "easy_n": 5, "quality_n": 4,
+    assert r == {"steady": 55.0, "easy": 40.0, "quality": 70.0, "personal": True, "easy_n": 5, "quality_n": 4,
                  "easy_pace": None, "easy_vam": cp.DEFAULT_EASY_VAM, "easy_vam_personal": False}
     assert cp.load_rates([], TODAY)["easy"] == cp.DEFAULT_RATES[0]
 
@@ -377,3 +377,33 @@ def test_an_optional_day_once_every_three_weeks_enters_the_plan_those_weeks():
     longs = [s for w in plan["weeks"] for s in w["sessions"] if s.get("extended")]
     assert longs and all(s["weekday"] == 5 for s in longs)          # l'allongée tombe les weekends libres
     assert plan["capacity_min"] == 190 + 40
+
+
+def test_rising_periods_learn_what_raised_the_runner_fitness():
+    acts = []
+    for block in range(3):                              # 3 blocs de 8 semaines qui montent, séparés de repos
+        start = date(2024, 1, 1) + timedelta(weeks=20 * block)
+        for i in range(0, 56, 2):
+            hard = 0.5 if i % 6 == 0 else 0.15 if i % 6 == 2 else 0.0
+            acts.append({**run(start + timedelta(days=i), 60 if hard else 40, 60, hard), "id": len(acts)})
+    acts.append({**run(date(2024, 2, 1), 400, 300, 0.0), "id": 999})          # sortie exceptionnelle
+    h = cp.rising_periods(acts, date(2025, 6, 1))
+    assert h and h["periods"] >= 2
+    assert h["runs_per_week"] == pytest.approx(3.5, abs=0.3) and h["weekly_min"] == pytest.approx(210, abs=20)
+    assert h["count_share"]["hard"] == pytest.approx(1 / 3, abs=0.05)
+    assert h["count_share"]["steady"] == pytest.approx(1 / 3, abs=0.05)
+    assert sum(h["time_share"].values()) == pytest.approx(1, abs=0.01)
+    assert cp.rising_periods(acts[:10], date(2025, 6, 1)) is None              # trop peu d'historique
+
+
+def test_steady_runs_spread_over_weeks_and_quality_sessions_fill_the_day():
+    assert [cp._spread(i, 0.5) for i in range(1, 7)] == [0, 1, 0, 1, 0, 1]
+    days = cp.chosen_days(avail((0, "oui", 90), (1, "oui", 90), (3, "oui", 100)), 3)
+    rates = {**RATES, "steady": 50.0}
+    w = cp.build_week(week(phase="développement"), days, 150, rates, RACE, {}, [], 170, 0, None, None,
+                      1, True)
+    steady = [s for s in w["sessions"] if s["type"] == "footing soutenu"]
+    assert len(steady) == 1 and any(x["kind"] == "work" for x in steady[0]["steps"])
+    assert cp.session_load(steady[0], rates) > steady[0]["minutes"] * rates["easy"] / 60
+    q = next(s for s in w["sessions"] if s["hard"])
+    assert q["steps"][-1]["text"].startswith("puis") and q["minutes"] <= 90

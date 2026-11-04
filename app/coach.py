@@ -349,4 +349,4 @@ def plan_for(cfg, race: dict, today: date, data: dict, availability: list[dict],
              "moving_min": h["moving_min"]} for h in habits if h["keep"] is not False]
     side = [race_facts(cfg, r, data) for r in others or []]
     return coach_plan.build_plan(full, today, data["acts"], availability, max_sessions, kept, paces,
-                                 data.get("lthr"), options, side)
+                                 data.get("lthr"), options, side, data.get("confirmed") or ())

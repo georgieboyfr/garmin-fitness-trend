@@ -64,6 +64,9 @@
       <div class="kpi-value">{{ plan.start_fitness | string | replace(".", ",") }} → {{ plan.peak_fitness | string | replace(".", ",") }}</div>
       <footer class="muted">au plus haut avant l'affûtage · sans plan : {{ c.peak_fitness | string | replace(".", ",") }}</footer></article>
   </section>
+  {% if plan.history %}{% set h = plan.history %}{% set charge = plan.weeks | selectattr("kind", "equalto", "charge") | list %}
+  <p class="small muted">Tes hausses passées {{ tip("Les périodes de 8 semaines où ta fitness a gagné au moins 5 points, sans compter les courses ni les sorties exceptionnelles (les 3 % les plus chargées, plus de 3 h). Le plan reprend leur mélange : la part du temps facile, soutenu et en séance fixe la charge que peut porter ton temps disponible, et une part de sorties soutenues.") }} ({{ h.periods }} périodes de 8 semaines) : {{ h.runs_per_week | string | replace(".", ",") }} sorties, {{ h.weekly_min }} min et {{ h.weekly_load }} de charge par semaine ; {{ (h.time_share.easy * 100) | round | int }} % du temps facile, {{ (h.time_share.steady * 100) | round | int }} % soutenu, {{ (h.time_share.hard * 100) | round | int }} % dans des séances.{% if charge %} Le plan, semaine de charge médiane : {{ (charge | map(attribute="minutes") | sort | list)[charge | length // 2] }} min et {{ (charge | map(attribute="planned_load") | sort | list)[charge | length // 2] }} de charge, {{ plan.steady_runs }} sorties soutenues d'ici la course.{% endif %}</p>
+  {% endif %}
   <div class="chart chart-small" id="chart-plan" role="img" aria-label="Fitness et fraîcheur jusqu'à la course, avec et sans le plan"></div>
   <script type="application/json" id="plan-series">{{ plan.series | tojson }}</script>
   {% if plan.capacity_limited %}

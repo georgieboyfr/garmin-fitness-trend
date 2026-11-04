@@ -18,7 +18,7 @@ généraux (section 10 du brief) ; ce qui dépend du coureur est appris sur ses 
 """
 import math
 from datetime import date, timedelta
-from statistics import median
+from statistics import median, quantiles
 
 from . import coach_workouts as wk
 from . import estimator, stats
@@ -46,6 +46,12 @@ EASY_TIME_SHARE = 0.8           # 80/20 : 80 % du temps en endurance
 CAPPED_MARGIN = 10              # charge prévue sous la visée de plus de 10 : les jours limitent
 QUALITY_MAX_SHARE = 0.6         # deux séances de qualité seulement si elles laissent 40 % de la charge
 LONG_SHARE = 0.35               # sortie longue : environ un tiers du temps de la semaine
+# mélange appris sur les périodes où la fitness du coureur a monté (demande de Greg du 4 novembre 2026)
+RISE_DAYS = 56                  # fenêtre de 8 semaines
+RISE_MIN = 5.0                  # hausse de fitness d'au moins 5 points
+RISE_MIN_PERIODS = 2            # au moins 2 périodes, sinon le 80/20 par défaut
+EXCEPTIONAL_PCTL = 97           # sortie exceptionnelle : charge au-delà du 97e centile, ou plus de 3 h
+EXCEPTIONAL_S = 3 * 3600
 DEFAULT_RAMP_PCT = 10           # montée du volume, % par semaine (réglage posé au coureur : 10 ou 15)
 LONG_RACE_SHARE = 0.9           # sortie longue allongée : jusqu'à 90 % de la durée de la course
 LONG_MAX_MIN = 180              # jamais plus de 3 h
@@ -134,7 +140,7 @@ def load_rates(acts, today: date) -> dict:
     """Charge par heure (HRSS/h) des sorties faciles et des séances du coureur sur 12 mois, et son
     allure habituelle en endurance (sorties faciles sur route plate), pour donner une distance."""
     since = today - timedelta(days=RATE_DAYS)
-    easy, quality, paces, climbs = [], [], [], []
+    easy, quality, steady, paces, climbs = [], [], [], [], []
     for a in acts:
         moving = a.get("moving_duration_s") or 0
         zones = [a.get(f"zone{i}_s") or 0 for i in range(1, 6)]
@@ -151,12 +157,75 @@ def load_rates(acts, today: date) -> dict:
                 paces.append(moving / a["distance_km"])
         elif hard >= QUALITY_MIN_HARD_SHARE:
             quality.append(rate)
-    return {"easy": round(median(easy), 1) if len(easy) >= 3 else DEFAULT_RATES[0],
-            "quality": round(median(quality), 1) if len(quality) >= 3 else DEFAULT_RATES[1],
-            "personal": len(easy) >= 3, "easy_n": len(easy), "quality_n": len(quality),
+        else:
+            steady.append(rate)
+    e = round(median(easy), 1) if len(easy) >= 3 else DEFAULT_RATES[0]
+    q = round(median(quality), 1) if len(quality) >= 3 else DEFAULT_RATES[1]
+    return {"steady": round(median(steady), 1) if len(steady) >= 3 else round((e + q) / 2, 1),
+            "easy": e, "quality": q, "personal": len(easy) >= 3, "easy_n": len(easy),
+            "quality_n": len(quality),
             "easy_pace": round(median(paces), 1) if len(paces) >= 3 else None,
             "easy_vam": round(median(climbs)) if len(climbs) >= 3 else DEFAULT_EASY_VAM,
             "easy_vam_personal": len(climbs) >= 3}
+
+
+def _run_kind(a: dict) -> str | None:
+    zones = [a.get(f"zone{i}_s") or 0 for i in range(1, 6)]
+    if sum(zones) <= 0:
+        return None
+    hard = sum(zones[2:]) / sum(zones)
+    return "easy" if hard < EASY_MAX_HARD_SHARE else "hard" if hard >= QUALITY_MIN_HARD_SHARE else "steady"
+
+
+def rising_periods(acts, today: date, race_ids=()) -> dict | None:
+    """Ce qui a fait monter la fitness du coureur : périodes de 8 semaines où sa fitness, calculée
+    sans les courses ni les sorties exceptionnelles (charge au-delà du 97e centile, plus de 3 h), a
+    gagné au moins 5 points, sans chevauchement ; sorties, temps et charge par semaine, charge par
+    heure et part du temps facile, soutenu et en séance. None sous 2 périodes."""
+    with_load = [a for a in acts if a.get("hrss") and a["start"].date() < today]
+    if len(with_load) < 30:
+        return None
+    cut = quantiles([a["hrss"] for a in with_load], n=100)[EXCEPTIONAL_PCTL - 1]
+    normal = [a for a in with_load if a.get("id") not in race_ids and a["hrss"] <= cut
+              and (a.get("moving_duration_s") or 0) <= EXCEPTIONAL_S]
+    daily = {}
+    for a in normal:
+        daily[a["start"].date()] = daily.get(a["start"].date(), 0.0) + a["hrss"]
+    if not daily:
+        return None
+    fit = {p["date"]: p["fitness"] for p in stats.banister(daily, min(daily), today - timedelta(days=1))}
+    days = sorted(fit)
+    rises = sorted(((fit[days[i + RISE_DAYS]] - fit[days[i]], days[i]) for i in range(len(days) - RISE_DAYS)),
+                   reverse=True)
+    picked = []
+    for rise, d0 in rises:
+        if rise < RISE_MIN:
+            break
+        if all(abs((d0 - p).days) >= RISE_DAYS for _, p in picked):
+            picked.append((rise, d0))
+    if len(picked) < RISE_MIN_PERIODS:
+        return None
+    weeks = RISE_DAYS / 7
+    per = []
+    time = {"easy": 0.0, "steady": 0.0, "hard": 0.0}
+    count = {"easy": 0, "steady": 0, "hard": 0}
+    for _, d0 in picked:
+        runs = [a for a in normal if d0 < a["start"].date() <= d0 + timedelta(days=RISE_DAYS)]
+        per.append({"runs": len(runs) / weeks, "minutes": sum(a.get("moving_duration_s") or 0 for a in runs)
+                    / 60 / weeks, "load": sum(a["hrss"] for a in runs) / weeks})
+        for a in runs:
+            k = _run_kind(a)
+            if k:
+                time[k] += a.get("moving_duration_s") or 0
+                count[k] += 1
+    total_t, total_n = sum(time.values()) or 1, sum(count.values()) or 1
+    return {"periods": len(picked), "starts": sorted(d0.isoformat() for _, d0 in picked),
+            "runs_per_week": round(median(p["runs"] for p in per), 1),
+            "weekly_min": round(median(p["minutes"] for p in per)),
+            "weekly_load": round(median(p["load"] for p in per)),
+            "rate": round(sum(p["load"] for p in per) / (sum(p["minutes"] for p in per) / 60), 1),
+            "time_share": {k: round(v / total_t, 3) for k, v in time.items()},
+            "count_share": {k: round(v / total_n, 3) for k, v in count.items()}}
 
 
 def weekly_load_for(fitness_now: float, fitness_next: float) -> float:
@@ -359,7 +428,8 @@ def _pick_day(candidates, long_day, picked, kind, race_wd, habit_by_day, hills: 
 
 def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dict, paces: dict,
                habits: list[dict], lthr: float | None, week_in_phase: int,
-               long_override: int | None = None, cal: dict | None = None) -> dict:
+               long_override: int | None = None, cal: dict | None = None, n_steady: int = 0,
+               history_mix: bool = False) -> dict:
     """Séances d'une semaine pour une charge visée : sortie longue, qualité, footings, prises dans
     le catalogue de coach_workouts et variées d'une semaine à l'autre. Durées rondes (5 min) ; un
     footing dure au moins MIN_EASY_MIN, sinon un jour de footing saute. long_override : sortie
@@ -425,6 +495,8 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
         if d is None:
             break
         q = wk.quality(phase, kind, rank, trail, week_in_phase, paces, d["max_min"])
+        if history_mix and kind == "charge" and q["hard"]:
+            q = _fill(q, d["max_min"], paces)
         cost = q["minutes"] * (rates["quality"] if q["hard"] else rates["easy"]) / rates["easy"]
         if rank > 0 and budget - total_min + cost > QUALITY_MAX_SHARE * budget:
             break                                       # une seule séance : la seconde mangerait la semaine
@@ -473,7 +545,13 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
         nxt = d["weekday"] + 1
         before_hard = (any(q["weekday"] == nxt for q in q_sessions)
                        or (long_day and long_day["weekday"] == nxt))
-        if (not habit and kind == "charge" and phase in ("foncier", "développement")
+        if (n_steady and not habit and kind == "charge" and d["weekday"] not in easy_wd
+                and not before_hard and minutes >= MIN_EASY_MIN + 10):
+            # sortie soutenue, comme dans les hausses du coureur : même charge qu'un footing plus long
+            ratio = rates["easy"] / (rates["easy"] + (rates["steady"] - rates["easy"]) * 0.6)
+            s = wk.steady_run(max(MIN_EASY_MIN + 10, wk.floor5(minutes * ratio + 2.5)), paces, hilly)
+            n_steady -= 1
+        elif (not habit and kind == "charge" and phase in ("foncier", "développement")
                 and d["weekday"] not in easy_wd
                 and i == len(easy_days) - 1 and week["index"] % 2 == 0 and not before_hard):
             s = wk.strides(max(MIN_EASY_MIN, minutes - 10), paces)
@@ -504,6 +582,20 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
     return _finish(week, sessions, load, rates)
 
 
+QUALITY_FILL_MAX = 20           # séance prolongée d'au plus 20 min de footing
+
+
+def _fill(q: dict, day_max: float, paces: dict) -> dict:
+    """Séance prolongée par un footing jusqu'au temps du jour (20 min au plus), comme les séances
+    des hausses passées du coureur, comptées sortie entière."""
+    add = wk.floor5(min(day_max - q["minutes"], QUALITY_FILL_MAX))
+    if add < 10:
+        return q
+    steps = q["steps"] + [wk.step("cooldown", f"puis {add} min de footing", add,
+                                  wk.target(wk.EASY, paces.get("lthr")))]
+    return {**q, "steps": steps, "minutes": q["minutes"] + add}
+
+
 def _bonus(day: dict, long_min: int, long_override: int | None, variant: str | None, phase: str, kind: str,
            trail: bool, week_in_phase: int, paces: dict, habit_by_day: dict) -> dict:
     """Sortie du jour optionnel, en bonus : une sortie longue en endurance (la sortie allongée de la
@@ -532,7 +624,8 @@ def session_load(s: dict, rates: dict) -> float:
     if s["hard"]:
         return minutes * rates["quality"] / 60
     work = sum(x["minutes"] for x in s.get("steps", []) if x["kind"] == "work")
-    return ((minutes - work) * rates["easy"] + work * rates["quality"]) / 60
+    work_rate = rates.get("steady", rates["quality"]) if s["type"] == "footing soutenu" else rates["quality"]
+    return ((minutes - work) * rates["easy"] + work * work_rate) / 60
 
 
 def _finish(week: dict, sessions: list[dict], load: float, rates: dict) -> dict:
@@ -585,9 +678,16 @@ def long_extensions(weeks: list[dict], days: list[dict], race: dict, enabled: bo
     return out
 
 
+def _spread(index: int, per_week: float) -> int:
+    """Nombre d'occurrences en semaine `index` d'une chose prévue `per_week` fois par semaine en
+    moyenne, réparties régulièrement (0,5 : une semaine sur deux)."""
+    return math.floor(index * per_week) - math.floor((index - 1) * per_week)
+
+
 def build_plan(race: dict, today: date, acts, availability: list[dict], max_sessions: int | None,
                habits: list[dict], paces: dict, lthr: float | None,
-               options: dict | None = None, others: list[dict] | None = None) -> dict | None:
+               options: dict | None = None, others: list[dict] | None = None,
+               race_ids=()) -> dict | None:
     """Plan de la semaine en cours à la course A. race : échéance du coach avec duration_s (temps
     estimé ou objectif) ; habits : habitudes gardées (weekday, name, hilly) ; options : réglages
     posés au coureur (ramp_pct : montée du volume en % par semaine ; long_extension : sorties
@@ -611,8 +711,17 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
     capacity_min = round(sum(d["max_min"] for d in core_days)
                          + sum(d["max_min"] / d["every"] for d in days
                                if d.get("status") == "optionnel" and d.get("every") and d not in core_days))
-    # plafond : tout le temps disponible, réparti en 80/20 (endurance, effort), comme le plan
-    blended = EASY_TIME_SHARE * rates["easy"] + (1 - EASY_TIME_SHARE) * rates["quality"]
+    # plafond : tout le temps disponible, réparti comme dans les hausses passées du coureur (temps
+    # facile, soutenu, en séance), sinon en 80/20 (endurance, effort)
+    history = rising_periods(acts, today, race_ids)
+    if history:
+        sh = history["time_share"]
+        blended = sh["easy"] * rates["easy"] + sh["steady"] * rates["steady"] + sh["hard"] * rates["quality"]
+    else:
+        blended = EASY_TIME_SHARE * rates["easy"] + (1 - EASY_TIME_SHARE) * rates["quality"]
+    # sorties soutenues : la part de ses hausses, en nombre de sorties, répartie au fil des semaines
+    n_core = len([d for d in days if d.get("status") != "optionnel"])
+    steady_per_week = history["count_share"]["steady"] * n_core if history else 0.0
     max_load = capacity_min / 60 * blended
 
     def week_cap(index: int) -> float:
@@ -656,7 +765,8 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
         phase_counts[w["phase"]] = week_in_phase + 1
         built = build_week(w, week_days(days, w["index"]), load, rates, race, paces, habits, lthr,
                            week_in_phase,
-                           extended.get(w["index"]), cal)
+                           extended.get(w["index"]), cal,
+                           _spread(w["index"], steady_per_week), bool(history))
         built["events"] = [{"name": r["name"], "until": cal["recovery_end"][r["race_date"]]}
                            for r in others or [] if r["race_date"] in cal["recovery_end"]
                            and r["race_date"] < (w["monday"] + timedelta(days=6)).isoformat()
@@ -696,7 +806,8 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
                          "median_week": cont["median_week"]},
             "series": [{**p, "continue_fitness": c["fitness"], "continue_form": c["form"]}
                        for p, c in zip(sim["series"], cont["series"], strict=True)],
-            "hill_sessions": hills, "long_runs": longs, "longest_run": longest,
+            "hill_sessions": hills, "long_runs": longs, "longest_run": longest, "history": history,
+            "steady_runs": sum(1 for w in out for x in w["sessions"] if x["type"] == "footing soutenu"),
             "options": {"ramp_pct": ramp_pct, "long_extension": extend},
             "race_form_label": form_label, "peak_12m": state["peak_12m"],
             "capacity_limited": bool(capped), "capacity_fitness": round(max_load / 7, 1),
