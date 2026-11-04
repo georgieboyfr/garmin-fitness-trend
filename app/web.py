@@ -559,7 +559,8 @@ def coach_page(request: Request, vue: str = ""):
                     r["drift_since"] = recent_past["name"] if recent_past else None
         upcoming_tracked = [r for r in co.tracked_races
                             if not r["race_date"] or r["race_date"] >= today.isoformat()]
-        plan = week = bilan = None
+        plan = week = bilan = next_week = None
+        week_races = []
         if vue not in ("semaine", "plan", "echeances", "reglages"):
             vue = "semaine" if cal["main"] else "echeances"
         if cal["main"] and vue in ("semaine", "plan"):
@@ -579,6 +580,18 @@ def coach_page(request: Request, vue: str = ""):
                 if plan and plan["weeks"] and plan["weeks"][0]["monday"] == frozen["weeks"][0]["monday"]:
                     plan["weeks"][0] = frozen["weeks"][0]
                 week = co.week_view(monday_, frozen)
+                # aperçu de la semaine suivante : celle du plan du lundi, et le dimanche celle qui
+                # tient compte des réponses du bilan du jour (ce que lundi affichera)
+                next_monday = (monday_ + timedelta(days=7)).isoformat()
+                nxt_plan = co.week_plan(monday_ + timedelta(days=7)) if today.weekday() == 6 else frozen
+                nxt = next((w for w in (nxt_plan or {}).get("weeks", []) if w["monday"] == next_monday), None)
+                if nxt:
+                    end = (monday_ + timedelta(days=13)).isoformat()
+                    next_week = {**nxt, "races": [r for r in cal["upcoming"]
+                                                  if next_monday <= r["race_date"] <= end]}
+            # seules les courses de la semaine sont mises en avant : ce sont des jours importants
+            if week:
+                week_races = [r for r in cal["upcoming"] if r["race_date"] <= week["sunday"]]
             if summary:
                 answers = co.answers(reviewed)
                 bilan = {"summary": summary, "answers": answers, "current": reviewed == monday_,
@@ -588,6 +601,7 @@ def coach_page(request: Request, vue: str = ""):
         conn.close()
     return render(request, "coach.html", "/coach", calendar=cal, vue=vue,
                   availability=co.availability, plan=plan, week=week, bilan=bilan,
+                  week_races=week_races, next_week=next_week,
                   next_week_choices=coach_review.NEXT_WEEK, feeling_choices=coach_review.FEELINGS,
                   inferred=co.inferred, availability_saved=co.profile["availability"] is not None,
                   max_sessions=co.profile["max_sessions"], plan_options=co.profile,

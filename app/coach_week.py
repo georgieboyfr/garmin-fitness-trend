@@ -173,7 +173,7 @@ def week_view(plan_week: dict, acts, today: date, race_ids=()) -> dict:
                      "sessions": [s for s in rows if s["date"] == d],
                      "extra": [x for x in m["extra"] if x["date"] == d]})
     return {
-        "days": days,
+        "days": days, "sunday": (monday_ + timedelta(days=6)).isoformat(),
         "version": WEEK_VERSION, "monday": plan_week["monday"], "phase": plan_week["phase"],
         "kind": plan_week["kind"], "sessions": rows, "extra": m["extra"],
         "today_session": next((s for s in rows if s["date"] == today.isoformat()), None),

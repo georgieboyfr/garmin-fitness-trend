@@ -313,8 +313,9 @@ def test_coach_this_week_page(client, config):
     login(client)
     r = client.get("/coach")                       # vue par défaut avec une course A
     assert r.status_code == 200
-    assert "Cette semaine" in r.text and "Séances faites" in r.text and "Semi du lac" in r.text
-    assert "dans 12 semaines" in r.text
+    assert "Cette semaine" in r.text and "Séances faites" in r.text
+    assert "dans 12 semaines" not in r.text                 # course lointaine : pas dans la semaine
+    assert "La semaine prochaine" in r.text
     r = client.get("/coach?vue=plan")
     assert r.status_code == 200 and "Ton plan" in r.text
 
@@ -356,6 +357,8 @@ def test_coach_page_shows_the_sunday_review(client, config, monkeypatch):
                                       "gpx_id": None, "distance_m": 21100.0, "gain_m": 0.0,
                                       "target_s": 6300.0})
         conn.execute("UPDATE coach_races SET created_at='2026-11-02T08:00:00' WHERE id=?", (race_id,))
+        coach.create(conn, {"name": "Trail du dimanche", "race_date": "2026-11-08", "priority": "B",
+                            "gpx_id": None, "distance_m": 15000.0, "gain_m": 600.0, "target_s": None})
     days = [{"weekday": d, "status": "oui" if d in (1, 3, 5) else "non", "max_min": 60} for d in range(7)]
     settings.update(conn, "coach", {"availability": days})
     conn.close()
@@ -364,6 +367,8 @@ def test_coach_page_shows_the_sunday_review(client, config, monkeypatch):
     assert r.status_code == 200
     assert "Bilan de la semaine" in r.text and 'data-url="/coach/bilan/2026-11-02"' in r.text
     assert "Semaine peu suivie" in r.text and "La semaine prochaine" in r.text
+    assert 'class="coach-race-day"' in r.text and "Trail du dimanche" in r.text and "jour de course" in r.text
+    assert "Course B : Trail du dimanche : encore à courir" in r.text
     r = client.post("/coach/bilan/2026-11-02", json={"next_week": "chargée", "feeling": None})
     assert r.status_code == 200
     r = client.get("/coach?vue=plan")

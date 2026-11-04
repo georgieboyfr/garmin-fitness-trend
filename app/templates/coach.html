@@ -19,6 +19,38 @@
 
 {% macro countdown(r) %}{% if r.days_left == 0 %}aujourd'hui{% elif r.days_left == 1 %}demain{% elif r.days_left < 14 %}dans {{ r.days_left }} jours{% else %}dans {{ r.weeks_left }} semaines{% endif %}{% endmacro %}
 
+{% macro session_pills(x) %}{% if x.type == "course" %} <span class="pill priority-{{ x.priority or 'A' }}">jour de course</span>{% elif x.key %} <span class="pill priority-B">séance clé</span>{% endif %}{% if x.optional %} <span class="pill priority-C">optionnelle</span>{% endif %}{% endmacro %}
+
+{% macro race_day(r) %}
+<div class="coach-race-day">
+  <span class="pill priority-{{ r.priority }}">Course {{ r.priority }}</span>
+  <div>
+    <b>{{ r.name }}</b>
+    <div><span data-short-date="{{ r.race_date }}"></span> · <span class="strong">{{ countdown(r) }}</span></div>
+    <div class="muted small">{% if r.proposal %}temps prévu <b data-chrono="{{ r.proposal.realistic_s }}"></b> {{ tip("L'estimateur sur ta forme d'aujourd'hui, correction de l'admin comprise. La fitness projetée au jour J viendra avec une prochaine étape du coach.") }}{% else %}temps prévu indisponible{% endif %}{% if r.target_s %} · objectif <b data-chrono="{{ r.target_s }}"></b>{% endif %}</div>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro next_week_card(n) %}
+<section class="card coach-next" id="semaine-suivante">
+  <div class="card-head">
+    <h2>La semaine prochaine {{ tip("Un aperçu : la semaine sera recalculée lundi avec ta forme réelle et les réponses du bilan du dimanche. Le détail des séances est dans le Plan.") }}</h2>
+    <span class="muted small">semaine du <span data-short-date="{{ n.monday }}"></span> · {{ n.phase }}{% if n.kind not in ("charge", n.phase) %} ({{ n.kind }}){% endif %}</span>
+  </div>
+  <p class="muted small">{{ n.minutes }} min · charge {{ n.planned_load }}{% if n.gain_m %} · D+ {{ n.gain_m | int }} m{% endif %}</p>
+  {% for r in n.races %}{{ race_day(r) }}{% endfor %}
+  {% for x in n.adjust %}<p class="small notice coach-event">{{ x.text }}</p>{% endfor %}
+  {% for e in n.periods %}<p class="small notice coach-event">{{ e.label }}{% if e.kind != "reprise" %} du <span data-short-date="{{ e.start }}"></span> au <span data-short-date="{{ e.end }}"></span>{% else %} : semaine allégée{% endif %}.</p>{% endfor %}
+  {% for e in n.events %}<p class="small muted coach-event">Récupération de {{ e.name }} jusqu'au <span data-short-date="{{ e.until }}"></span>.</p>{% endfor %}
+  <ul class="coach-next-list">
+    {% for x in n.sessions %}
+    <li class="{{ 'is-race-day' if x.type == 'course' }}"><span class="coach-day">{{ x.day | capitalize }}</span> <span>{{ x.label }}{% if x.minutes %} · {{ x.minutes }} min{% endif %}{{ session_pills(x) }}</span></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endmacro %}
+
 {% macro bilan_card(b) %}
 {% set r = b.summary %}
 <section class="card coach-bilan verdict-{{ r.verdict.key }}" id="bilan">
@@ -92,19 +124,7 @@
     <span class="muted small">semaine du <span data-short-date="{{ w.monday }}"></span> · {{ w.phase }}{% if w.kind not in ("charge", w.phase) %} ({{ w.kind }}){% endif %}</span>
   </div>
 
-  {% if cal.upcoming %}
-  <ul class="coach-plan-races">
-    {% for r in cal.upcoming[:3] %}
-    <li class="coach-banner{% if r is sameas cal.main %} is-main{% endif %}">
-      <span class="pill priority-{{ r.priority }}">{{ r.priority }}</span>
-      <div>
-        <b>{{ r.name }}</b> · <span data-short-date="{{ r.race_date }}"></span> · <span class="strong">{{ countdown(r) }}</span>
-        <div class="muted small">{% if r.proposal %}temps prévu <b data-chrono="{{ r.proposal.realistic_s }}"></b> {{ tip("L'estimateur sur ta forme d'aujourd'hui, correction de l'admin comprise. La fitness projetée au jour J viendra avec une prochaine étape du coach.") }}{% else %}temps prévu indisponible{% endif %}{% if r.target_s %} · objectif <b data-chrono="{{ r.target_s }}"></b>{% endif %}</div>
-      </div>
-    </li>
-    {% endfor %}
-  </ul>
-  {% endif %}
+  {% for r in week_races %}{{ race_day(r) }}{% endfor %}
 
   <section class="kpis coach-kpis">
     <article class="kpi"><header>Séances faites</header>
@@ -123,7 +143,7 @@
     {% endif %}
   </section>
 
-  {% if w.key %}
+  {% if w.key and w.key.type != "course" %}
   <p class="coach-key"><span class="pill priority-B">séance clé</span> <b>{{ w.key.day | capitalize }} : {{ w.key.label }}</b>{% if w.key.status == "faite" %} <span class="state-good">· faite ✓</span>{% elif w.key.status == "passée" %} <span class="muted">· pas faite cette fois</span>{% endif %}<br><span class="small muted">{{ w.key_reason }}</span></p>
   {% endif %}
   {% if w.skip %}
@@ -135,12 +155,12 @@
 
   <ul class="coach-sessions-list coach-days">
     {% for d in w.days %}
-    <li class="{{ 'is-today' if d.is_today }}{{ ' muted' if d.date < today and not d.sessions and not d.extra }}">
+    <li class="{{ 'is-today' if d.is_today }}{{ ' muted' if d.date < today and not d.sessions and not d.extra }}{{ ' is-race-day' if d.sessions | selectattr('type', 'equalto', 'course') | list }}">
       <span class="coach-day">{{ d.day }}{% if d.is_today %} <span class="pill priority-A">aujourd'hui</span>{% endif %} <span class="muted small" data-short-date="{{ d.date }}"></span></span>
       <div>
         {% for x in d.sessions %}
         <div class="coach-day-session status-{{ {"faite": "done", "à venir": "next", "aujourd'hui": "today", "passée": "past"}[x.status] }}">
-          <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{% if x.key %} <span class="pill priority-B">séance clé</span>{% endif %}{% if x.optional %} <span class="pill priority-C">optionnelle</span>{% endif %}
+          <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{{ session_pills(x) }}
           {% if x.status == "faite" %}<span class="state-good strong"> · faite ✓</span>{% elif x.status == "passée" %}<span class="muted small"> · pas faite, pas de rattrapage</span>{% endif %}
           {% if x.done %}{{ done_line(x.done) }}{% if x.note %}<div class="small muted">{{ x.note[:1] | upper }}{{ x.note[1:] }}.</div>{% endif %}
           {% elif x.status != "passée" %}{{ session_body(x) }}{% endif %}
@@ -153,8 +173,9 @@
     {% endfor %}
   </ul>
   {% if w.strength %}<p class="small muted">Renforcement : {{ w.strength }} × 20 à 30 min cette semaine, un jour sans séance dure.</p>{% endif %}
-  <p class="small muted"><a href="?vue=plan">Tout le plan jusqu'à la course</a></p>
 </section>
+{% if next_week %}{{ next_week_card(next_week) }}{% endif %}
+<p class="small muted"><a href="?vue=plan">Tout le plan jusqu'à la course</a></p>
 {% else %}
 <section class="card">
   <p>{% if cal.upcoming %}Aucune semaine à afficher : le plan n'a pas pu être construit.{% else %}Aucune course à venir : ajoute ton objectif dans <a href="?vue=echeances">Échéances</a>. Sans course, le coach proposera bientôt un maintien de forme.{% endif %}</p>
@@ -236,7 +257,7 @@
         <li class="{{ 'muted' if x.date < today }}">
           <span class="coach-day">{{ x.day }} <span class="muted small" data-short-date="{{ x.date }}"></span></span>
           <div>
-            <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{% if x.key %} <span class="pill priority-B">séance clé</span>{% endif %}{% if x.optional %} <span class="pill priority-C">optionnelle</span>{% endif %}{% if x.date < today %} <span class="small">· passé</span>{% endif %}
+            <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{{ session_pills(x) }}{% if x.date < today %} <span class="small">· passé</span>{% endif %}
             {{ session_body(x) }}
           </div>
         </li>

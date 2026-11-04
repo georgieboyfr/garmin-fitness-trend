@@ -102,8 +102,12 @@ def review(week: dict, plan: dict, end: dict, races: list[dict]) -> dict:
                      f"prévue{'s' if p > 1 else ''}{extra} ; "
                      f"charge {done['load']} pour {planned['load']} prévue.")
     if key:
-        status = {"faite": "faite", "passée": "pas faite cette fois"}.get(key["status"], "encore à faire")
-        lines.append(f"Séance clé, {key['label']} : {status}.")
+        if key.get("type") == "course":
+            status = {"faite": "courue", "passée": "pas courue"}.get(key["status"], "encore à courir")
+            lines.append(f"{key['label']} : {status}.")
+        else:
+            status = {"faite": "faite", "passée": "pas faite cette fois"}.get(key["status"], "encore à faire")
+            lines.append(f"Séance clé, {key['label']} : {status}.")
     pending = [s for s in rows if s["status"] in ("aujourd'hui", "à venir")]
     if pending:
         lines.append(f"Bilan provisoire : {_plural(len(pending), 'séance')} encore à faire ou pas "
@@ -130,7 +134,7 @@ def review(week: dict, plan: dict, end: dict, races: list[dict]) -> dict:
                           "delta_s": round(after - before) if before and after else None})
     return {"version": REVIEW_VERSION, "monday": week["monday"], "verdict": v,
             "planned": planned, "done": done, "lines": lines,
-            "key": {"label": key["label"], "status": key["status"]} if key else None,
+            "key": {"label": key["label"], "status": key["status"], "type": key.get("type")} if key else None,
             "missed": [{"label": s["label"], "day": s["day"]} for s in missed],
             "pending": len(pending),
             "fitness": {"planned": planned_fit, "actual": form["fitness"], "ahead": ahead},
