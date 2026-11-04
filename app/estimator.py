@@ -405,7 +405,7 @@ def grade_pace_model(acts, day: date, days: int | None = MODEL_DAYS) -> dict | N
         center = low + half
         out.append({"grade": center, "factor": round(math.exp(smooth), 3),
                     "raw": round(math.exp(raw[low]), 3),
-                    "minetti": round(float(grade.minetti_cost(center / 100)) / grade.FLAT_COST, 3),
+                    "strava": round(float(grade.strava_factor(center / 100)), 3),
                     "activities": sums[low][2], "seconds": round(sums[low][3])})
     return {"version": MODEL_VERSION, "day": day.isoformat(), "start": start.isoformat(),
             "activities": used, "flat_pace_s_km": round(flat_s / flat_m * 1000, 1), "bins": out}
@@ -427,15 +427,15 @@ def grade_factor(model: dict, grade_pct: float) -> float:
 
 
 def model_table(model: dict) -> list[dict]:
-    """Facteurs du modèle et de Minetti sur quelques pentes, avec l'allure correspondante à ton
+    """Facteurs du modèle et de Strava (VAP) sur quelques pentes, avec l'allure correspondante à ton
     allure habituelle sur le plat."""
     out = []
     for g in MODEL_TABLE_GRADES:
         f = grade_factor(model, g)
-        m = float(grade.minetti_cost(g / 100)) / grade.FLAT_COST
+        m = float(grade.strava_factor(g / 100))
         pace = model["flat_pace_s_km"] * f
-        out.append({"grade": g, "factor": round(f, 2), "minetti": round(m, 2), "pace_s_km": round(pace, 1),
-                    "minetti_pace_s_km": round(model["flat_pace_s_km"] * m, 1),
+        out.append({"grade": g, "factor": round(f, 2), "strava": round(m, 2), "pace_s_km": round(pace, 1),
+                    "strava_pace_s_km": round(model["flat_pace_s_km"] * m, 1),
                     "vertical_mh": round(abs(g) / 100 * 1000 / pace * 3600) if g else None})
     return out
 

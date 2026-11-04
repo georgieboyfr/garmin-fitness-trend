@@ -11,6 +11,23 @@ def test_minetti_cost_reference_values():
     assert grade.minetti_cost(0.8) == grade.minetti_cost(0.45)          # pente bornée
 
 
+def test_strava_factor_reference_values():
+    assert grade.strava_factor(0.0) == pytest.approx(1.0)
+    assert grade.strava_factor(0.1) == pytest.approx(1.459)
+    assert grade.strava_factor(-0.09) == pytest.approx(0.876)          # descente la plus facile
+    assert grade.strava_factor(-0.2) > 1.0                              # descente raide : plus dur
+    assert grade.strava_factor(-0.3) > float(grade.minetti_cost(-0.3)) / grade.FLAT_COST
+    assert grade.strava_factor(0.05) == pytest.approx((1.135 + 1.228) / 2)
+    assert grade.strava_factor(-0.8) == grade.strava_factor(-0.45)      # pente bornée
+
+
+def test_gap_pace_steep_downhill_is_faster_than_actual_pace():
+    d = np.arange(0, 2001, 10.0)
+    t_at = d / 2.5                                   # 2,5 m/s en descente à −30 %
+    gap = grade.gap_pace(t_at, d, -d * 0.3)
+    assert gap == pytest.approx(400 / 1.495, rel=0.01)
+
+
 def test_gap_pace_flat_equals_pace():
     d = np.arange(0, 5001, 10.0)
     t_at = d / 3.0                                   # 3 m/s : 5'33" /km
@@ -21,7 +38,7 @@ def test_gap_pace_uphill_is_faster_than_actual_pace():
     d = np.arange(0, 3001, 10.0)
     t_at = d / 2.0                                   # 2 m/s en montée à 10 %
     gap = grade.gap_pace(t_at, d, d * 0.1)
-    assert gap == pytest.approx(500 * 3.6 / float(grade.minetti_cost(0.1)), rel=0.01)
+    assert gap == pytest.approx(500 / 1.459, rel=0.01)
     assert gap < 500
 
 

@@ -209,7 +209,7 @@ def test_grade_pace_model_is_independent_of_run_intensity():
     assert set(by) == {-19, -9, 1, 11, 21}
     assert by[11]["raw"] == pytest.approx(1.4, abs=0.001) and by[-19]["raw"] == pytest.approx(1.25, abs=0.001)
     assert by[1]["raw"] == pytest.approx(1.0) and by[11]["activities"] == 3
-    assert by[21]["minetti"] == pytest.approx(float(estimator.grade.minetti_cost(0.21)) / 3.6, abs=0.001)
+    assert by[21]["strava"] == pytest.approx(float(estimator.grade.strava_factor(0.21)), abs=0.001)
 
 
 def test_grade_pace_model_smooths_neighbours_and_needs_three_runs():

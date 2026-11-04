@@ -2,14 +2,17 @@
 Allure ajustée à la pente (VAP) : l'allure équivalente sur le plat, pour le même effort
 (fonctions pures).
 
-Formule générique de Minetti (2002), base de la GAP de Strava : coût énergétique de la course
-selon la pente, en J/kg/m. Chaque portion du profil est convertie en distance équivalente sur
-le plat (distance × coût en pente / coût sur le plat), puis la VAP = temps en mouvement /
+Courbe de Strava (2017, « An improved GAP model ») : facteur d'effort selon la pente, calé sur la
+FC de millions de sorties et non sur le coût énergétique de Minetti (2002). Valeurs relevées par
+Aaron Schroeder en envoyant à Strava des sorties à pente et vitesse constantes (paquet
+specialsauce, licence MIT), interpolées linéairement. Chaque portion du profil est convertie en
+distance équivalente sur le plat (distance × facteur), puis la VAP = temps en mouvement /
 distance équivalente.
 
-Limites connues : la formule ignore la technicité du terrain ; en forte descente, où l'on
-ralentit pour des raisons de technique plus que d'énergie, la VAP sous-estime l'effort. Au-delà
-de ±45 %, la pente est bornée (hors du domaine mesuré par Minetti).
+Différence avec Minetti : la descente la plus facile est vers −9 % (facteur 0,88) et non −18 %
+(0,5) ; au-delà, l'effort remonte (×1,08 à −20 %, ×1,50 à −30 %), car la FC rend compte du
+freinage et de la technique que le coût énergétique ignore. Limites : la technicité du terrain
+n'est pas prise en compte ; au-delà de ±45 %, la pente est bornée (hors du domaine mesuré).
 """
 import numpy as np
 
@@ -18,8 +21,25 @@ GRADE_WINDOW_M = 50.0      # pente lissée sur 50 m : le pas de 10 m du profil e
 MOVING_MIN_MPS = 0.5       # même seuil que le temps en mouvement (metrics.MOVING_MIN_MPS)
 
 
+# pente (%) -> facteur : temps sur la pente / temps sur le plat, à effort égal
+STRAVA_FACTORS = {
+    -45: 2.096, -30: 1.495, -25: 1.273, -20: 1.081, -15: 0.941, -10: 0.876, -8: 0.876,
+    -6: 0.891, -4: 0.918, -2: 0.96, 0: 1.0, 2: 1.055, 4: 1.135, 6: 1.228, 8: 1.337,
+    10: 1.459, 15: 1.846, 20: 2.297, 25: 2.727, 30: 3.158, 45: 4.286,
+}
+_STRAVA_GRADES = np.array(list(STRAVA_FACTORS)) / 100
+_STRAVA_VALUES = np.array(list(STRAVA_FACTORS.values()))
+
+
+def strava_factor(grade) -> np.ndarray:
+    """Facteur d'effort de Strava selon la pente (fraction : 0,1 = 10 %), 1 sur le plat."""
+    i = np.clip(np.asarray(grade, dtype=float), -MAX_GRADE, MAX_GRADE)
+    return np.interp(i, _STRAVA_GRADES, _STRAVA_VALUES)
+
+
 def minetti_cost(grade) -> np.ndarray:
-    """Coût énergétique de la course (J/kg/m) selon la pente (fraction : 0,1 = 10 %)."""
+    """Coût énergétique de la course (J/kg/m) selon la pente (fraction : 0,1 = 10 %), Minetti
+    (2002). Ne sert plus à la VAP : seulement à l'équivalent plat du D+ de l'estimateur route."""
     i = np.clip(np.asarray(grade, dtype=float), -MAX_GRADE, MAX_GRADE)
     return 155.4 * i**5 - 30.4 * i**4 - 43.3 * i**3 + 46.3 * i**2 + 19.5 * i + 3.6
 
@@ -48,7 +68,7 @@ def equivalent_distance(profile_distance, altitude) -> np.ndarray:
         return np.zeros(d.size)
     grade = smoothed_grade(d, altitude)
     step_grade = (grade[1:] + grade[:-1]) / 2
-    steps = np.diff(d) * minetti_cost(step_grade) / FLAT_COST
+    steps = np.diff(d) * strava_factor(step_grade)
     return np.concatenate([[0.0], np.cumsum(steps)])
 
 

@@ -31,7 +31,7 @@
     <footer class="muted">{% if d.elapsed_s %}écoulé <span data-duration="{{ d.elapsed_s }}"></span>{% endif %}</footer></article>
   <article class="kpi"><header>Allure</header>
     <div class="kpi-value" {% if d.pace_s_km %}data-pace="{{ d.pace_s_km }}"{% endif %}>{% if not d.pace_s_km %}—{% endif %}</div>
-    <footer class="muted">{% if d.gap_pace_s_km %}VAP <span data-pace="{{ d.gap_pace_s_km }}"></span> {{ tip("Allure ajustée à la pente : l'allure que tu aurais tenue sur le plat pour le même effort (formule de Minetti, base de la GAP de Strava). Elle rend une sortie trail comparable à une sortie route. Limite : la technicité du terrain n'est pas prise en compte, et dans les descentes raides la VAP sous-estime l'effort.") }}{% else %}moyenne en mouvement{% endif %}</footer></article>
+    <footer class="muted">{% if d.gap_pace_s_km %}VAP <span data-pace="{{ d.gap_pace_s_km }}"></span> {{ tip("Allure ajustée à la pente : l'allure que tu aurais tenue sur le plat pour le même effort (courbe de la GAP de Strava, calée sur la FC : la descente la plus facile est vers −9 %, plus raide l'effort remonte). Elle rend une sortie trail comparable à une sortie route. Limite : la technicité du terrain n'est pas prise en compte.") }}{% else %}moyenne en mouvement{% endif %}</footer></article>
   <article class="kpi"><header>FC moyenne</header>
     <div class="kpi-value">{{ d.avg_hr or "—" }}</div>
     <footer class="muted">{% if d.max_hr %}max {{ d.max_hr }}{% endif %}</footer></article>

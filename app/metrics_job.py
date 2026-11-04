@@ -28,9 +28,9 @@ from .sports import RUNNING_TYPES
 
 log = logging.getLogger("metrics")
 
-METRICS_VERSION = 5   # 2 : meilleurs efforts (bests.py) ; 3 : EF et découplage ;
+METRICS_VERSION = 6   # 2 : meilleurs efforts (bests.py) ; 3 : EF et découplage ;
                       # 4 : FC moyenne des efforts, paliers de montée, VAP, portions stables ;
-                      # 5 : temps par tranche de pente
+                      # 5 : temps par tranche de pente ; 6 : VAP selon la courbe de Strava
 
 
 def _now_iso() -> str:

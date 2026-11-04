@@ -4,6 +4,9 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 
 ## [Non publié]
 
+### Modifié
+- VAP selon la courbe de la GAP de Strava (calée sur la FC) au lieu de la formule de Minetti : en descente raide, l'effort remonte au lieu de baisser (facteur 0,88 à −9 %, 1,08 à −20 %, 1,50 à −30 %), la VAP des fortes descentes n'est plus plus lente que l'allure réelle. Métriques en version 6 (toutes les sorties sont recalculées : VAP, temps au km, forme du jour). Le modèle allure-pente de la page Estimateur est comparé à cette courbe ; l'équivalent plat du D+ de l'estimateur route reste celui de Minetti.
+
 ## [0.3.0] - 2026-11-03
 
 Phase 3 (estimateur) : temps de course estimé sur route et sur un GPX de trail à partir de la forme actuelle, courses suivies semaine après semaine, précision mesurée sur les courses passées. Au premier démarrage, la base passe en version 15 (courses suivies) ; les sorties sont recalculées (métriques en version 5).
