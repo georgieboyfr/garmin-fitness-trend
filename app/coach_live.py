@@ -9,6 +9,9 @@ la page Coach et le planificateur (notification du dimanche soir).
   une fois la synchro du jour faite, sinon le mardi (les sorties du dimanche sont alors arrivées).
 - Bilans imbriqués : le plan d'une semaine dépend du bilan de la précédente ; au-delà d'un niveau,
   seuls les bilans figés et les réponses servent (pas de calcul en cascade).
+- Temps prévu de chaque échéance, chaque semaine (étape 5) : l'estimateur avec la forme du dimanche
+  soir, projeté sur la fitness que le plan du lundi donne le matin de la course, et enregistré ; à
+  l'ajout d'une course, les semaines depuis le départ du plan sont rejouées (12 au plus).
 """
 from datetime import date, timedelta
 
@@ -25,6 +28,9 @@ from . import (
     stats,
     tracked,
 )
+
+PREDICTION_VERSION = f"{tracked.VERSION}-plan{coach_plan.PLAN_VERSION}"
+REPLAY_WEEKS = 12
 
 
 class Coach:
@@ -46,6 +52,7 @@ class Coach:
         self.availability = coach.effective_availability(self.profile["availability"], self.inferred)
         self._weeks: dict[str, dict | None] = {}
         self._summaries: dict[str, dict] = {}
+        self._slopes: dict[date, dict] = {}
 
     # ---------- plan ----------
 
@@ -105,6 +112,53 @@ class Coach:
         zone, label = coach_plan._race_form(pct)
         return {"fitness": round(fitness, 1), "form": round(form, 1), "pct": round(pct),
                 "zone": zone, "label": label}
+
+    # ---------- temps prévu le jour J ----------
+
+    def slope(self, day: date) -> dict:
+        if day not in self._slopes:
+            self._slopes[day] = estimator.fitness_slope(self.data["acts"], self.data["efforts"], day)
+        return self._slopes[day]
+
+    def prediction(self, race: dict, monday_: date) -> dict | None:
+        """Temps prévu le jour J vu du lundi d'une semaine : l'estimateur avec la forme du dimanche
+        soir (correction de l'admin comprise), projeté sur la fitness du plan le matin de la course."""
+        form_day = monday_ - timedelta(days=1)
+        estimate = coach.proposed_target(self.cfg, race, form_day, self.data, self.factors, self.dem)
+        if not estimate:
+            return None
+        fitness_now = tracked.fitness_on(self.data["acts"], form_day)
+        fitness_race = coach.race_fitness_in_plan(self.week_plan(monday_), race)
+        slope = self.slope(form_day)["value"]
+        p = coach.projected(estimate, fitness_now, fitness_race, slope)
+        return {"week": monday_.isoformat(), "form_day": form_day.isoformat(),
+                "current_s": estimate["realistic_s"], **p,
+                "fitness_now": round(fitness_now, 1) if fitness_now is not None else None,
+                "fitness_race": round(fitness_race, 1) if fitness_race is not None else None,
+                "slope": slope}
+
+    def record_predictions(self, conn) -> int:
+        """Temps prévus manquants des échéances à venir : la semaine en cours une fois la semaine
+        d'avant close (sorties du dimanche arrivées), et les semaines depuis l'ajout de la course
+        (REPLAY_WEEKS au plus), rejouées. Retourne le nombre enregistré."""
+        monday_ = coach_plan.monday(self.today)
+        done = 0
+        for race in self.cal["upcoming"]:
+            have = {p["week"] for p in coach.predictions(conn, race["id"])}
+            added = date.fromisoformat((race.get("created_at") or race["race_date"])[:10])
+            created = coach_plan.monday(added)
+            first = max(created, monday_ - timedelta(weeks=REPLAY_WEEKS - 1))
+            w = first
+            while w <= monday_:
+                live = w == monday_
+                if (w.isoformat() not in have and w.isoformat() <= race["race_date"]
+                        and (not live or self.closed(w - timedelta(days=7)))):
+                    p = self.prediction(race, w)
+                    if p:
+                        coach.save_prediction(conn, race["id"], p, not live, PREDICTION_VERSION)
+                        done += 1
+                w += timedelta(days=7)
+        return done
 
     # ---------- bilan ----------
 

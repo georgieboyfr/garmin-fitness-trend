@@ -544,25 +544,30 @@ def coach_page(request: Request, vue: str = ""):
                   or settings.get_state(conn, "garmin_last_auto_day") == today.isoformat())
         co = coach_live.Coach(cfg, conn, today, dem, synced)
         cal = co.cal
-        # les courses s'informent entre elles : l'estimation suit la forme du jour, résultats des
-        # courses passées compris ; un objectif qui s'en écarte de plus de 3 % est signalé
+        if vue not in ("semaine", "plan", "echeances", "reglages"):
+            vue = "semaine" if cal["main"] else "echeances"
+        # temps prévu le jour J, chaque semaine (forme du dimanche soir projetée sur la fitness du
+        # plan) ; les courses s'informent entre elles : l'estimation suit la forme, résultats des
+        # courses passées compris ; un objectif dont le temps prévu s'écarte durablement (3 semaines
+        # de suite à plus de 3 %) est à revoir, avec la dernière course passée comme cause possible
+        if vue != "reglages":
+            co.record_predictions(conn)
         recent_past = next((r for r in cal["past"]
                             if (today - date.fromisoformat(r["race_date"])).days <= coach.DRIFT_SINCE_DAYS),
                            None)
         for r in cal["upcoming"]:
             r["proposal"] = coach.proposed_target(cfg, r, today, co.data, co.factors, dem)
             r["route"] = tracked._route_label(cfg, r)
-            if r["proposal"] and r.get("target_s"):
-                drift = r["proposal"]["realistic_s"] / r["target_s"] - 1
-                if abs(drift) >= coach.DRIFT_SHARE:
-                    r["drift_pct"] = round(drift * 100)
-                    r["drift_since"] = recent_past["name"] if recent_past else None
+            r["predictions"] = coach.predictions(conn, r["id"])
+            r["projection"] = r["predictions"][-1] if r["predictions"] else None
+            r["target_review"] = coach.target_review(r["predictions"], r.get("target_s"),
+                                                     r.get("target_kept_week"))
+            if r["target_review"]:
+                r["target_review"]["since"] = recent_past["name"] if recent_past else None
         upcoming_tracked = [r for r in co.tracked_races
                             if not r["race_date"] or r["race_date"] >= today.isoformat()]
         plan = week = bilan = next_week = None
         week_races = []
-        if vue not in ("semaine", "plan", "echeances", "reglages"):
-            vue = "semaine" if cal["main"] else "echeances"
         if cal["main"] and vue in ("semaine", "plan"):
             # la semaine en cours est celle du plan du lundi (forme et proposition de la veille) :
             # elle ne bouge pas au fil des sorties de la semaine ; le plan affiche la même.
@@ -689,6 +694,22 @@ async def coach_target(request: Request, race_id: int):
         if coach.get(conn, race_id) is None:
             return JSONResponse({"detail": "Course inconnue."}, status_code=404)
         coach.set_target(conn, race_id, float(target) if target is not None else None)
+    finally:
+        conn.close()
+    return {"id": race_id}
+
+
+@router.post("/coach/courses/{race_id}/garder")
+def coach_keep_target(request: Request, race_id: int):
+    """Objectif gardé malgré un écart durable : le coach ne le repropose pas avant 3 nouvelles
+    semaines d'écart."""
+    if (error := _session_error(request)):
+        return error
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        if coach.get(conn, race_id) is None:
+            return JSONResponse({"detail": "Course inconnue."}, status_code=404)
+        coach.keep_target(conn, race_id, coach_plan.monday(_today(request)))
     finally:
         conn.close()
     return {"id": race_id}

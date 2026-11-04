@@ -374,3 +374,19 @@ def test_coach_page_shows_the_sunday_review(client, config, monkeypatch):
     assert r.status_code == 200
     r = client.get("/coach?vue=plan")
     assert r.status_code == 200 and "Semaine chargée" in r.text
+
+
+def test_coach_keep_target(client, config):
+    from app import coach
+    conn = db.connect(config.db_path)
+    race_id = coach.create(conn, {"name": "Semi", "race_date": "2027-02-14", "priority": "A", "gpx_id": None,
+                                  "distance_m": 21100.0, "gain_m": 0.0, "target_s": 6300.0})
+    conn.close()
+    assert client.post(f"/coach/courses/{race_id}/garder").status_code == 401
+    login(client)
+    assert client.post("/coach/courses/999/garder").status_code == 404
+    assert client.post(f"/coach/courses/{race_id}/garder").status_code == 200
+    conn = db.connect(config.db_path)
+    assert coach.get(conn, race_id)["target_kept_week"] is not None
+    conn.close()
+    assert client.get("/coach?vue=echeances").status_code == 200

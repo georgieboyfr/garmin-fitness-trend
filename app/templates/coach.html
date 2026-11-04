@@ -19,6 +19,8 @@
 
 {% macro countdown(r) %}{% if r.days_left == 0 %}aujourd'hui{% elif r.days_left == 1 %}demain{% elif r.days_left < 14 %}dans {{ r.days_left }} jours{% else %}dans {{ r.weeks_left }} semaines{% endif %}{% endmacro %}
 
+{% macro predicted(r) %}{% if r.projection %}temps prévu <b data-chrono="{{ r.projection.realistic_s }}"></b> {{ tip("Le temps de l'estimateur avec ta forme du dimanche soir (correction de l'admin comprise), déplacé de ta relation personnelle entre fitness et niveau pour la fitness que le plan te donne au plus haut des 2 semaines avant la course (l'affûtage garde ce niveau et retire la fatigue). Recalculé chaque lundi. La fraîcheur du jour J n'est pas comptée.") }}{% elif r.proposal %}temps prévu <b data-chrono="{{ r.proposal.realistic_s }}"></b> {{ tip("L'estimateur sur ta forme d'aujourd'hui, correction de l'admin comprise : le temps projeté sur la fitness du jour J sera enregistré au prochain lundi.") }}{% else %}temps prévu indisponible{% endif %}{% endmacro %}
+
 {% macro session_pills(x) %}{% if x.type == "course" %} <span class="pill priority-{{ x.priority or 'A' }}">jour de course</span>{% elif x.key %} <span class="pill priority-B">séance clé</span>{% endif %}{% if x.optional %} <span class="pill priority-C">optionnelle</span>{% endif %}{% endmacro %}
 
 {% macro race_day(r) %}
@@ -27,7 +29,7 @@
   <div>
     <b>{{ r.name }}</b>
     <div><span data-short-date="{{ r.race_date }}"></span> · <span class="strong">{{ countdown(r) }}</span></div>
-    <div class="muted small">{% if r.proposal %}temps prévu <b data-chrono="{{ r.proposal.realistic_s }}"></b> {{ tip("L'estimateur sur ta forme d'aujourd'hui, correction de l'admin comprise. La fitness projetée au jour J viendra avec une prochaine étape du coach.") }}{% else %}temps prévu indisponible{% endif %}{% if r.target_s %} · objectif <b data-chrono="{{ r.target_s }}"></b>{% endif %}</div>
+    <div class="muted small">{{ predicted(r) }}{% if r.target_s %} · objectif <b data-chrono="{{ r.target_s }}"></b>{% endif %}</div>
     {% if r.freshness %}{% set f = r.freshness %}
     <div class="small">Fraîcheur ce matin : <b>{{ "+" if f.form > 0 }}{{ f.form | string | replace(".", ",") }} ({{ "+" if f.pct > 0 }}{{ f.pct }} %)</b> · {{ f.label }} {{ tip("Forme de la page Forme au matin de la course : fitness moins fatigue de la veille, rapportée à la fitness (" ~ (f.fitness | string | replace(".", ",")) ~ ") pour valoir quel que soit ton volume. Mêmes zones que le jour J du plan.") }}</div>
     {% endif %}
@@ -199,7 +201,7 @@
       <span class="pill priority-{{ r.priority }}">{{ r.priority }}</span>
       <div>
         <b>{{ r.name }}</b> · <span data-short-date="{{ r.race_date }}"></span> · {% if r.days_left == 0 %}aujourd'hui{% elif r.days_left < 14 %}dans {{ r.days_left }} jours{% else %}dans {{ r.weeks_left }} semaines{% endif %}
-        <div class="muted small">{{ r.route }} · {% if r.target_s %}objectif <b data-chrono="{{ r.target_s }}"></b>{% elif r.proposal %}estimé <b data-chrono="{{ r.proposal.realistic_s }}"></b>{% else %}objectif <a href="?vue=echeances">à fixer</a>{% endif %} · {% if r is sameas main %}le plan est construit pour elle{% elif r.priority == "B" %}mini-affûtage, puis récupération{% else %}courue comme une grosse séance{% endif %}</div>
+        <div class="muted small">{{ r.route }} · {{ predicted(r) }}{% if r.target_s %} · objectif <b data-chrono="{{ r.target_s }}"></b>{% else %} · objectif <a href="?vue=echeances">à fixer</a>{% endif %} · {% if r is sameas main %}le plan est construit pour elle{% elif r.priority == "B" %}mini-affûtage, puis récupération{% else %}courue comme une grosse séance{% endif %}</div>
       </div>
     </li>
     {% endfor %}
@@ -303,7 +305,19 @@
           <b data-chrono="{{ r.proposal.realistic_s }}"></b> <span class="muted">(<span data-chrono="{{ r.proposal.optimistic_s }}"></span> à <span data-chrono="{{ r.proposal.prudent_s }}"></span>)</span>
           {% if r.target_s != r.proposal.realistic_s %}<button class="btn-ghost" type="button" data-accept="/coach/courses/{{ r.id }}/objectif" data-value="{{ r.proposal.realistic_s }}">Accepter</button>{% else %}<span class="muted">· accepté</span>{% endif %}
           {% else %}<span class="muted">estimation impossible</span>{% endif %}</div>
-        {% if r.drift_pct %}<p class="small notice">Objectif à revoir : l'estimation du jour est {{ r.drift_pct | abs }} % plus {{ "lente" if r.drift_pct > 0 else "rapide" }}{% if r.drift_since %}, depuis {{ r.drift_since }}{% endif %}. Accepte la proposition ou garde ton objectif.</p>{% endif %}
+        {% if r.projection %}{% set p = r.projection %}
+        <div class="small coach-projection">Prévu le jour J si tu suis le plan {{ tip("Le temps de l'estimateur avec ta forme du dimanche soir (correction de l'admin comprise), déplacé de ta relation personnelle entre fitness et niveau pour la fitness que le plan te donne au plus haut des 2 semaines avant la course (l'affûtage garde ce niveau et retire la fatigue). Recalculé chaque lundi. La fraîcheur du jour J n'est pas comptée.") }} : <b data-chrono="{{ p.realistic_s }}"></b> <span class="muted">(<span data-chrono="{{ p.optimistic_s }}"></span> à <span data-chrono="{{ p.prudent_s }}"></span>)</span>
+          <div class="muted">{% if p.fitness_race is not none %}fitness {{ p.fitness_now | string | replace(".", ",") }} le <span data-short-date="{{ p.form_day }}"></span>, {{ p.fitness_race | string | replace(".", ",") }} prévue au plus haut avant la course ; avec la forme du moment : <span data-chrono="{{ p.current_s }}"></span>{% else %}course après la course principale : forme du moment maintenue{% endif %}</div>
+        </div>
+        {% if r.predictions | length > 1 %}
+        <div class="chart chart-small coach-pred-chart" id="chart-race-{{ r.id }}" data-target="{{ r.target_s or '' }}" role="img" aria-label="Temps prévu de {{ r.name }} semaine après semaine"></div>
+        <script type="application/json" id="chart-race-{{ r.id }}-data">{{ r.predictions | tojson }}</script>
+        {% endif %}
+        {% endif %}
+        {% if r.target_review %}{% set t = r.target_review %}
+        <p class="small notice">Depuis {{ t.weeks }} semaines, le temps prévu le jour J est plus {{ "lent" if t.slower else "rapide" }} que ton objectif ({{ "+" if t.pct > 0 }}{{ t.pct }} % la dernière semaine{% if t.since %}, après {{ t.since }}{% endif %}). Objectif proposé : <b data-chrono="{{ t.target_s }}"></b>.
+          <span class="aid-actions"><button class="btn-ghost" type="button" data-accept="/coach/courses/{{ r.id }}/objectif" data-value="{{ t.target_s }}">Prendre cet objectif</button><button class="btn-ghost" type="button" data-keep="/coach/courses/{{ r.id }}/garder">Garder le mien</button></span></p>
+        {% endif %}
       </div>
     </li>
     {% endfor %}
@@ -471,6 +485,45 @@
 {% block scripts %}
 <script src="/static/coach.js?v={{ asset_version }}"></script>
 <script>
+  // temps prévu le jour J de chaque échéance, semaine après semaine, face à l'objectif
+  document.querySelectorAll(".coach-pred-chart").forEach((box) => {
+    const preds = JSON.parse(document.getElementById(box.id + "-data").textContent);
+    const target = Number(box.dataset.target) || null;
+    const ms = (iso) => new Date(iso + "T12:00:00").getTime();
+    GFT.chart(box.id, (t) => {
+      const values = preds.flatMap((p) => [p.optimistic_s, p.prudent_s, p.current_s]).concat(target ? [target] : []);
+      const pad = (Math.max(...values) - Math.min(...values)) * 0.1 || 60;
+      const real = { name: "Prévu le jour J", type: "line", symbolSize: 7, lineStyle: { color: t.accent, width: 2 },
+        itemStyle: { color: t.accent },
+        data: preds.map((p) => ({ value: [ms(p.week), p.realistic_s],
+                                  itemStyle: p.replayed ? { color: t.surface, borderColor: t.accent } : {} })) };
+      if (target) real.markLine = { symbol: "none", silent: true, data: [{ yAxis: target, name: "Objectif" }],
+        lineStyle: { color: t.series[2], type: "dashed" },
+        label: { color: t.muted, formatter: (p) => `${p.name} ${GFT.chrono(p.value)}`, position: "insideEndTop" } };
+      return {
+        grid: { left: 8, right: 16, top: 16, bottom: 28, containLabel: true },
+        tooltip: { ...t.tooltip, trigger: "axis", formatter: (ps) => {
+          const p = preds[ps[0].dataIndex];
+          return `<b>Semaine du ${new Date(p.week + "T12:00:00").toLocaleDateString("fr-FR")}</b>`
+            + `<br>Prévu le jour J ${GFT.chrono(p.realistic_s)}<br>Fourchette ${GFT.chrono(p.optimistic_s)} – `
+            + `${GFT.chrono(p.prudent_s)}<br>Avec la forme du moment ${GFT.chrono(p.current_s)}`
+            + `${p.replayed ? "<br><i>rejouée</i>" : ""}`; } },
+        xAxis: { type: "time", ...t.axis },
+        yAxis: { type: "value", min: Math.max(0, Math.min(...values) - pad), max: Math.max(...values) + pad, ...t.axis,
+                 axisLabel: { ...t.axis.axisLabel, formatter: (v) => GFT.chrono(v) } },
+        series: [
+          { name: "bas", type: "line", stack: "range", symbol: "none", lineStyle: { opacity: 0 },
+            data: preds.map((p) => [ms(p.week), p.optimistic_s]), tooltip: { show: false } },
+          { name: "Fourchette", type: "line", stack: "range", symbol: "none", lineStyle: { opacity: 0 },
+            areaStyle: { color: t.accentSoft }, data: preds.map((p) => [ms(p.week), p.prudent_s - p.optimistic_s]) },
+          real,
+          { name: "Forme du moment", type: "line", symbol: "none", lineStyle: { color: t.muted, width: 1, type: "dotted" },
+            data: preds.map((p) => [ms(p.week), p.current_s]) },
+        ],
+      };
+    });
+  });
+
   (() => {
     const el = document.getElementById("plan-series");
     if (!el) return;

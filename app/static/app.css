@@ -560,6 +560,7 @@ details.tracked-add > summary { cursor: pointer; font-weight: 600; margin: 12px 
 .coach-day-session.status-past > b { text-decoration: line-through; color: var(--muted); font-weight: 400; }
 .coach-done { margin-top: 2px; }
 .coach-key { margin: 0 0 8px; }
+.coach-projection { margin-top: 6px; }
 .coach-race-day { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); border-left: 4px solid var(--accent); }
 .coach-race-day b { font-size: 1.1em; }
 .coach-days > li.is-race-day { border-left: 4px solid var(--accent); padding-left: 8px; }

@@ -232,7 +232,10 @@ def live(config, conn, monkeypatch):
     acts = [run(date(2026, 11, 1) - timedelta(days=i), 50, 60, i=i + 1) for i in range(0, 120, 2)]
     acts += [run(date(2026, 11, 3), 45, 55, i=900)]                       # une sortie dans la semaine
     real = tracked.load_data
-    monkeypatch.setattr(tracked, "load_data", lambda cfg, c: {**real(cfg, c), "acts": acts})
+    efforts = [{"kind": "distance", "key": 10000, "value": 2900, "extra": None, "id": 1, "name": "x",
+                "date": "2026-10-11", "year": 2026, "terrain": "road", "avg_hr": None}]
+    monkeypatch.setattr(tracked, "load_data",
+                        lambda cfg, c: {**real(cfg, c), "acts": acts, "efforts": efforts})
     race_id = coach.create(conn, {"name": "Semi", "race_date": "2027-03-21", "priority": "A", "gpx_id": None,
                                   "distance_m": 21097.5, "gain_m": 0.0, "target_s": 6300.0})
     with conn:
@@ -339,3 +342,67 @@ def test_scheduler_sends_the_sunday_review_once_after_a_sync(config, live, monke
     assert not sched.sunday_review(datetime(2026, 11, 8, 21))                      # une fois par semaine
     without = DailyScheduler(config, sync, FakeAccount())                         # sans ntfy
     assert not without.sunday_review(datetime(2026, 11, 15, 20))
+
+
+# ---------- temps prévu le jour J (étape 5) ----------
+
+def plan_series(start, values):
+    return {"start_fitness": values[0], "series": [
+        {"date": (start + timedelta(days=i)).isoformat(), "fitness": v} for i, v in enumerate(values)]}
+
+
+def test_race_fitness_is_the_peak_of_the_two_weeks_before():
+    start = date(2026, 11, 2)
+    plan = plan_series(start, [20 + i * 0.1 for i in range(30)] + [22.5, 22.0, 21.5])   # affûtage à la fin
+    race = {"race_date": (start + timedelta(days=33)).isoformat()}
+    assert coach.race_fitness_in_plan(plan, race) == pytest.approx(22.9)             # avant l'affûtage
+    assert coach.race_fitness_in_plan(plan, {"race_date": "2026-11-02"}) == 20.0     # course du lundi
+    assert coach.race_fitness_in_plan(plan, {"race_date": "2027-06-01"}) is None     # au-delà du plan
+    assert coach.race_fitness_in_plan(None, race) is None
+
+
+def test_projected_time_follows_the_personal_slope():
+    est = {"optimistic_s": 5400, "realistic_s": 6000, "prudent_s": 6600}
+    p = coach.projected(est, 20.0, 25.0, -0.01)                       # +5 points, −1 % par point
+    assert p["realistic_s"] == round(6000 * 2.718281828 ** -0.05) and p["fitness_delta"] == 5.0
+    assert coach.projected(est, 20.0, None, -0.01)["realistic_s"] == 6000   # forme maintenue
+
+
+def preds(*times, start="2026-11-02"):
+    d = date.fromisoformat(start)
+    return [{"week": (d + timedelta(weeks=i)).isoformat(), "realistic_s": t} for i, t in enumerate(times)]
+
+
+def test_target_is_reviewed_only_after_three_weeks_of_drift():
+    assert coach.target_review(preds(6300, 6300), 6000) is None                  # 2 semaines seulement
+    r = coach.target_review(preds(6000, 6200, 6250, 6300), 6000)                # +3,3 %, +4,2 %, +5 %
+    assert r["target_s"] == 6300 and r["slower"] and r["pct"] == 5 and r["week"] == "2026-11-23"
+    assert coach.target_review(preds(6250, 6100, 6300), 6000) is None           # +1,7 % au milieu
+    assert coach.target_review(preds(5700, 5750, 5800), 6000)["slower"] is False
+    gap = preds(6300, 6300) + preds(6300, start="2026-11-30")                   # une semaine manque
+    assert coach.target_review(gap, 6000) is None
+    assert coach.target_review(preds(6300, 6300, 6300), None) is None
+    assert coach.target_review(preds(6300, 6300, 6300), 6000, kept_week="2026-11-02") is None   # gardé
+    later = preds(6300, 6300, 6300, 6300, 6300, 6300)
+    assert coach.target_review(later, 6000, kept_week="2026-11-09")["week"] == "2026-12-07"
+
+
+def test_predictions_are_recorded_each_week_and_replayed(config, live):
+    tuesday = date(2026, 11, 17)
+    co = coach_live.Coach(config, live, tuesday)
+    race_id = co.cal["upcoming"][0]["id"]
+    assert co.record_predictions(live) == 3                                  # 2, 9 et 16 novembre
+    rows = coach.predictions(live, race_id)
+    assert [r["week"] for r in rows] == ["2026-11-02", "2026-11-09", "2026-11-16"]
+    assert [r["replayed"] for r in rows] == [1, 1, 0]
+    assert all(r["realistic_s"] > 0 and r["slope"] <= 0 for r in rows)
+    assert rows[-1]["fitness_race"] is not None and rows[-1]["form_day"] == "2026-11-15"
+    assert co.record_predictions(live) == 0                                  # déjà là
+    # lundi, synchro du jour pas faite : la semaine en cours attend les sorties du dimanche
+    monday = coach_live.Coach(config, live, date(2026, 11, 23))
+    assert monday.record_predictions(live) == 0
+    assert coach_live.Coach(config, live, date(2026, 11, 23), synced_today=True).record_predictions(live) == 1
+    # parcours changé : les temps prévus repartent de zéro
+    race = coach.get(live, race_id)
+    coach.update(live, race_id, {**race, "distance_m": 10000.0})
+    assert coach.predictions(live, race_id) == []

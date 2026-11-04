@@ -32,7 +32,9 @@ OPTIONAL_SHARE = 0.25        # optionnel : une semaine sur quatre
 PLACE_CELL_M = 200.0         # case d'un lieu de passage, de l'ordre de la précision des tracés résumés
 PLACE_START_M = 2 * PLACE_CELL_M   # abords du départ, exclus (on y passe à chaque sortie)
 STATUSES = ("oui", "optionnel", "non")
-DRIFT_SHARE = 0.03           # objectif à revoir : estimation du jour à plus de 3 % de l'objectif
+DRIFT_SHARE = 0.03           # objectif à revoir : temps prévu à plus de 3 % de l'objectif...
+DRIFT_WEEKS = 3              # ... trois semaines de suite (écart durable, brief section 6)
+RACE_FITNESS_DAYS = 14       # fitness du jour J : la plus haute des 2 semaines avant (l'affûtage la garde)
 DRIFT_SINCE_DAYS = 28        # course passée récente, citée comme cause possible
 EVERY_CHOICES = (1, 2, 3, 4)  # jour optionnel : toutes les semaines, 1 sur 2, 1 sur 3, 1 sur 4
 DEFAULT_EVERY = 2
@@ -73,6 +75,8 @@ def create(conn, race: dict) -> int:
 
 def update(conn, race_id: int, race: dict):
     with conn:
+        # parcours ou date changés : les temps prévus des semaines passées ne valent plus
+        conn.execute("DELETE FROM coach_predictions WHERE race_id=?", (race_id,))
         conn.execute(
             "UPDATE coach_races SET name=?, race_date=?, priority=?, gpx_id=?, distance_m=?, gain_m=?,"
             " target_s=? WHERE id=?",
@@ -94,7 +98,30 @@ def set_target(conn, race_id: int, target_s: float | None):
 
 def delete(conn, race_id: int):
     with conn:
+        conn.execute("DELETE FROM coach_predictions WHERE race_id=?", (race_id,))
         conn.execute("DELETE FROM coach_races WHERE id=?", (race_id,))
+
+
+def keep_target(conn, race_id: int, week: date):
+    """Objectif gardé malgré un écart durable : pas de nouvelle proposition avant 3 nouvelles
+    semaines d'écart."""
+    with conn:
+        conn.execute("UPDATE coach_races SET target_kept_week=? WHERE id=?", (week.isoformat(), race_id))
+
+
+def predictions(conn, race_id: int) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        "SELECT * FROM coach_predictions WHERE race_id=? ORDER BY week", (race_id,))]
+
+
+def save_prediction(conn, race_id: int, p: dict, replayed: bool, version: str):
+    with conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO coach_predictions (race_id, week, form_day, current_s, optimistic_s,"
+            " realistic_s, prudent_s, fitness_now, fitness_race, slope, replayed, version, computed_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (race_id, p["week"], p["form_day"], p["current_s"], p["optimistic_s"], p["realistic_s"],
+             p["prudent_s"], p["fitness_now"], p["fitness_race"], p["slope"], int(replayed), version, _now()))
 
 
 def get(conn, race_id: int) -> dict | None:
@@ -340,6 +367,57 @@ def proposed_target(cfg, race: dict, today: date, data: dict, factors: dict, dem
         return None
     factor = factors["trail" if race.get("gpx_id") else "road"]
     return {k: round(result[k] * factor) for k in ("optimistic_s", "realistic_s", "prudent_s")}
+
+
+# ---------- temps prévu le jour J (étape 5) ----------
+
+def race_fitness_in_plan(plan: dict | None, race: dict) -> float | None:
+    """Fitness projetée par le plan pour une course : la plus haute des RACE_FITNESS_DAYS jours
+    avant elle dans la simulation jour par jour. L'affûtage garde le niveau construit et retire la
+    fatigue (Bosquet 2007) : la baisse de fitness des derniers jours n'est pas une perte de niveau.
+    None si la course est au-delà du plan (après la course principale)."""
+    if not plan or not plan.get("series"):
+        return None
+    race_day = date.fromisoformat(race["race_date"])
+    first, last = plan["series"][0]["date"], plan["series"][-1]["date"]
+    eve = (race_day - timedelta(days=1)).isoformat()
+    if eve > last:
+        return None
+    if eve < first:
+        return plan.get("start_fitness")
+    since = (race_day - timedelta(days=RACE_FITNESS_DAYS)).isoformat()
+    return max(p["fitness"] for p in plan["series"] if since <= p["date"] <= eve)
+
+
+def projected(estimate: dict, fitness_now: float | None, fitness_race: float | None, slope: float) -> dict:
+    """Temps prévu le jour J : l'estimation avec la forme du jour, déplacée de la pente personnelle
+    (part de temps par point de fitness) pour l'écart entre la fitness du jour et celle que le plan
+    donne le matin de la course. Sans fitness projetée, la forme du jour est maintenue. La fraîcheur
+    du jour J n'est pas modélisée (son effet sur le temps n'est pas mesuré)."""
+    delta = fitness_race - fitness_now if fitness_race is not None and fitness_now is not None else 0.0
+    factor = math.exp(slope * delta)
+    return {k: round(estimate[k] * factor) for k in ("optimistic_s", "realistic_s", "prudent_s")} | {
+        "fitness_delta": round(delta, 1)}
+
+
+def target_review(preds: list[dict], target_s: float | None, kept_week: str | None = None) -> dict | None:
+    """Objectif à réajuster : les DRIFT_WEEKS derniers temps prévus, semaines consécutives, tous
+    plus lents (ou tous plus rapides) que l'objectif de plus de DRIFT_SHARE, et pas avant
+    DRIFT_WEEKS nouvelles semaines quand le coureur a gardé son objectif. Proposition : le dernier
+    temps prévu. None sinon."""
+    if not target_s or len(preds) < DRIFT_WEEKS:
+        return None
+    last = preds[-DRIFT_WEEKS:]
+    weeks = [date.fromisoformat(p["week"]) for p in last]
+    if any((b - a).days != 7 for a, b in zip(weeks, weeks[1:], strict=False)):
+        return None
+    if kept_week and last[0]["week"] <= kept_week:
+        return None
+    drifts = [p["realistic_s"] / target_s - 1 for p in last]
+    if all(d >= DRIFT_SHARE for d in drifts) or all(d <= -DRIFT_SHARE for d in drifts):
+        return {"target_s": last[-1]["realistic_s"], "pct": round(drifts[-1] * 100),
+                "slower": drifts[-1] > 0, "weeks": DRIFT_WEEKS, "week": last[-1]["week"]}
+    return None
 
 
 # ---------- plan vers la course A ----------

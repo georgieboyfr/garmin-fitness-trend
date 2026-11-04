@@ -111,6 +111,8 @@ class DailyScheduler:
             if now.hour < cfg["hour"] or not synced:
                 return 0
             done = tracked.record(self.config, conn, now.date())
+            # temps prévu le jour J des échéances du coach, avec la fitness projetée par le plan
+            done += coach_live.Coach(self.config, conn, now.date(), None, True).record_predictions(conn)
             settings.set_state(conn, "tracked_last_week", week)
         finally:
             conn.close()

@@ -79,6 +79,9 @@
     btn.addEventListener("click", () => send(btn.dataset.accept, { target_s: Number(btn.dataset.value) },
                                              null, "echeances"));
   });
+  document.querySelectorAll("[data-keep]").forEach((btn) => {
+    btn.addEventListener("click", () => send(btn.dataset.keep, {}, null, "echeances"));
+  });
   document.querySelectorAll("[data-coach-delete]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       if (!window.confirm("Retirer cette course du calendrier du coach ?")) return;
