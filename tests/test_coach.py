@@ -189,3 +189,17 @@ def test_optional_days_carry_a_frequency():
     assert cleaned[0]["every"] is None and cleaned[5]["every"] == 3
     with pytest.raises(ValueError):
         coach.clean_profile({"availability": [{**d, "every": 6} for d in days]})
+
+
+def test_clean_periods():
+    out = coach.clean_profile({"periods": [
+        {"kind": "vacances", "start": "2027-07-10", "end": "2027-07-24", "sessions": 5, "max_min": 120},
+        {"kind": "maladie", "start": "2027-01-04", "end": "2027-01-08", "sessions": "", "max_min": None}]})
+    assert [p["kind"] for p in out["periods"]] == ["maladie", "vacances"]
+    assert out["periods"][0]["sessions"] is None and out["periods"][1]["sessions"] == 5
+    assert coach.clean_profile({"periods": []}) == {"periods": None}
+    for bad in ({"kind": "fête", "start": "2027-01-01", "end": "2027-01-02"},
+                {"kind": "vacances", "start": "2027-07-20", "end": "2027-07-10"},
+                {"kind": "vacances", "start": "2027-07-01", "end": "2027-07-10", "sessions": 20}):
+        with pytest.raises(ValueError):
+            coach.clean_profile({"periods": [bad]})

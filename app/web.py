@@ -572,13 +572,15 @@ def coach_page(request: Request, vue: str = ""):
             if (today - date.fromisoformat(r["race_date"])).days <= coach_plan.RECOVERY_LOOKBACK_DAYS]
         plan = coach.plan_for(cfg, cal["main"], today, data, availability, profile["max_sessions"], habits,
                               physio_now, {"ramp_pct": profile["ramp_pct"],
-                                           "long_extension": profile["long_extension"]}, others)
+                                           "long_extension": profile["long_extension"],
+                                           "periods": profile["periods"]}, others)
     if vue not in ("plan", "echeances", "reglages"):
         vue = "plan" if cal["main"] else "echeances"
     return render(request, "coach.html", "/coach", calendar=cal, vue=vue,
                   availability=availability, plan=plan,
                   inferred=inferred, availability_saved=profile["availability"] is not None,
                   max_sessions=profile["max_sessions"], plan_options=profile,
+                  period_labels=coach_plan.PERIOD_LABELS,
                   habits=habits,
                   priorities=coach.PRIORITIES, gpx_recent=gpx_store.recent(cfg),
                   tracked_races=upcoming_tracked,

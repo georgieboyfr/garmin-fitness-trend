@@ -36,6 +36,7 @@ DRIFT_SHARE = 0.03           # objectif à revoir : estimation du jour à plus d
 DRIFT_SINCE_DAYS = 28        # course passée récente, citée comme cause possible
 EVERY_CHOICES = (1, 2, 3, 4)  # jour optionnel : toutes les semaines, 1 sur 2, 1 sur 3, 1 sur 4
 DEFAULT_EVERY = 2
+MAX_PERIODS = 30
 RAMP_CHOICES = (10, 15)      # montée du volume, % par semaine (repère courant contre les blessures : 10)
 PRIORITIES = {"A": "Objectif principal", "B": "Course importante", "C": "Préparation"}
 WEEKDAYS = ("Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche")
@@ -226,12 +227,41 @@ def effective_availability(stored: list | None, inferred: dict) -> list[dict]:
     return out
 
 
+def clean_periods(periods) -> list[dict] | None:
+    """Périodes particulières : type, début et fin (AAAA-MM-JJ, un an au plus), séances par semaine
+    et durée maximale facultatives ; triées par date. ValueError si invalide."""
+    if periods is None:
+        return None
+    if not isinstance(periods, list) or len(periods) > MAX_PERIODS:
+        raise ValueError("Périodes invalides.")
+    out = []
+    for p in periods:
+        if not isinstance(p, dict) or p.get("kind") not in coach_plan.PERIOD_LABELS:
+            raise ValueError("Type de période : vacances, maladie, blessure, déplacement ou semaine chargée.")
+        try:
+            start, end = date.fromisoformat(p.get("start") or ""), date.fromisoformat(p.get("end") or "")
+        except ValueError:
+            raise ValueError("Dates de la période : AAAA-MM-JJ.") from None
+        if end < start or (end - start).days > 365:
+            raise ValueError("La fin vient après le début, un an au plus.")
+        sessions, minutes = p.get("sessions"), p.get("max_min")
+        for v, lo, hi, msg in ((sessions, 0, 14, "Séances par semaine : de 0 à 14."),
+                               (minutes, 1, MAX_DAY_MIN, f"Durée maximale de 1 à {MAX_DAY_MIN} min.")):
+            bad = isinstance(v, bool) or not isinstance(v, int | float) or not lo <= v <= hi
+            if v not in (None, "") and bad:
+                raise ValueError(msg)
+        out.append({"kind": p["kind"], "start": start.isoformat(), "end": end.isoformat(),
+                    "sessions": int(sessions) if sessions not in (None, "") else None,
+                    "max_min": int(minutes) if minutes not in (None, "") else None})
+    return sorted(out, key=lambda p: p["start"]) or None
+
+
 def clean_profile(values: dict) -> dict:
     """Disponibilités saisies (7 jours : oui, optionnel ou non, durée maximale ; nombre maximal de
     séances par semaine, facultatif) et habitudes
     (lieu, nom, gardée ou non), seulement les champs envoyés (null : retour à l'historique) ;
     ValueError si invalide."""
-    fields = {"availability", "habits", "max_sessions", "ramp_pct", "long_extension"}
+    fields = {"availability", "habits", "max_sessions", "ramp_pct", "long_extension", "periods"}
     if not isinstance(values, dict) or not set(values) & fields:
         raise ValueError("Saisie invalide.")
     out = {}
@@ -260,6 +290,8 @@ def clean_profile(values: dict) -> dict:
         availability = cleaned
     if "availability" in values:
         out["availability"] = availability
+    if "periods" in values:
+        out["periods"] = clean_periods(values["periods"])
     if "ramp_pct" in values:
         if values["ramp_pct"] not in RAMP_CHOICES:
             raise ValueError("Montée du volume : 10 ou 15 % par semaine.")

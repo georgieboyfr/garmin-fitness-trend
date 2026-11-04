@@ -33,7 +33,9 @@ DEFAULTS = {
     "coach": {"availability": None, "habits": None, "max_sessions": None,
               # réglages du plan posés au coureur : montée du volume (% par semaine) et sorties
               # longues allongées en phase spécifique au-delà du jour le plus long
-              "ramp_pct": 10, "long_extension": True},
+              "ramp_pct": 10, "long_extension": True,
+              # périodes particulières (vacances, maladie...), vérifiées par coach.clean_profile
+              "periods": None},
 }
 
 CORRECTION_LIMITS = (0.8, 1.2)

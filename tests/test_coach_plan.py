@@ -407,3 +407,34 @@ def test_steady_runs_spread_over_weeks_and_quality_sessions_fill_the_day():
     assert cp.session_load(steady[0], rates) > steady[0]["minutes"] * rates["easy"] / 60
     q = next(s for s in w["sessions"] if s["hard"])
     assert q["steps"][-1]["text"].startswith("puis") and q["minutes"] <= 90
+
+
+def test_periods_replace_the_usual_days_with_the_planned_sessions():
+    a = avail((0, "oui", 50), (1, "oui", 60), (3, "oui", 80), (5, "optionnel", 120))
+    days = cp.chosen_days(a, 4)
+    mon = date(2026, 12, 21)
+    holiday = [{"kind": "vacances", "start": "2026-12-19", "end": "2027-01-03", "sessions": 5, "max_min": 90}]
+    wd = cp.period_days(days, mon, holiday, a)
+    assert len(wd) == 5 and all(d["max_min"] == 90 for d in wd)
+    assert sum(1 for x, y in zip(wd, wd[1:], strict=False) if y["weekday"] - x["weekday"] == 1) <= 3
+    sick = [{"kind": "maladie", "start": "2026-12-21", "end": "2026-12-27", "sessions": None}]
+    assert cp.period_days(days, mon, sick, a) == []
+    half = [{"kind": "deplacement", "start": "2026-12-24", "end": "2026-12-27", "sessions": 2}]
+    wd = cp.period_days(days, mon, half, a)
+    assert [d["weekday"] for d in wd if d.get("period")] == [5]                 # 2 × 4/7 : une séance
+    assert [d["weekday"] for d in wd if not d.get("period")] == [0, 1]          # lundi et mardi gardés
+
+
+def test_plan_follows_periods_with_a_reprise_after_illness():
+    acts = [run(TODAY - timedelta(days=i), 60, 90, 0.0) for i in range(1, 200, 2)]
+    days = avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 60), (5, "oui", 150))
+    race = {**RACE, "race_date": "2027-03-28"}
+    sick = {"kind": "maladie", "start": "2026-11-30", "end": "2026-12-06", "sessions": None}
+    plan = cp.build_plan(race, TODAY, acts, days, None, [], {}, 170, {"periods": [sick]})
+    alone = cp.build_plan(race, TODAY, acts, days, None, [], {}, 170)
+    by = {w["monday"]: w for w in plan["weeks"]}
+    ref = {w["monday"]: w for w in alone["weeks"]}
+    assert by["2026-11-30"]["sessions"] == [] and by["2026-11-30"]["periods"][0]["kind"] == "maladie"
+    assert by["2026-12-07"]["periods"][0]["kind"] == "reprise"
+    assert by["2026-12-07"]["target_load"] < ref["2026-12-07"]["target_load"]
+    assert plan["race_fitness"] < alone["race_fitness"]

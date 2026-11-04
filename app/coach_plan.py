@@ -651,6 +651,65 @@ def _race_form(pct: float) -> tuple[str, str]:
     return key, "Très frais, bien reposé" if key == "transition" else label
 
 
+PERIOD_LABELS = {"vacances": "Vacances", "maladie": "Maladie", "blessure": "Blessure",
+                 "deplacement": "Déplacement", "chargee": "Semaine chargée"}
+PERIOD_REST = ("maladie", "blessure")   # sans séance par défaut, reprise progressive ensuite
+REPRISE_DAYS = 7                        # semaine de reprise après une maladie ou une blessure
+
+
+def period_days(days: list[dict], monday_: date, periods: list[dict], availability: list[dict]) -> list[dict]:
+    """Jours d'une semaine avec les périodes particulières du coureur (vacances, maladie...) : les
+    jours d'une période remplacent les disponibilités, avec le nombre de séances prévu par semaine
+    (au prorata des jours de la période dans la semaine ; aucune pour une maladie ou une blessure
+    sans nombre), placées d'abord sur les jours habituels, jamais deux jours de suite si possible,
+    chacune avec la durée maximale saisie (sinon celle du jour, sinon la plus longue des jours)."""
+    if not periods:
+        return days
+    by_wd = {d["weekday"]: d for d in availability}
+    longest = max((d.get("max_min") or 0 for d in availability), default=0) or DEFAULT_DAY_MIN
+    out = list(days)
+    for p in periods:
+        start, end = date.fromisoformat(p["start"]), date.fromisoformat(p["end"])
+        inside = [wd for wd in range(7) if start <= monday_ + timedelta(days=wd) <= end]
+        if not inside:
+            continue
+        out = [d for d in out if d["weekday"] not in inside]
+        n = p.get("sessions")
+        if n is None:
+            n = 0 if p["kind"] in PERIOD_REST else len([d for d in days if d["weekday"] in inside])
+            share = 1.0
+        else:
+            share = len(inside) / 7
+        n = min(len(inside), int(n * share + 0.5))
+        order = sorted(inside, key=lambda wd: (by_wd.get(wd, {}).get("status", "non") == "non",
+                                               -(by_wd.get(wd, {}).get("max_min") or 0), wd))
+        picked = []
+        for wd in order:                             # d'abord sans jours de suite, puis comme on peut
+            if len(picked) < n and all(abs(wd - x) > 1 for x in picked):
+                picked.append(wd)
+        for wd in order:
+            if len(picked) < n and wd not in picked:
+                picked.append(wd)
+        for wd in picked:
+            minutes = p.get("max_min") or by_wd.get(wd, {}).get("max_min") or longest
+            out.append({"weekday": wd, "status": "oui", "every": 1, "max_min": minutes, "period": p["kind"]})
+    return sorted(out, key=lambda d: d["weekday"])
+
+
+def _period_events(monday_: date, periods: list[dict]) -> list[dict]:
+    end_week = monday_ + timedelta(days=6)
+    out = []
+    for p in periods or []:
+        start, end = date.fromisoformat(p["start"]), date.fromisoformat(p["end"])
+        if start <= end_week and end >= monday_:
+            out.append({"kind": p["kind"], "label": PERIOD_LABELS.get(p["kind"], p["kind"]),
+                        "start": p["start"], "end": p["end"], "sessions": p.get("sessions")})
+        elif p["kind"] in PERIOD_REST and end < monday_ <= end + timedelta(days=REPRISE_DAYS):
+            out.append({"kind": "reprise", "label": f"Reprise après {PERIOD_LABELS[p['kind']].lower()}",
+                        "start": p["start"], "end": p["end"], "sessions": None})
+    return out
+
+
 def _core_max(days: list[dict]) -> float:
     core = [d for d in days if d.get("status") != "optionnel"] or days
     return max(d["max_min"] for d in core)
@@ -724,9 +783,15 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
     steady_per_week = history["count_share"]["steady"] * n_core if history else 0.0
     max_load = capacity_min / 60 * blended
 
-    def week_cap(index: int) -> float:
-        wd = [d for d in week_days(days, index) if d.get("status") != "optionnel"] or days
-        return sum(d["max_min"] for d in wd) / 60 * blended
+    periods = options.get("periods") or []
+
+    def days_of(w: dict) -> list[dict]:
+        return period_days(week_days(days, w["index"]), w["monday"], periods, availability)
+
+    def week_cap(w: dict) -> float:
+        wd = days_of(w)
+        core = [d for d in wd if d.get("status") != "optionnel"] or wd
+        return sum(d["max_min"] for d in core) / 60 * blended
     fitness = state["fitness"]
     last_charge = None
     phase_counts = {}
@@ -746,8 +811,8 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
             # en temps ne la fait pas redescendre)
             ref = last_charge or weekly_load_for(state["fitness"], state["fitness"])
             last_charge = min(weekly_load_for(fitness, target), (1 + ramp_pct / 100) * max(ref, 1.0),
-                              max(max_load, week_cap(w["index"])))
-            load = min(last_charge, week_cap(w["index"]))
+                              max(max_load, week_cap(w)))
+            load = min(last_charge, week_cap(w))
         elif w["kind"] == "allégée":
             load = RECOVERY_LOAD * (last_charge or weekly_load_for(fitness, fitness))
         else:
@@ -761,19 +826,27 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
                 load *= RACE_WEEK_LOAD.get(cal["races"][d]["priority"], RACE_WEEK_LOAD["B"])
         recovering = [d for d in dates_ if d in cal["recovery"]]
         load *= 1 - RECOVERY_LOAD_CUT * len(recovering) / 7
+        # périodes particulières : la charge tient dans les séances prévues ; reprise progressive
+        # la semaine après une maladie ou une blessure
+        events = _period_events(w["monday"], periods)
+        if events:
+            load = min(load, week_cap(w))
+            if any(e["kind"] == "reprise" for e in events):
+                load *= RECOVERY_LOAD
         week_in_phase = phase_counts.get(w["phase"], 0)
         phase_counts[w["phase"]] = week_in_phase + 1
-        built = build_week(w, week_days(days, w["index"]), load, rates, race, paces, habits, lthr,
+        built = build_week(w, days_of(w), load, rates, race, paces, habits, lthr,
                            week_in_phase,
                            extended.get(w["index"]), cal,
                            _spread(w["index"], steady_per_week), bool(history))
+        built["periods"] = events
         built["events"] = [{"name": r["name"], "until": cal["recovery_end"][r["race_date"]]}
                            for r in others or [] if r["race_date"] in cal["recovery_end"]
                            and r["race_date"] < (w["monday"] + timedelta(days=6)).isoformat()
                            and cal["recovery_end"][r["race_date"]] >= w["monday"].isoformat()]
         if w["phase"] == "spécifique" and is_trail(race) and race.get("gain_m"):
             built["gain_target"] = round(race["gain_m"], -1)        # D+ de la course, visé chaque semaine
-        built["capped"] = w["kind"] == "charge" and (load >= week_cap(w["index"]) - 0.5
+        built["capped"] = w["kind"] == "charge" and not events and (load >= week_cap(w) - 0.5
                                                       or built["planned_load"] < load - CAPPED_MARGIN)
         fitness = fitness_after(fitness, built["planned_load"])
         out.append(built)

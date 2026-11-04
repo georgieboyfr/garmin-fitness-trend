@@ -76,12 +76,13 @@
   <div class="coach-weeks">
     {% for w in plan.weeks %}
     {% set week_races = w.sessions | selectattr("type", "equalto", "course") | list %}
-    <details class="coach-week kind-{{ w.kind }}{% if week_races %} has-race{% endif %}" {% if loop.index <= 2 %}open{% endif %}>
+    <details class="coach-week kind-{{ w.kind }}{% if week_races %} has-race{% endif %}{% if w.periods %} has-period{% endif %}" {% if loop.index <= 2 %}open{% endif %}>
       <summary>
         <span class="strong">S{{ w.index }}</span> · semaine du <span data-short-date="{{ w.monday }}"></span>
         · {{ w.phase }}{% if w.kind not in ("charge", w.phase) %} ({{ w.kind }}){% endif %}{% for x in week_races %} <span class="pill priority-{{ x.priority or 'A' }}">{{ x.label }}</span>{% endfor %}
         <span class="muted small">· {{ w.minutes }} min{% if w.gain_m %} · D+ {{ w.gain_m | int }} m{% if w.gain_target %} (visé {{ w.gain_target | int }}){% endif %}{% endif %} · charge {{ w.planned_load }} · fitness {{ w.fitness_end | string | replace(".", ",") }}</span>{% if w.sessions | selectattr("extended") | list %} <span class="pill priority-C">sortie longue à caler</span>{% endif %}
       </summary>
+      {% for e in w.periods %}<p class="small notice coach-event">{{ e.label }}{% if e.kind != "reprise" %} du <span data-short-date="{{ e.start }}"></span> au <span data-short-date="{{ e.end }}"></span>{% if e.sessions is not none %} : {{ e.sessions }} séance{{ "s" if e.sessions > 1 }} par semaine prévue{{ "s" if e.sessions > 1 }}{% endif %}{% else %} : semaine allégée{% endif %}.</p>{% endfor %}
       {% for e in w.events %}<p class="small muted coach-event">Récupération de {{ e.name }} jusqu'au <span data-short-date="{{ e.until }}"></span> : ni séance dure ni sortie longue, charge réduite.</p>{% endfor %}
       <ul class="coach-sessions-list">
         {% for x in w.sessions %}
@@ -241,6 +242,34 @@
     </div>
     <div class="aid-actions">
       <button class="btn-primary" type="submit">Enregistrer</button>
+      <span class="small muted" role="status"></span>
+    </div>
+  </form>
+</section>
+
+<section class="card" id="periodes">
+  <div class="card-head">
+    <h2>Périodes particulières <span class="muted small">facultatif</span> {{ tip("Vacances, maladie, blessure, déplacement ou semaine chargée : pendant la période, ces jours remplacent tes disponibilités habituelles. Indique combien de séances par semaine tu penses faire (c'est une intention, pas une obligation) et, si tu veux, leur durée maximale. Sans nombre, une maladie ou une blessure compte zéro séance, puis une semaine de reprise allégée ; les autres périodes gardent tes séances habituelles. Le plan se recalcule aussitôt.") }}</h2>
+  </div>
+  {% set periods = plan_options.periods or [] %}
+  <form class="coach-periods" data-url="/coach/profil" data-periods="{{ periods | tojson | forceescape }}">
+    {% if periods %}
+    <ul class="coach-period-list">
+      {% for p in periods %}
+      <li><b>{{ period_labels[p.kind] }}</b> du <span data-short-date="{{ p.start }}"></span> au <span data-short-date="{{ p.end }}"></span>{% if p.sessions is not none %} · {{ p.sessions }} séance{{ "s" if p.sessions > 1 }} par semaine{% endif %}{% if p.max_min %} · {{ p.max_min }} min au plus{% endif %}
+        <button class="btn-ghost" type="button" data-remove-period="{{ loop.index0 }}" aria-label="Supprimer la période">Supprimer</button></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="small muted">Aucune période.</p>{% endif %}
+    <div class="filters">
+      <label class="filter">Type <select name="kind" class="select">{% for k, label in period_labels.items() %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select></label>
+      <label class="filter">Du <input name="start" type="date" required></label>
+      <label class="filter">Au <input name="end" type="date" required></label>
+      <label class="filter">Séances par semaine <input name="sessions" inputmode="numeric" size="2" placeholder="—"></label>
+      <label class="filter">Durée max (min) <input name="max_min" inputmode="numeric" size="4" placeholder="—"></label>
+    </div>
+    <div class="aid-actions">
+      <button class="btn-primary" type="submit">Ajouter la période</button>
       <span class="small muted" role="status"></span>
     </div>
   </form>

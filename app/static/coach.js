@@ -133,6 +133,27 @@
          opts.querySelector("[role=status]"), "reglages-plan");
   });
 
+  // périodes particulières : ajout et suppression, liste entière renvoyée
+  const per = document.querySelector("form.coach-periods");
+  if (per) {
+    const list = JSON.parse(per.dataset.periods || "[]");
+    const status = per.querySelector("[role=status]");
+    const num = (name) => { const v = per.querySelector(`[name=${name}]`).value.trim(); return v ? Number(v) : null; };
+    per.addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      const item = { kind: per.querySelector("[name=kind]").value, start: per.querySelector("[name=start]").value,
+                     end: per.querySelector("[name=end]").value, sessions: num("sessions"), max_min: num("max_min") };
+      if ([item.sessions, item.max_min].some((v) => v !== null && !Number.isFinite(v))) {
+        status.textContent = "Nombres attendus, par exemple 3 et 60."; return;
+      }
+      send(per.dataset.url, { periods: [...list, item] }, status, "periodes");
+    });
+    per.querySelectorAll("[data-remove-period]").forEach((btn) => btn.addEventListener("click", () => {
+      const rest = list.filter((_, i) => i !== Number(btn.dataset.removePeriod));
+      send(per.dataset.url, { periods: rest.length ? rest : null }, status, "periodes");
+    }));
+  }
+
   // habitudes gardées
   const habits = document.querySelector("form.coach-habits");
   if (habits) habits.addEventListener("submit", (ev) => {
