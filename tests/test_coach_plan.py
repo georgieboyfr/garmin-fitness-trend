@@ -7,6 +7,12 @@ from app import coach_plan as cp
 TODAY = date(2026, 11, 4)                 # mercredi
 
 
+def text(session):
+    """Tout ce qu'affiche une séance : description, étapes et leurs cibles."""
+    steps = " ".join(f"{x['text']} {x['target']}" for x in session.get("steps", []))
+    return f"{session['description']} {steps}"
+
+
 def avail(*days):
     """days : (jour, statut, minutes)."""
     by = {d: (s, m) for d, s, m in days}
@@ -53,7 +59,8 @@ def test_load_rates_are_learnt_from_easy_runs_and_sessions():
     acts = [run(TODAY - timedelta(days=i), 40, 60, 0.0) for i in range(1, 6)]
     acts += [run(TODAY - timedelta(days=i), 70, 60, 0.5) for i in range(10, 14)]
     r = cp.load_rates(acts, TODAY)
-    assert r == {"easy": 40.0, "quality": 70.0, "personal": True, "easy_n": 5, "quality_n": 4}
+    assert r == {"easy": 40.0, "quality": 70.0, "personal": True, "easy_n": 5, "quality_n": 4,
+                 "easy_pace": None}
     assert cp.load_rates([], TODAY)["easy"] == cp.DEFAULT_RATES[0]
 
 
@@ -77,7 +84,7 @@ def test_week_puts_long_run_on_longest_day_and_never_two_hard_days_in_a_row():
     assert all(abs(h - 5) > 1 for h in hard)                               # pas à côté de la sortie longue
     assert all(s["minutes"] <= next(d["max_min"] for d in days if d["weekday"] == s["weekday"])
                for s in w["sessions"])
-    assert "FC sous 153 bpm" in by[5]["description"] and "m de D+" in by[5]["description"]
+    assert "FC sous 153" in text(by[5]) and "m de D+" in text(by[5])
 
 
 def test_hill_sessions_go_on_a_hilly_habit_day_flat_sessions_elsewhere():
@@ -89,7 +96,7 @@ def test_hill_sessions_go_on_a_hilly_habit_day_flat_sessions_elsewhere():
     dev = cp.build_week(week(phase="développement"), days, 200, RATES, RACE, {"threshold": 298}, habit,
                         None, 0)
     q = next(s for s in dev["sessions"] if s["hard"])
-    assert q["weekday"] != 0 and q["type"] == "seuil" and "4:58 /km" in q["description"]
+    assert q["weekday"] != 0 and q["type"] == "seuil" and "4:52 à 5:04 /km" in text(q)
     assert next(s for s in dev["sessions"] if s["weekday"] == 0)["label"] == "Footing : Bastille"
 
 
@@ -129,11 +136,11 @@ def test_trail_reminder_is_on_hills_and_road_reminder_at_race_pace():
     taper = week(kind="affûtage", phase="affûtage")
     trail = cp.build_week(taper, days, 100, RATES, RACE, {"race": None}, [], None, 0)
     q = next(s for s in trail["sessions"] if s["hard"])
-    assert q["label"] == "Rappel en côte" and "/km" not in q["description"]
+    assert q["label"] == "Rappel en côte" and "/km" not in text(q)
     road_race = {**RACE, "gain_m": 50, "distance_m": 21100}
     road = cp.build_week(taper, days, 100, RATES, road_race, {"race": 300}, [], None, 0)
     q = next(s for s in road["sessions"] if s["hard"])
-    assert q["label"] == "Rappel d'allure" and "5:00 /km" in q["description"]
+    assert q["label"] == "Rappel d'allure" and "4:57 à 5:03 /km" in text(q)
 
 
 def test_taper_lowers_fitness_a_little_but_leaves_the_runner_fresh_on_race_day():

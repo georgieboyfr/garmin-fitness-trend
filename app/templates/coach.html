@@ -52,7 +52,14 @@
           <span class="coach-day">{{ x.day }} <span class="muted small" data-short-date="{{ x.date }}"></span></span>
           <div>
             <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{% if x.key %} <span class="pill priority-B">séance clé</span>{% endif %}{% if x.date < today %} <span class="small">· passé</span>{% endif %}
-            <div class="small muted">{{ x.description }}</div>
+            {% if x.steps and x.steps | length == 1 %}
+            <div class="small">{{ x.steps[0].text | replace(x.minutes ~ " min en ", "") | capitalize }}{% if x.steps[0].target %} <span class="muted">— {{ x.steps[0].target }}</span>{% endif %}</div>
+            {% elif x.steps %}
+            <ol class="coach-steps small">
+              {% for st in x.steps %}<li class="step-{{ st.kind }}"><span>{{ st.text }}</span>{% if st.target %} <span class="muted">— {{ st.target }}</span>{% endif %}</li>{% endfor %}
+            </ol>
+            {% endif %}
+            {% if x.description %}<div class="small muted">{{ x.description }}</div>{% endif %}
           </div>
         </li>
         {% endfor %}
