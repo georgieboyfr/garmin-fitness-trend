@@ -310,3 +310,11 @@ def test_validate_trail_replays_races_with_the_form_of_the_day_before():
         "n": 1, "mae_pct": abs(r["error_pct"]), "bias_pct": r["error_pct"], "within": 0}
     assert v["moving"]["n"] == 1
     assert trail.validate_trail([], acts, efforts, set())["total"] is None
+
+
+def test_model_coverage_counts_distance_on_grades_the_model_knows():
+    d = np.arange(0, 2001, 10.0)
+    alt = np.where(d <= 1000, 0.0, (d - 1000) * 0.3)                # 1 km plat puis 1 km à +30 %
+    model = {"bins": [{"grade": -9}, {"grade": 1}, {"grade": 11}]}   # tranches de −10 à +12 %
+    cov = trail.model_coverage({"distance": d, "altitude": alt}, model)
+    assert cov == pytest.approx(50, abs=3)

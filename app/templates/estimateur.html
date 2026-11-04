@@ -69,6 +69,10 @@
   </details>
 </section>
 
+{% macro confidence_block(c) %}{% if c %}
+  <p class="small confidence">Confiance <b class="confidence-{{ {'élevée': 'high', 'moyenne': 'medium'}.get(c.level, 'low') }}">{{ c.level }}</b> {{ tip("Indice tiré de règles générales, pas de tes seuls chiffres : chaque point défavorable (forte extrapolation de distance, référence ancienne ou fortement ajustée par la FC, précision pas encore mesurable ou large sur tes courses de ce terrain, course bien plus longue que ta plus longue sortie, pentes mal couvertes par ton modèle, exposant de fatigue par défaut) baisse la confiance : aucun point, élevée ; un ou deux, moyenne ; trois et plus, faible. La confiance dit à quel point se fier à l'estimation, la fourchette dit de combien elle peut se tromper.") }} :
+    {% for r in c.reasons %}<span class="{{ 'muted' if r.good else '' }}">{{ "✓" if r.good else "•" }} {{ r.text }}</span>{{ " · " if not loop.last }}{% endfor %}</p>
+{% endif %}{% endmacro %}
 <section class="card">
   <div class="card-head">
     <h2>Route {{ tip("Formule de Riegel : temps visé = temps de référence × (distance visée / distance de référence) puissance k. L'exposant k vaut 1,06, la valeur standard : plus il est élevé, plus on ralentit quand la distance s'allonge. Ton exposant personnel, calé sur tes meilleurs efforts route, est plus élevé mais se trompait davantage sur tes courses passées. Chacun de tes meilleurs efforts route des {{ weeks }} dernières semaines (3 km et plus, 20 min et plus) est extrapolé à la distance visée : l'estimation la plus rapide est retenue, car un effort d'entraînement n'est pas toujours à fond. Chaque effort est d'abord ramené à ta forme du jour : son temps est corrigé de l'évolution de ta vitesse à FC égale depuis sa date (droite FC / vitesse sur 12 mois), ce qui compte même sans séance rapide récente. La fourchette s'élargit quand la distance visée s'éloigne de la distance de référence.") }}</h2>
@@ -104,6 +108,7 @@
     {% if e.fallback %}· aucun effort route en {{ weeks }} semaines : références des 6 derniers mois{% endif %}
     {% if e.correction %}· corrigé de {{ ('%+.1f' % e.correction.pct) | replace('-', '−') | replace('.', ',') }} % (calibration activée dans <a href="/admin">l'admin</a>){% endif %}
   </p>
+  {{ confidence_block(e.confidence) }}
   {{ race_context(road_context) }}
   {% elif query.distance %}
   <p class="muted">Pas d'estimation possible : aucun effort route de 3 km ou plus sur les 6 derniers mois, ou distance invalide.</p>
@@ -178,6 +183,7 @@
     {% if t.stops_source == "ravitos" %}· temps total, dont <span data-duration="{{ t.stops_s }}"></span> d'arrêts saisis aux ravitos{% elif t.stops_source == "history" %}· temps total, dont <span data-duration="{{ t.stops_s }}"></span> d'arrêts ({{ t.stop_share_pct | string | replace(".", ",") }} % du temps{% if t.stop_rate.personal %}, d'après tes {{ t.stop_rate.points | length }} courses trail passées{% else %}, valeur par défaut faute de course trail passée{% endif %} ; tes arrêts saisis aux ravitos la remplacent) {{ tip("Part du temps passée à l'arrêt en course, qui croît avec le carré de la durée (les ravitos s'allongent sur les longues courses), calée sur tes courses trail confirmées : temps écoulé comparé au temps en mouvement. Les pauses de tes sorties d'entraînement ne comptent pas. Si tu saisis une durée d'arrêt à au moins un ravito, seuls tes arrêts saisis comptent.") }}{% else %}· temps en mouvement, sans arrêt{% endif %}
     · <span data-chrono="{{ t.moving_s }}"></span> en mouvement, allures en mouvement{% if t.correction %} · corrigé de {{ ('%+.1f' % t.correction.pct) | replace('-', '−') | replace('.', ',') }} % (calibration activée dans <a href="/admin">l'admin</a>){% endif %}.
   </p>
+  {{ confidence_block(t.confidence) }}
   <div class="chart" id="chart-trail" role="img" aria-label="Profil du parcours avec les temps de passage"></div>
   <div class="table-wrap">
     <table class="data">

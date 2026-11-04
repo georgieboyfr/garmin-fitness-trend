@@ -283,6 +283,88 @@ def predict_road(efforts, day: date, distance_m: float, gain_m: float = 0.0, exp
     }
 
 
+# ---------- indice de confiance d'une prédiction ----------
+# Règles générales, pas calées sur un coureur : chaque critère défavorable retire un point (deux pour
+# une forte extrapolation) ; 0 point : confiance élevée, 1 ou 2 : moyenne, 3 et plus : faible.
+CONF_EXTRAPOLATION = (2.0, 4.0)   # rapport distance visée / référence : au-delà, extrapolation forte
+                                  # (la prédiction perd en précision en extrapolant, Lerebourg 2021)
+CONF_REF_AGE_DAYS = 56            # forme aérobie : adaptations et désentraînement en 6 à 8 semaines
+CONF_ADJUST_PCT = 5.0             # ajustement par la FC au-delà : approximation trop sollicitée
+CONF_MIN_RACES = 3                # en dessous, la précision n'est pas mesurable
+CONF_LOA_PCT = 10.0               # limites à 95 % au-delà de ±10 % : précision mesurée faible
+                                  # (±4 à 9 % pour les bonnes méthodes, Lerebourg 2021)
+CONF_DURATION_RATIO = 1.5         # course 50 % plus longue que ta plus longue sortie
+CONF_COVERAGE_PCT = 90.0          # part du parcours sur des pentes couvertes par ton modèle allure-pente
+CONFIDENCE_LEVELS = ((0, "élevée"), (2, "moyenne"))
+
+
+def longest_moving_s(acts, day: date) -> float | None:
+    """Plus long temps en mouvement d'une sortie jusqu'au soir de `day`."""
+    times = [a["moving_duration_s"] for a in acts
+             if a.get("moving_duration_s") and a["start"].date() <= day]
+    return max(times) if times else None
+
+
+def confidence(estimate: dict | None, day: date, measured: dict | None = None,
+               longest_s: float | None = None) -> dict | None:
+    """Indice de confiance d'une estimation route ou trail, avec ses raisons. measured : résumé
+    d'erreur des courses passées du même terrain (error_summary) ; longest_s : plus long temps en
+    mouvement avant `day` (trail). Raisons : (texte, favorable)."""
+    if not estimate or estimate.get("error"):
+        return None
+    penalty, reasons = 0, []
+    ref = estimate["reference"]
+    # trail : Riegel ne sert que jusqu'à 2 h (riegel_target_m), ta courbe de fatigue prend le relais
+    ratio = estimate.get("riegel_target_m", estimate["equivalent_m"]) / ref["distance_m"]
+    if ratio > CONF_EXTRAPOLATION[1]:
+        penalty += 2
+        reasons.append((f"distance {ratio:.1f} fois plus longue que ta référence ({ref['label']}) : "
+                        "forte extrapolation", False))
+    elif ratio > CONF_EXTRAPOLATION[0]:
+        penalty += 1
+        reasons.append((f"distance {ratio:.1f} fois plus longue que ta référence ({ref['label']})", False))
+    else:
+        reasons.append((f"distance proche de ta référence ({ref['label']})", True))
+    age = (day - date.fromisoformat(ref["date"][:10])).days
+    if age > CONF_REF_AGE_DAYS:
+        penalty += 1
+        reasons.append((f"référence vieille de {age // 7} semaines", False))
+    if abs(ref.get("adjust_pct") or 0) > CONF_ADJUST_PCT:
+        penalty += 1
+        reasons.append((f"référence ajustée de {ref['adjust_pct']:+.1f} % par la FC", False))
+    if estimate.get("fallback"):
+        penalty += 1
+        reasons.append(("aucun effort route récent : références des 6 derniers mois", False))
+    if not measured or measured["n"] < CONF_MIN_RACES:
+        penalty += 1
+        n = measured["n"] if measured else 0
+        reasons.append((f"précision pas encore mesurable ({n} course{'s' if n > 1 else ''} de ce terrain)",
+                        False))
+    elif measured.get("sd_pct") is not None:
+        half = round(max(abs(measured["loa_low_pct"]), abs(measured["loa_high_pct"])))   # comme affiché
+        if half > CONF_LOA_PCT:
+            penalty += 1
+            reasons.append((f"sur tes {measured['n']} courses de ce terrain, 95 % finissent entre "
+                            f"{measured['loa_low_pct']:+.0f} et {measured['loa_high_pct']:+.0f} %", False))
+        else:
+            reasons.append((f"précision mesurée sur tes {measured['n']} courses : ±{half:.0f} %", True))
+    if longest_s and estimate.get("moving_s") and estimate["moving_s"] > CONF_DURATION_RATIO * longest_s:
+        penalty += 1
+        reasons.append((f"plus long que ta plus longue sortie ({longest_s / 3600:.1f} h)", False))
+    coverage = estimate.get("model_coverage_pct")
+    if coverage is not None and coverage < CONF_COVERAGE_PCT:
+        penalty += 1
+        reasons.append((f"{100 - coverage:.0f} % du parcours sur des pentes que ton modèle couvre mal",
+                        False))
+    fatigue = estimate.get("fatigue")
+    if estimate.get("fatigue_applies") and fatigue and not fatigue.get("personal"):
+        penalty += 1
+        reasons.append(("exposant de fatigue par défaut : pas assez de sorties longues", False))
+    level = next((name for limit, name in CONFIDENCE_LEVELS if penalty <= limit), "faible")
+    return {"level": level, "penalty": penalty,
+            "reasons": [{"text": t.replace(".", ",").replace("-", "−"), "good": g} for t, g in reasons]}
+
+
 def road_table(efforts, day: date, window_days: int = WINDOW_DAYS, trend=None) -> list[dict]:
     """Estimations sur les distances usuelles (5 km, 10 km, semi, marathon)."""
     out = []

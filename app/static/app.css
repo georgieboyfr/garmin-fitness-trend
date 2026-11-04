@@ -168,6 +168,9 @@ h2 { font-size: 16px; display: flex; align-items: center; gap: 6px; }
 .delta { font-weight: 600; }
 .delta.up { color: var(--up); }
 .delta.down { color: var(--down); }
+.confidence-high { color: var(--up); }
+.confidence-medium { color: var(--warn); }
+.confidence-low { color: var(--down); }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .kpi { animation: none; } }
 

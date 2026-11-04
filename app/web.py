@@ -280,6 +280,15 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
                                           gpx_meta["aid_stations"], confirmed, trend)
     estimate = estimator.apply_correction(estimate, factors["road"])
     trail_result = estimator.apply_correction(trail_result, factors["trail"])
+    validation = estimator.validate_road(acts, efforts, confirmed, window, trend)
+    trail_validation = trail.validate_trail(
+        tracked.race_profiles(cfg, acts, confirmed, elevation_params), acts, efforts, confirmed,
+        window, estimator.MODEL_PERIODS[months_value], trend)
+    if estimate:
+        estimate["confidence"] = estimator.confidence(estimate, today, validation["used"])
+    if trail_result and not trail_result.get("error"):
+        trail_result["confidence"] = estimator.confidence(trail_result, today, trail_validation["total"],
+                                                          estimator.longest_moving_s(acts, today))
     tracked_rows = _tracked_overview(cfg, today)
     profile = estimator.current_form(acts, efforts, today, lthr, window)
     slope = estimator.fitness_slope(acts, efforts, today, window)
@@ -301,11 +310,7 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
                       table=[estimator.apply_correction(r, factors["road"])
                              for r in estimator.road_table(efforts, today, window, trend)],
                       estimate=estimate, factors=factors,
-                      validation=estimator.validate_road(acts, efforts, confirmed, window, trend),
-                      trail_validation=trail.validate_trail(
-                          tracked.race_profiles(cfg, acts, confirmed, elevation_params), acts, efforts,
-                          confirmed,
-                          window, estimator.MODEL_PERIODS[months_value], trend),
+                      validation=validation, trail_validation=trail_validation,
                       weeks=weeks_value, months=months_value, form_weeks=estimator.FORM_WEEKS,
                       personal_exponent=estimator.personal_exponent(efforts, today),
                       model=model, model_table=estimator.model_table(model) if model else [],

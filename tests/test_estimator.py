@@ -382,3 +382,36 @@ def test_error_summary_gives_bland_altman_limits():
     assert one["sd_pct"] is None and one["loa_low_pct"] is None        # écart-type à partir de 2 courses
     many = estimator.error_summary([{"e": float(i % 3)} for i in range(estimator.LOA_MIN_RACES)], "e")
     assert many["loa_reliable"] is True
+
+
+def _estimate(ratio=1.5, age_days=10, adjust=0.0, fallback=False, **extra):
+    ref_date = (DAY - timedelta(days=age_days)).isoformat()
+    return {"equivalent_m": 10000 * ratio, "fallback": fallback,
+            "reference": {"distance_m": 10000, "label": "10 km", "date": ref_date, "adjust_pct": adjust},
+            **extra}
+
+
+def test_confidence_is_high_when_nothing_weighs_against_it():
+    measured = {"n": 12, "sd_pct": 3.0, "loa_low_pct": -6.0, "loa_high_pct": 5.0}
+    c = estimator.confidence(_estimate(), DAY, measured)
+    assert c["level"] == "élevée" and c["penalty"] == 0 and all(r["good"] for r in c["reasons"])
+
+
+def test_confidence_drops_with_extrapolation_old_reference_and_unmeasured_precision():
+    c = estimator.confidence(_estimate(ratio=4.4, age_days=80, adjust=-6.2), DAY, {"n": 1})
+    assert c["level"] == "faible" and c["penalty"] == 5             # 2 + âge + ajustement + précision
+    assert any("4,4 fois" in r["text"] for r in c["reasons"])
+    medium = estimator.confidence(_estimate(ratio=2.5), DAY, None)
+    assert medium["level"] == "moyenne" and medium["penalty"] == 2
+
+
+def test_confidence_flags_long_courses_poor_model_coverage_and_default_fatigue():
+    measured = {"n": 5, "sd_pct": 6.0, "loa_low_pct": -12.0, "loa_high_pct": 11.0}
+    est = _estimate(moving_s=6 * 3600, model_coverage_pct=80.0, fatigue_applies=True,
+                    fatigue={"personal": False})
+    c = estimator.confidence(est, DAY, measured, longest_s=3 * 3600)
+    texts = " ".join(r["text"] for r in c["reasons"])
+    assert c["penalty"] == 4 and "3,0 h" in texts and "20 %" in texts and "−12 et +11 %" in texts
+    trail_like = estimator.confidence(_estimate(ratio=8.0, riegel_target_m=15000), DAY, measured)
+    assert any("proche" in r["text"] for r in trail_like["reasons"])      # Riegel jusqu'à 2 h seulement
+    assert estimator.confidence(None, DAY) is None and estimator.confidence({"error": "x"}, DAY) is None

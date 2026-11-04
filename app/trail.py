@@ -413,6 +413,20 @@ def aid_table(profile, times, stations, spread: float, factor: float = 1.0) -> l
     return out
 
 
+def model_coverage(profile, model) -> float:
+    """Part de la distance (%) sur des pentes couvertes par les tranches du modèle allure-pente
+    (au-delà, le facteur de la tranche extrême est prolongé)."""
+    d = np.asarray(profile["distance"], dtype=float)
+    if d.size < 2:
+        return 100.0
+    g = grade.smoothed_grade(d, profile["altitude"]) * 100
+    step_g = (g[1:] + g[:-1]) / 2
+    half = grade.GRADE_BIN * 100 / 2
+    low, high = model["bins"][0]["grade"] - half, model["bins"][-1]["grade"] + half
+    dd = np.diff(d)
+    return round(float(dd[(step_g >= low) & (step_g <= high)].sum() / dd.sum() * 100), 1)
+
+
 def predict_trail(profile, model, efforts, day: date, window_days: int = estimator.WINDOW_DAYS,
                   fatigue: dict | None = None, aid_stations=None, stops: dict | None = None,
                   trend=None) -> dict | None:
@@ -467,6 +481,7 @@ def predict_trail(profile, model, efforts, day: date, window_days: int = estimat
         "spread_pct": round(spread * 100, 1),
         "reference": ref, "fatigue": fatigue, "fatigue_applies": d0 is not None,
         "window_days": road["window_days"], "fallback": road["fallback"],
+        "model_coverage_pct": model_coverage(profile, model), "riegel_target_m": round(near),
         "segments": segments(profile, times, offsets),
         "aid_stations": aid_table(profile, times, stations, spread, factor),
         "chart": {"km": [round(float(d[i]) / 1000, 2) for i in idx],
