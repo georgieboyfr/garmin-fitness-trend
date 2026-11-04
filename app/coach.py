@@ -450,6 +450,70 @@ def race_facts(cfg, race: dict, data: dict) -> dict:
             "gain_m": gain}
 
 
+def _paces(physio_now: dict) -> dict:
+    threshold, vma = physio_now.get("threshold_pace"), physio_now.get("vma")
+    return {"threshold": threshold["pace_s_km"] if threshold else None,
+            "vma": vma["pace_s_km"] if vma else None}
+
+
+def _kept_habits(habits: list[dict]) -> list[dict]:
+    return [{"weekday": h["weekday"], "name": h["label_name"] or h["label"],
+             "hilly": h["distance_km"] > 0 and h["gain_m"] / h["distance_km"] > HILLY_GAIN_PER_KM,
+             "moving_min": h["moving_min"]} for h in habits if h["keep"] is not False]
+
+
+def maintenance_start(past: list[dict]) -> date | None:
+    """Départ du cycle de maintien : le lendemain de la dernière course passée du calendrier."""
+    if not past:
+        return None
+    return date.fromisoformat(max(r["race_date"] for r in past)) + timedelta(days=1)
+
+
+def maintenance_for(cfg, today: date, data: dict, availability: list[dict], max_sessions: int | None,
+                    habits: list[dict], physio_now: dict, options: dict | None = None,
+                    others: list[dict] | None = None) -> dict:
+    """Maintien de forme sans course prévue (coach_plan.build_maintenance) ; others : courses
+    passées récentes, dont on récupère d'abord."""
+    side = [race_facts(cfg, r, data) for r in others or []]
+    return coach_plan.build_maintenance(today, data["acts"], availability, max_sessions, _kept_habits(habits),
+                                        _paces(physio_now), data.get("lthr"), options, side,
+                                        data.get("confirmed") or ())
+
+
+ROAD_DISTANCES = (5000, 10000, 21097.5, 42195)
+
+
+def race_suggestions(cfg, today: date, data: dict, factors: dict, trail: bool, dem=None) -> list[dict]:
+    """Envie de courir une course : distances classiques, avec le temps de l'estimateur aujourd'hui
+    et si la forme du moment suffit (plus longue sortie ordinaire des 8 dernières semaines au moins
+    égale à la sortie longue que le plan viserait : 90 % de la durée, 3 h au plus). En trail, le D+
+    suit le D+ par km habituel du coureur sur ses sorties trail des 12 dernières semaines."""
+    since = coach_plan.monday(today) - timedelta(weeks=coach_plan.READY_WEEKS)
+    acts = coach_plan.ordinary(data["acts"], today, data.get("confirmed") or (), keep_races=True)
+    longest = max(((a.get("moving_duration_s") or 0) / 60 for a in acts if a["start"].date() >= since),
+                  default=0)
+    gain_per_km = 0.0
+    if trail:
+        recent = [a for a in data["acts"] if a.get("terrain") == "trail"
+                  and a["start"].date() >= coach_plan.monday(today) - timedelta(weeks=coach_plan.BAND_WEEKS)
+                  and a.get("distance_km")]
+        if recent:
+            gain_per_km = median(a["gain_m"] / a["distance_km"] for a in recent)
+    out = []
+    for d in ROAD_DISTANCES:
+        race = {"distance_m": d, "gain_m": round(gain_per_km * d / 1000, -1), "gpx_id": None}
+        est = proposed_target(cfg, race, today, data, factors, dem)
+        if not est:
+            continue
+        need = min(coach_plan.LONG_RACE_SHARE * est["realistic_s"] / 60, coach_plan.LONG_MAX_MIN)
+        out.append({"distance_m": d, "gain_m": race["gain_m"], **est, "need_min": round(need),
+                    "ready": longest >= need})
+    best = [x for x in out if x["ready"]]
+    if best:
+        best[-1]["suggested"] = True
+    return out
+
+
 def plan_for(cfg, race: dict, today: date, data: dict, availability: list[dict], max_sessions: int | None,
              habits: list[dict], physio_now: dict, options: dict | None = None,
              others: list[dict] | None = None) -> dict | None:
@@ -458,15 +522,11 @@ def plan_for(cfg, race: dict, today: date, data: dict, availability: list[dict],
     calendrier (à venir et passées récentes), dont le plan tient compte."""
     full = race_facts(cfg, race, data)
     duration, distance, gain = full["duration_s"], full["distance_m"], full["gain_m"]
-    threshold, vma = physio_now.get("threshold_pace"), physio_now.get("vma")
     trail_race = coach_plan.is_trail({**race, "distance_m": distance, "gain_m": gain})
-    paces = {"threshold": threshold["pace_s_km"] if threshold else None,
-             "vma": vma["pace_s_km"] if vma else None,
-             # allure moyenne de course : sans objet en trail, où le dénivelé la fausse
+    # allure moyenne de course : sans objet en trail, où le dénivelé la fausse
+    paces = {**_paces(physio_now),
              "race": duration / distance * 1000 if duration and distance and not trail_race else None}
-    kept = [{"weekday": h["weekday"], "name": h["label_name"] or h["label"],
-             "hilly": h["distance_km"] > 0 and h["gain_m"] / h["distance_km"] > HILLY_GAIN_PER_KM,
-             "moving_min": h["moving_min"]} for h in habits if h["keep"] is not False]
+    kept = _kept_habits(habits)
     side = [race_facts(cfg, r, data) for r in others or []]
     return coach_plan.build_plan(full, today, data["acts"], availability, max_sessions, kept, paces,
                                  data.get("lthr"), options, side, data.get("confirmed") or ())

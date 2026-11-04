@@ -56,9 +56,11 @@ LONG_STEP_SHARE = 0.10          # sortie : au plus +10 % sur la plus longue des 
                                 # et al., BJSM 2025 : au-delà, plus de blessures de surmenage)
 TAPER_MIN_EASY = 20             # affûtage : footings raccourcis plutôt que supprimés, la fréquence est
                                 # gardée (Bosquet 2007 ; méta-analyse de 2023 sur l'endurance)
-STRENGTH = {"foncier": 2, "développement": 2, "spécifique": 1, "allégée": 1}   # renforcement par semaine
-                                # (2 à 3 séances sur 8 à 12 semaines améliorent l'économie de course,
-                                # Balsalobre-Fernández 2016 ; entretien ensuite)
+STRENGTH = {"foncier": 2, "développement": 2, "spécifique": 1, "allégée": 1,
+            "maintien": 1, "reprise": 1}
+                                # renforcement par semaine (2 à 3 séances sur 8 à 12 semaines
+                                # améliorent l'économie de course, Balsalobre-Fernández 2016 ;
+                                # entretien ensuite)
 LONG_START_WEEKS = 4            # départ : la plus longue sortie ordinaire des 4 dernières semaines
 # plusieurs courses (étape 6) : repères généraux, à valider par Greg
 RECOVERY_KM_PER_DAY = 3.0       # récupération : un jour sans séance dure par 3 km d'effort (Daniels)
@@ -367,7 +369,9 @@ def _adjacent(a: int, b: int) -> bool:
 
 
 def is_trail(race: dict) -> bool:
-    """Trail : un GPX, ou plus de 15 m de D+ par km."""
+    """Trail : un GPX, ou plus de 15 m de D+ par km ; en maintien, l'orientation du coureur."""
+    if "trail" in race:
+        return bool(race["trail"])
     km = (race.get("distance_m") or 0) / 1000
     return bool(race.get("gpx_id")) or (km > 0 and (race.get("gain_m") or 0) / km > 15)
 
@@ -490,7 +494,7 @@ def _pick_day(candidates, long_day, picked, kind, race_wd, habit_by_day, hills: 
 def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dict, paces: dict,
                habits: list[dict], lthr: float | None, week_in_phase: int,
                long_override: int | None = None, cal: dict | None = None, n_steady: int = 0,
-               long_cap: float | None = None) -> dict:
+               long_cap: float | None = None, max_quality: int = 2) -> dict:
     """Séances d'une semaine pour une charge visée : sortie longue, qualité, footings, prises dans
     le catalogue de coach_workouts et variées d'une semaine à l'autre. Durées rondes (5 min) ; un
     footing dure au moins MIN_EASY_MIN, sinon un jour de footing saute. long_override : sortie
@@ -539,6 +543,7 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
         n_quality = 0
     else:
         n_quality = 2 if len(usable) >= 5 and kind == "charge" else 1
+    n_quality = min(n_quality, max_quality)
     if any(r["priority"] == "B" for _, r in side):
         n_quality = min(n_quality, 1)
     n_quality = max(0, n_quality - sum(1 for _, r in side if r["priority"] == "C"))
@@ -620,7 +625,7 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
             ratio = rates["easy"] / (rates["easy"] + (rates["steady"] - rates["easy"]) * 0.6)
             s = wk.steady_run(max(MIN_EASY_MIN + 10, wk.floor5(minutes * ratio + 2.5)), paces, hilly)
             n_steady -= 1
-        elif (not habit and kind == "charge" and phase in ("foncier", "développement")
+        elif (not habit and kind == "charge" and phase in ("foncier", "développement", "maintien")
                 and d["weekday"] not in easy_wd
                 and i == len(easy_days) - 1 and week["index"] % 2 == 0 and not before_hard):
             s = wk.strides(max(MIN_EASY_MIN, minutes - 10), paces)
@@ -1117,3 +1122,259 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
             "cap_fitness": round(cap_fitness, 1) if cap_fitness else None, "rates": rates,
             "days": days, "capacity_min": capacity_min, "weeks": out,
             "race_fitness": round(sim["race_fitness"], 1), "trail": is_trail(race)}
+
+
+# ---------- maintien de forme, sans course prévue (étape 7) ----------
+# repères généraux, à valider par Greg ; tout est relatif aux données du coureur
+
+BAND_WEEKS = 12                 # plage de fitness : tirée des 12 dernières semaines
+BAND_SHARE = 0.10               # plage : médiane ± 10 %
+BELOW_DAYS = 14                 # sous la plage « durablement » : 14 jours de suite
+SEASON_DAYS = 14                # creux de l'an dernier à la même période, à 2 semaines près
+MAINT_WEEKS = 8                 # semaines affichées : deux cycles de 3 + 1
+MAINT_EPOCH = date(2024, 1, 1)  # lundi de référence du cycle quand aucune course n'est passée
+TEST_EVERY = 8                  # test facultatif : une semaine sur 8, la 2e d'un cycle sur deux
+TRAIL_SHARE = 0.5               # orientation trail : au moins la moitié des sorties récentes en trail
+
+
+def _fitness_series(acts, today: date, race_ids=()) -> list[dict]:
+    """Fitness jour par jour jusqu'à la veille, pics de charge ramenés à la borne de Tukey (un
+    séjour exceptionnel ne déplace pas la plage), courses gardées."""
+    daily = smoothed_daily(acts, today, race_ids)
+    if not daily:
+        return []
+    return stats.banister(daily, min(daily), today - timedelta(days=1))
+
+
+def _band_at(series: list[dict], day: date) -> dict | None:
+    """Plage de fitness vue d'un jour : médiane des BAND_WEEKS semaines d'avant, ± BAND_SHARE ;
+    sous la plage durablement quand les BELOW_DAYS derniers jours y sont tous."""
+    window = [p for p in series if day - timedelta(weeks=BAND_WEEKS) <= p["date"] < day]
+    run_weeks = {monday(p["date"]) for p in window if p["stress"] > 0}
+    if len(run_weeks) < BAND_WEEKS // 2:            # au moins une semaine courue sur deux
+        return None
+    center = median(p["fitness"] for p in window)
+    low, high = center * (1 - BAND_SHARE), center * (1 + BAND_SHARE)
+    last = window[-BELOW_DAYS:]
+    below = center > 0 and len(last) == BELOW_DAYS and all(p["fitness"] < low for p in last)
+    return {"center": center, "low": low, "high": high, "below": below,
+            "fitness": window[-1]["fitness"]}
+
+
+def fitness_band(acts, today: date, race_ids=()) -> dict | None:
+    """Plage de fitness à tenir (médiane des 12 dernières semaines ± 10 %, qui suit le coureur :
+    s'il en fait spontanément plus, elle remonte doucement), position du coureur, et creux de saison :
+    sous la plage aujourd'hui comme à la même période l'an dernier (été, fêtes), accepté comme tel."""
+    series = _fitness_series(acts, today, race_ids)
+    band = _band_at(series, today)
+    if not band:
+        return None
+    seasonal = False
+    if band["below"]:
+        ago = today - timedelta(days=365)
+        for k in range(-SEASON_DAYS, SEASON_DAYS + 1, 7):
+            then = _band_at(series, ago + timedelta(days=k))
+            if then and then["below"]:
+                seasonal = True
+                break
+    out = {k: round(v, 1) if isinstance(v, float) else v for k, v in band.items()}
+    return out | {"seasonal": seasonal, "weeks": BAND_WEEKS, "share_pct": round(BAND_SHARE * 100)}
+
+
+def trail_oriented(acts, today: date) -> bool:
+    """Orientation trail par défaut : au moins la moitié des sorties des 12 dernières semaines."""
+    since = monday(today) - timedelta(weeks=BAND_WEEKS)
+    recent = [a for a in acts if since <= a["start"].date() < today and a.get("terrain") in ("road", "trail")]
+    return bool(recent) and sum(a["terrain"] == "trail" for a in recent) / len(recent) >= TRAIL_SHARE
+
+
+def usual_long(acts, today: date, race_ids=()) -> float | None:
+    """Sortie longue du maintien : la médiane des plus longues sorties de chaque semaine courue des
+    12 dernières semaines (hors pics de charge et courses), un peu plus courte qu'en préparation."""
+    since = monday(today) - timedelta(weeks=BAND_WEEKS)
+    longest = {}
+    for a in ordinary(acts, today, race_ids, keep_races=False):
+        if a["start"].date() >= since:
+            m = monday(a["start"].date())
+            longest[m] = max(longest.get(m, 0.0), (a.get("moving_duration_s") or 0) / 60)
+    return round(median(longest.values())) if longest else None
+
+
+def _maintenance_test(built: dict, trail: bool, paces: dict, rates: dict):
+    """Test facultatif à la place de la séance clé (gardée en remplacement)."""
+    for j, s in enumerate(built["sessions"]):
+        if s.get("key") and s["hard"] and s["type"] != "course":
+            t = wk.test_run(trail, paces)
+            built["sessions"][j] = {**s, **t, "key": True, "alt": {k: v for k, v in s.items() if k != "alt"}}
+            break
+    counted = [s for s in built["sessions"] if not s.get("main") and not s.get("optional")]
+    built["planned_load"] = round(sum(session_load(s, rates) for s in counted))
+    built["minutes"] = sum(s["minutes"] or 0 for s in counted)
+
+
+def build_maintenance(today: date, acts, availability: list[dict], max_sessions: int | None,
+                      habits: list[dict], paces: dict, lthr: float | None,
+                      options: dict | None = None, others: list[dict] | None = None,
+                      race_ids=()) -> dict:
+    """Maintien de forme sans course prévue : MAINT_WEEKS semaines depuis la semaine en cours.
+
+    - Cible : la plage de fitness (fitness_band), avec le cycle 3 semaines normales et 1 allégée
+      (−30 %), compté depuis le lendemain de la dernière course (options["start"]) ; la charge vise
+      le centre de la plage, sans redescendre un coureur qui la dépasse (jusqu'au haut de la plage).
+    - Semaine type : une seule séance de qualité, qui varie (seuil, fractionné, côtes), une sortie
+      longue à la durée habituelle du coureur, le reste en endurance.
+    - Sous la plage durablement : reprise progressive (charge au plus +ramp_pct % par semaine,
+      fitness au plus +5 par semaine) jusqu'au bas de la plage, intensité légère.
+    - Après une course (others : courses passées récentes) : récupération d'abord.
+    - Séances manquées jamais rattrapées : chaque semaine repart de la forme réelle.
+    - Un test facultatif de temps en temps (5 km ou montée connue) à la place de la séance clé."""
+    options = options or {}
+    ramp_pct = options.get("ramp_pct") or DEFAULT_RAMP_PCT
+    days = chosen_days(availability, max_sessions)
+    rates = load_rates(acts, today)
+    paces = {**paces, "lthr": lthr, "easy": rates["easy_pace"], "easy_vam": rates["easy_vam"], "race": None}
+    state = fitness_state(acts, today)
+    band = fitness_band(acts, today, race_ids)
+    trail = options["trail"] if options.get("trail") is not None else trail_oriented(acts, today)
+    pseudo = {"name": "Maintien", "race_date": date.max.isoformat(), "trail": trail}
+    this_monday = monday(today)
+    anchor = monday(options.get("start") or MAINT_EPOCH)
+    adjusts = {a["monday"]: a for a in options.get("adjust") or []}
+    periods = options.get("periods") or []
+    core_days = [d for d in days if d.get("status") != "optionnel"] or days
+    capacity_min = round(sum(d["max_min"] for d in core_days)
+                         + sum(d["max_min"] / d["every"] for d in days
+                               if d.get("status") == "optionnel" and d.get("every") and d not in core_days))
+    history = rising_periods(acts, today, race_ids)
+    if history:
+        sh = history["time_share"]
+        blended = sh["easy"] * rates["easy"] + sh["steady"] * rates["steady"] + sh["hard"] * rates["quality"]
+    else:
+        blended = EASY_TIME_SHARE * rates["easy"] + (1 - EASY_TIME_SHARE) * rates["quality"]
+    n_core = len([d for d in days if d.get("status") != "optionnel"])
+    steady_per_week = history["count_share"]["steady"] * n_core if history else 0.0
+    long_usual = usual_long(acts, today, race_ids)
+    recent_long = [(a.get("moving_duration_s") or 0) / 60 for a in ordinary(acts, today, race_ids, True)
+                   if a["start"].date() >= this_monday - timedelta(weeks=LONG_START_WEEKS)]
+    long_hist = [max(recent_long, default=0) or DEFAULT_DAY_MIN]
+    end = this_monday + timedelta(weeks=MAINT_WEEKS)
+    cal = race_calendar(others or [], this_monday, end)
+    recovery_until = max(cal["recovery_end"].values(), default=None)
+
+    def days_of(w: dict) -> list[dict]:
+        return period_days(week_days(days, w["index"]), w["monday"], periods, availability)
+
+    def week_cap(w: dict) -> float:
+        wd = days_of(w)
+        core = [d for d in wd if d.get("status") != "optionnel"] or wd
+        return sum(d["max_min"] for d in core) / 60 * blended
+
+    def is_light(j: int) -> bool:
+        return j % CYCLE == CYCLE - 1 and j >= MIN_CHARGE_BEFORE_LIGHT
+
+    fitness = state["fitness"]
+    reprise = bool(band and band["below"])
+    last_charge = None
+    level = fitness                                  # fitness au bout de la dernière semaine normale
+    out = []
+    for k in range(MAINT_WEEKS):
+        m = this_monday + timedelta(weeks=k)
+        i = max(0, (m - anchor).days // 7)          # rang dans le cycle, depuis la dernière course
+        in_reprise = reprise and fitness < band["low"]
+        phase = "reprise" if in_reprise else "maintien"
+        w = {"phase": phase, "kind": "allégée" if is_light(i) else "charge", "monday": m, "index": i + 1}
+        adj = adjusts.get(m.isoformat()) or {}
+        if adj.get("light") and w["kind"] == "charge":
+            w["kind"] = "allégée"
+        hold = weekly_load_for(fitness, fitness)
+        if w["kind"] == "charge":
+            if not band:
+                wanted = hold                        # pas assez d'historique : on garde la fitness
+            elif fitness > band["high"]:
+                # au-dessus de la plage : la charge qui entretient le haut de la plage, la fitness y
+                # redescend doucement d'elle-même, sans semaine creuse pour l'y ramener
+                wanted = weekly_load_for(band["high"], band["high"])
+            else:
+                # le niveau d'avant la dernière semaine allégée : le cycle tient la fitness
+                goal = band["low"] if in_reprise else max(fitness, min(level, band["high"]), band["center"])
+                wanted = weekly_load_for(fitness, min(goal, fitness + RAMP_PER_WEEK))
+            ref = last_charge or hold
+            if wanted > ref:                         # montée progressive, jamais d'à-coup
+                wanted = min(wanted, (1 + ramp_pct / 100) * max(ref, 1.0))
+            last_charge = wanted
+            load = min(wanted, week_cap(w))
+        else:
+            load = RECOVERY_LOAD * (last_charge or hold)
+        dates_ = [m + timedelta(days=d) for d in range(7)]
+        for d in dates_:
+            if d in cal["races"]:
+                load *= RACE_WEEK_LOAD.get(cal["races"][d]["priority"], RACE_WEEK_LOAD["B"])
+        recovering = sum(d in cal["recovery"] for d in dates_)
+        load *= 1 - RECOVERY_LOAD_CUT * recovering / 7
+        events = _period_events(m, periods)
+        if events:
+            load = min(load, week_cap(w))
+            if any(e["kind"] == "reprise" for e in events):
+                load *= RECOVERY_LOAD
+        capped_by_plan = bool(adj.get("cap_load") and load > adj["cap_load"])
+        if capped_by_plan:
+            load = adj["cap_load"]
+        # rotation des séances : rang parmi les semaines du même type depuis le départ du cycle
+        lights = sum(1 for j in range(i) if is_light(j))
+        week_in_phase = lights if w["kind"] == "allégée" else i - lights
+        wdays = days_of(w)
+        if events:
+            adj = {**adj, "free": False}
+        if adj.get("free"):
+            have = {d["weekday"] for d in wdays}
+            wdays = sorted([{**d, "status": "oui"} for d in wdays]
+                           + [{**d, "status": "oui"} for d in days if d["weekday"] not in have],
+                           key=lambda d: d["weekday"])
+        cap = _long_step(max(long_hist[-LONG_START_WEEKS:]))
+        if long_usual:
+            cap = min(cap, max(long_usual, MIN_LONG_MIN))
+        built = build_week(w, wdays, load, rates, pseudo, paces, habits, lthr, week_in_phase, None, cal,
+                           _spread(w["index"], steady_per_week), cap, max_quality=1)
+        if (w["kind"] == "charge" and phase == "maintien" and i % TEST_EVERY == 1 and not events
+                and not recovering):
+            _maintenance_test(built, trail, paces, rates)
+        long_hist.append(max([0] + [x.get("level_min", x["minutes"]) for x in built["sessions"]
+                                    if x["type"] == "sortie longue" and not x.get("optional")]))
+        built["adjust"] = _adjust_notes(built, adj, w["kind"], capped_by_plan, rates)
+        built["periods"] = events
+        built["strength"] = 0 if any(e["kind"] in PERIOD_REST for e in events) else (
+            STRENGTH["allégée"] if w["kind"] == "allégée" else STRENGTH[phase])
+        built["events"] = [{"name": r["name"], "until": cal["recovery_end"][r["race_date"]]}
+                           for r in others or [] if r["race_date"] in cal["recovery_end"]
+                           and r["race_date"] < (m + timedelta(days=6)).isoformat()
+                           and cal["recovery_end"][r["race_date"]] >= m.isoformat()]
+        built["capped"] = w["kind"] == "charge" and not events and load >= week_cap(w) - 0.5
+        fitness = fitness_after(fitness, built["planned_load"])
+        if w["kind"] == "charge":
+            level = fitness
+        out.append(built)
+    planned = {}
+    for w in out:
+        for s in w["sessions"]:
+            if not s.get("main") and not s.get("optional") and s.get("minutes"):
+                planned[s["date"]] = planned.get(s["date"], 0.0) + session_load(s, rates)
+    sim = _run(state, this_monday, end, today, lambda d: planned.get(d.isoformat(), 0.0))
+    for w in out:
+        w["fitness_end"] = round(sim["week_end"].get(w["monday"], fitness), 1)
+    now = sim["today_fitness"]
+    if recovery_until and recovery_until >= today.isoformat():
+        mode = "récupération"
+    elif reprise:
+        mode = "reprise"
+    else:
+        mode = "maintien"
+    position = None
+    if band:
+        position = "below" if now < band["low"] else "above" if now > band["high"] else "inside"
+    return {"version": PLAN_VERSION, "maintenance": True, "mode": mode, "band": band, "position": position,
+            "start_fitness": round(now, 1), "end_fitness": round(sim["race_fitness"], 1),
+            "recovery_until": recovery_until, "series": sim["series"], "weeks": out, "rates": rates,
+            "days": days, "trail": trail, "capacity_min": capacity_min,
+            "capacity_limited": any(w.get("capped") for w in out),
+            "capacity_fitness": round(capacity_min / 60 * blended / 7, 1), "long_usual": long_usual,
+            "history": history, "options": {"ramp_pct": ramp_pct}}

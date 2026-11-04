@@ -61,12 +61,13 @@ class Coach:
         return coach.calendar(self.races, day)["main"]
 
     def plan_on(self, day: date, main: dict | None = None, adjust=()) -> dict | None:
+        """Plan vers la course principale vue de ce jour-là ; sans course à venir, maintien de forme."""
         main = main or self.main_on(day)
-        if not main:
-            return None
         cal = coach.calendar(self.races, day)
         physio_now = physio.physiology(self.data["efforts"], day, self.lthr_est, self.hr_max,
                                        self.data["trend"])
+        if not main:
+            return self.maintenance_on(day, cal, physio_now, adjust)
         others = [r for r in cal["upcoming"] if r["id"] != main["id"]] + [
             r for r in cal["past"]
             if (day - date.fromisoformat(r["race_date"])).days <= coach_plan.RECOVERY_LOOKBACK_DAYS]
@@ -76,6 +77,16 @@ class Coach:
         return coach.plan_for(self.cfg, main, day, self.data, self.availability,
                               self.profile["max_sessions"], self.habits, physio_now, options, others)
 
+    def maintenance_on(self, day: date, cal: dict, physio_now: dict, adjust=()) -> dict:
+        """Maintien de forme sans course à venir : récupération de la dernière course d'abord,
+        cycle compté depuis son lendemain."""
+        recent = [r for r in cal["past"]
+                  if (day - date.fromisoformat(r["race_date"])).days <= coach_plan.RECOVERY_LOOKBACK_DAYS]
+        options = {"ramp_pct": self.profile["ramp_pct"], "periods": self.profile["periods"],
+                   "start": coach.maintenance_start(cal["past"]), "adjust": [a for a in adjust if a]}
+        return coach.maintenance_for(self.cfg, day, self.data, self.availability,
+                                     self.profile["max_sessions"], self.habits, physio_now, options, recent)
+
     def week_plan(self, monday_: date, depth: int = 0) -> dict | None:
         """Plan calculé le lundi d'une semaine (proposition d'objectif de la veille), réajustement
         tiré du bilan de la semaine d'avant compris."""
@@ -83,9 +94,7 @@ class Coach:
         if iso in self._weeks and depth == 0:
             return self._weeks[iso]
         main = self.main_on(monday_)
-        if not main:
-            return None
-        if not main.get("target_s"):
+        if main and not main.get("target_s"):
             main = {**main, "proposal": coach.proposed_target(
                 self.cfg, main, monday_ - timedelta(days=1), self.data, self.factors, self.dem)}
         plan = self.plan_on(monday_, main, [self.adjust_for(monday_, depth)])
@@ -167,8 +176,10 @@ class Coach:
         (course principale ajoutée au plus tard ce dimanche)."""
         sunday = coach_review.sunday(monday_)
         main = self.main_on(monday_)
-        if not main or sunday > self.today:
+        if sunday > self.today:
             return False
+        if not main:
+            return True                      # maintien de forme : chaque semaine se passe en revue
         past = coach.calendar(self.races, monday_)["past"]
         return coach.plan_start(main, past) <= sunday
 

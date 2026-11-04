@@ -545,7 +545,7 @@ def coach_page(request: Request, vue: str = ""):
         co = coach_live.Coach(cfg, conn, today, dem, synced)
         cal = co.cal
         if vue not in ("semaine", "plan", "echeances", "reglages"):
-            vue = "semaine" if cal["main"] else "echeances"
+            vue = "semaine"
         # temps prévu le jour J, chaque semaine (forme du dimanche soir projetée sur la fitness du
         # plan) ; les courses s'informent entre elles : l'estimation suit la forme, résultats des
         # courses passées compris ; un objectif dont le temps prévu s'écarte durablement (3 semaines
@@ -566,9 +566,9 @@ def coach_page(request: Request, vue: str = ""):
                 r["target_review"]["since"] = recent_past["name"] if recent_past else None
         upcoming_tracked = [r for r in co.tracked_races
                             if not r["race_date"] or r["race_date"] >= today.isoformat()]
-        plan = week = bilan = next_week = None
-        week_races = []
-        if cal["main"] and vue in ("semaine", "plan"):
+        plan = week = bilan = next_week = maintenance = None
+        week_races, suggestions = [], []
+        if vue in ("semaine", "plan"):
             # la semaine en cours est celle du plan du lundi (forme et proposition de la veille) :
             # elle ne bouge pas au fil des sorties de la semaine ; le plan affiche la même.
             # Bilan : celui de la semaine en cours le dimanche, sinon celui de la semaine dernière
@@ -581,6 +581,12 @@ def coach_page(request: Request, vue: str = ""):
                 # le dimanche, la semaine suivante tient compte des réponses du bilan du jour
                 nxt = co.adjust_for(monday_ + timedelta(days=7)) if reviewed == monday_ else None
                 plan = co.plan_on(today, cal["main"], [co.adjust_for(monday_), nxt])
+            if frozen and frozen.get("maintenance"):
+                # sans course à venir : maintien de forme, et des distances cohérentes avec la forme
+                maintenance = plan if plan and plan.get("maintenance") else frozen
+                if vue == "plan":
+                    suggestions = coach.race_suggestions(cfg, today, co.data, co.factors, frozen["trail"],
+                                                         dem)
             if frozen and frozen["weeks"]:
                 if plan and plan["weeks"] and plan["weeks"][0]["monday"] == frozen["weeks"][0]["monday"]:
                     plan["weeks"][0] = frozen["weeks"][0]
@@ -609,7 +615,8 @@ def coach_page(request: Request, vue: str = ""):
         conn.close()
     return render(request, "coach.html", "/coach", calendar=cal, vue=vue,
                   availability=co.availability, plan=plan, week=week, bilan=bilan,
-                  week_races=week_races, next_week=next_week,
+                  week_races=week_races, next_week=next_week, maintenance=maintenance,
+                  suggestions=suggestions,
                   next_week_choices=coach_review.NEXT_WEEK, feeling_choices=coach_review.FEELINGS,
                   inferred=co.inferred, availability_saved=co.profile["availability"] is not None,
                   max_sessions=co.profile["max_sessions"], plan_options=co.profile,

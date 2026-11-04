@@ -480,13 +480,22 @@ QUALITY = {
     ("spécifique", False): [_q(race_pace), _q(seuil, 2), _q(tempo, 1), _q(vma, 3)],
     ("spécifique", True): [_q(hills_long), _q(uphill_tempo, 1), _q(downhill), _q(seuil, 2),
                            _q(power_hike, 1), _q(hills_medium, 1)],
+    # maintien de forme (étape 7) : une séance de qualité qui varie, seuil, fractionné, côtes
+    ("maintien", False): [_q(seuil), _q(fartlek), _q(vma, 2), _q(hills_short), _q(tempo), _q(pyramid)],
+    ("maintien", True): [_q(hills_short), _q(seuil), _q(hills_medium), _q(fartlek), _q(uphill_tempo),
+                         _q(vma)],
+    # reprise : de l'intensité courte et légère, le volume revient d'abord
+    ("reprise", False): [_q(fartlek), _q(hill_sprints)],
+    ("reprise", True): [_q(hill_sprints), _q(fartlek)],
 }
 SECOND = [_q(vma), _q(seuil, 2)]
 LIGHT = [_q(hill_sprints), _q(fartlek)]
 LONG = {("foncier", False): ["classique"], ("développement", False): ["classique", "progressive"],
         ("spécifique", False): ["progressive", "classique"],
         ("foncier", True): ["vallonnée"], ("développement", True): ["vallonnée", "descentes"],
-        ("spécifique", True): ["spécifique", "vallonnée", "descentes"]}
+        ("spécifique", True): ["spécifique", "vallonnée", "descentes"],
+        ("maintien", False): ["classique", "progressive"], ("maintien", True): ["vallonnée", "descentes"],
+        ("reprise", False): ["classique"], ("reprise", True): ["vallonnée"]}
 
 
 def rotate(options: list, week_in_phase: int, shift: int = 0):
@@ -509,6 +518,24 @@ def quality(phase: str, kind: str, rank: int, trail: bool, week_in_phase: int, p
     else:
         make, level = rotate(SECOND, week_in_phase)
     return with_gain(fit(lambda lv, compact=False: make(lv, p, compact), level, day_max), p)
+
+
+def test_run(trail: bool, p: dict) -> dict:
+    """Test facultatif du maintien de forme : un repère sans dossard, de temps en temps. Route : 5 km
+    à fond, réguliers ; trail : une montée connue chronométrée à l'effort. Le résultat entre dans
+    les meilleurs efforts (courbe allure-durée, VAM) sans rien saisir."""
+    lthr = p.get("lthr")
+    if trail:
+        work = step("work", "une montée connue de 15 à 25 min, chronométrée, à l'effort le plus "
+                            "haut que tu peux tenir jusqu'en haut", 20, target(VO2, lthr))
+        label, note = "Test en montée", "Toujours la même montée, pour comparer d'une fois sur l'autre."
+    else:
+        work = step("work", "5 km à fond, réguliers du début à la fin", 25, target(VO2, lthr))
+        label, note = "Test sur 5 km", "Sur un parcours plat et connu, pour comparer d'une fois sur l'autre."
+    s = _session("test", label, [_warmup(WARMUP_MIN, lthr), work, _cooldown(COOLDOWN_MIN, lthr)],
+                 "Facultatif : un repère de forme sans dossard. " + note
+                 + " Sans envie de test, fais la séance de qualité habituelle à la place.")
+    return with_gain(s, p)
 
 
 def long_variant(phase: str, kind: str, trail: bool, week_in_phase: int) -> str:

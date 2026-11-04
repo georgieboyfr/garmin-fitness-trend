@@ -147,6 +147,14 @@ def key_reason(s: dict, phase: str) -> str:
     """Pourquoi la séance clé compte, en une phrase."""
     if s["type"] == "course":
         return "La course de la semaine : le reste s'organise autour, pour y arriver frais."
+    if s["type"] == "test":
+        return ("Un repère de forme sans dossard, facultatif : sans envie de test, la séance habituelle "
+                "le remplace.")
+    if phase == "maintien":
+        return ("La séance qui entretient ta vitesse et ton seuil : celle à garder si la semaine se "
+                "complique.")
+    if phase == "reprise":
+        return "Un peu d'intensité légère pendant que le volume revient, sans à-coup."
     if s["type"] == "sortie longue":
         return "La sortie qui construit l'endurance pour la durée de la course."
     if phase == "spécifique":

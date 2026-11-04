@@ -390,3 +390,11 @@ def test_coach_keep_target(client, config):
     assert coach.get(conn, race_id)["target_kept_week"] is not None
     conn.close()
     assert client.get("/coach?vue=echeances").status_code == 200
+
+
+def test_coach_without_race_offers_maintenance(client, config):
+    login(client)
+    r = client.get("/coach")                       # sans course : maintien de forme par défaut
+    assert r.status_code == 200 and 'id="maintien"' in r.text
+    r = client.get("/coach?vue=plan")
+    assert r.status_code == 200 and "prochaines semaines" in r.text

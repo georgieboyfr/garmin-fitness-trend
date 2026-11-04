@@ -521,3 +521,103 @@ def test_key_sessions_make_a_full_round_before_repeating():
         assert len(set(head)) == len(head), (phase, types)          # aucune répétition avant un tour complet
     flat = {"fartlek", "vma", "pyramide", "seuil", "tempo"}
     assert any(t in flat for w in plan["weeks"] for t in (x["type"] for x in w["sessions"]))   # du plat aussi
+
+
+# ---------- maintien de forme (étape 7) ----------
+
+def steady_runner(until, weeks=30, hrss=50, minutes=60, gap=None):
+    """Quatre sorties par semaine (lundi, mardi, jeudi, samedi plus long), sauf pendant gap (début, fin)."""
+    acts = []
+    start = cp.monday(until) - timedelta(weeks=weeks)
+    for w in range(weeks):
+        for k, mult in ((0, 1.0), (1, 1.0), (3, 1.0), (5, 1.5)):
+            d = start + timedelta(weeks=w, days=k)
+            if d >= until or (gap and gap[0] <= d <= gap[1]):
+                continue
+            acts.append({**run(d, hrss * mult, minutes * mult, 0.15 if k == 1 else 0.0), "id": len(acts),
+                         "terrain": "road", "distance_km": 10 * mult, "gain_m": 50})
+    return acts
+
+
+MAINT_DAYS = avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 60), (5, "oui", 120))
+
+
+def test_fitness_band_is_the_recent_median_and_flags_a_lasting_dip():
+    acts = steady_runner(TODAY)
+    band = cp.fitness_band(acts, TODAY)
+    assert band["low"] == pytest.approx(0.9 * band["center"], abs=0.1)
+    assert band["high"] == pytest.approx(1.1 * band["center"], abs=0.1)
+    assert not band["below"] and not band["seasonal"]
+    broke = steady_runner(TODAY, gap=(TODAY - timedelta(days=30), TODAY))      # un mois sans courir
+    assert cp.fitness_band(broke, TODAY)["below"]
+    assert cp.fitness_band(acts[:5], TODAY) is None                            # pas assez d'historique
+
+
+def test_seasonal_dip_is_recognised_from_last_year():
+    gaps = [(TODAY - timedelta(days=30), TODAY), (TODAY - timedelta(days=395), TODAY - timedelta(days=365))]
+    acts = []
+    for g in gaps:
+        acts = [a for a in (acts or steady_runner(TODAY, weeks=70)) if not g[0] <= a["start"].date() <= g[1]]
+    band = cp.fitness_band(acts, TODAY)
+    assert band["below"] and band["seasonal"]
+
+
+def test_maintenance_keeps_fitness_in_the_band_with_one_quality_session_and_a_light_week():
+    acts = steady_runner(TODAY)
+    plan = cp.build_maintenance(TODAY, acts, MAINT_DAYS, None, [], {}, 170)
+    assert plan["maintenance"] and plan["mode"] == "maintien" and not plan["trail"]
+    assert len(plan["weeks"]) == cp.MAINT_WEEKS
+    assert [w["kind"] for w in plan["weeks"]].count("allégée") == 2               # 3 + 1, deux fois
+    for w in plan["weeks"]:
+        assert sum(1 for s in w["sessions"] if s["hard"]) <= 1                     # une séance de qualité
+        assert w["phase"] == "maintien"
+    b = plan["band"]
+    assert all(b["low"] - 0.5 <= w["fitness_end"] <= b["high"] + 0.5 for w in plan["weeks"])
+    longs = [s["minutes"] for w in plan["weeks"] for s in w["sessions"] if s["type"] == "sortie longue"]
+    assert longs and max(longs) <= max(plan["long_usual"], cp.MIN_LONG_MIN)      # pas de progression
+
+
+def test_maintenance_offers_a_test_now_and_then_with_the_usual_session_as_alternative():
+    plan = cp.build_maintenance(TODAY, steady_runner(TODAY), MAINT_DAYS, None, [], {}, 170,
+                                {"start": TODAY - timedelta(days=3)})
+    tests = [s for w in plan["weeks"] for s in w["sessions"] if s["type"] == "test"]
+    assert len(tests) == 1 and tests[0]["key"] and tests[0]["alt"]["hard"]
+    assert "Facultatif" in tests[0]["description"]
+
+
+def test_after_a_break_the_runner_gets_a_progressive_reprise():
+    acts = steady_runner(TODAY, gap=(TODAY - timedelta(days=30), TODAY))
+    plan = cp.build_maintenance(TODAY, acts, MAINT_DAYS, None, [], {}, 170)
+    assert plan["mode"] == "reprise" and plan["position"] == "below"
+    reprise = [w for w in plan["weeks"] if w["phase"] == "reprise"]
+    assert reprise and plan["weeks"][0]["phase"] == "reprise"
+    charge = [w["target_load"] for w in plan["weeks"] if w["kind"] == "charge" and w["phase"] == "reprise"]
+    assert all(b <= a * 1.1 + 1 for a, b in zip(charge, charge[1:], strict=False))   # +10 % au plus
+    assert plan["weeks"][-1]["fitness_end"] > plan["start_fitness"]
+
+
+def test_above_the_band_the_runner_is_not_pulled_down():
+    acts = steady_runner(TODAY, weeks=30)
+    acts += [{**run(TODAY - timedelta(days=d), 120, 120, 0.0), "id": 1000 + d, "terrain": "road",
+              "distance_km": 20, "gain_m": 50} for d in range(1, 15, 2)]
+    plan = cp.build_maintenance(TODAY, acts, avail(*[(d, "oui", 120) for d in range(6)]), None, [], {}, 170)
+    assert plan["position"] == "above"
+    first = plan["weeks"][0]
+    assert first["target_load"] >= cp.weekly_load_for(plan["band"]["high"], plan["band"]["high"]) - 1
+
+
+def test_maintenance_starts_with_the_recovery_of_the_last_race():
+    acts = steady_runner(TODAY)
+    race = {**side_race(TODAY - timedelta(days=3), "A", km=30, gain=1500, minutes=240), "race_date":
+            (TODAY - timedelta(days=3)).isoformat()}
+    plan = cp.build_maintenance(TODAY, acts, MAINT_DAYS, None, [], {}, 170,
+                                {"start": TODAY - timedelta(days=2)}, [race])
+    assert plan["mode"] == "récupération" and plan["recovery_until"] > TODAY.isoformat()
+    assert plan["weeks"][0]["events"] and not any(s["hard"] for s in plan["weeks"][0]["sessions"])
+
+
+def test_maintenance_follows_the_runner_orientation_on_trail():
+    acts = [{**a, "terrain": "trail", "gain_m": 400} for a in steady_runner(TODAY)]
+    assert cp.trail_oriented(acts, TODAY)
+    plan = cp.build_maintenance(TODAY, acts, MAINT_DAYS, None, [], {}, 170)
+    assert plan["trail"]
