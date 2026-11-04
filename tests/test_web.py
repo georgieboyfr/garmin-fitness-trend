@@ -297,3 +297,23 @@ def test_estimate_vs_actual_endpoint(client, config):
     r = client.get("/sorties/66/estime-reel")
     assert r.status_code == 400 and "trace" in r.json()["error"]
 
+
+
+def test_coach_this_week_page(client, config):
+    from datetime import date, timedelta
+
+    from app import coach
+    conn = db.connect(config.db_path)
+    with conn:
+        day = (date.today() + timedelta(weeks=12)).isoformat()
+        coach.create(conn, {"name": "Semi du lac", "race_date": day,
+                            "priority": "A", "gpx_id": None, "distance_m": 21100.0, "gain_m": 0.0,
+                            "target_s": 6300.0})
+    conn.close()
+    login(client)
+    r = client.get("/coach")                       # vue par défaut avec une course A
+    assert r.status_code == 200
+    assert "Cette semaine" in r.text and "Séances faites" in r.text and "Semi du lac" in r.text
+    assert "dans 12 semaines" in r.text
+    r = client.get("/coach?vue=plan")
+    assert r.status_code == 200 and "Ton plan" in r.text

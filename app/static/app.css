@@ -553,3 +553,10 @@ details.tracked-add > summary { cursor: pointer; font-weight: 600; margin: 12px 
 .coach-steps .step-recovery, .coach-steps .step-warmup, .coach-steps .step-cooldown { color: var(--muted); }
 .coach-glance-title { margin: 4px 0 8px; }
 .chart-small { height: 240px; margin-bottom: 12px; }
+.coach-days > li { padding: 6px 0; border-top: 1px solid var(--border); }
+.coach-days > li:first-child { border-top: 0; }
+.coach-days > li.is-today { background: var(--accent-soft); border-radius: 8px; padding: 6px 8px; margin: 0 -8px; }
+.coach-day-session + .coach-day-session { margin-top: 6px; }
+.coach-day-session.status-past > b { text-decoration: line-through; color: var(--muted); font-weight: 400; }
+.coach-done { margin-top: 2px; }
+.coach-key { margin: 0 0 8px; }

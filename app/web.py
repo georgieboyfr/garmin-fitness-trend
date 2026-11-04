@@ -8,7 +8,7 @@ import hashlib
 import json
 import math
 import time
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote, unquote
 from zoneinfo import ZoneInfo
@@ -21,6 +21,7 @@ from . import (
     __version__,
     coach,
     coach_plan,
+    coach_week,
     courses,
     db,
     detail,
@@ -564,20 +565,38 @@ def coach_page(request: Request, vue: str = ""):
     habits = coach.effective_habits(profile["habits"], coach.habits_from_history(data["acts"], tracks, today))
     upcoming_tracked = [r for r in tracked_races if not r["race_date"] or r["race_date"] >= today.isoformat()]
     availability = coach.effective_availability(profile["availability"], inferred)
-    plan = None
-    if cal["main"]:
-        physio_now = physio.physiology(data["efforts"], today, lthr_est, hr_max, data["trend"])
-        others = [r for r in cal["upcoming"] if r is not cal["main"]] + [
+    plan = week = None
+    options = {"ramp_pct": profile["ramp_pct"], "long_extension": profile["long_extension"],
+               "periods": profile["periods"]}
+
+    def plan_on(day: date, main: dict) -> dict | None:
+        physio_now = physio.physiology(data["efforts"], day, lthr_est, hr_max, data["trend"])
+        others = [r for r in cal["upcoming"] if r["id"] != main["id"]] + [
             r for r in cal["past"]
             if (today - date.fromisoformat(r["race_date"])).days <= coach_plan.RECOVERY_LOOKBACK_DAYS]
-        plan = coach.plan_for(cfg, cal["main"], today, data, availability, profile["max_sessions"], habits,
-                              physio_now, {"ramp_pct": profile["ramp_pct"],
-                                           "long_extension": profile["long_extension"],
-                                           "periods": profile["periods"]}, others)
-    if vue not in ("plan", "echeances", "reglages"):
-        vue = "plan" if cal["main"] else "echeances"
+        return coach.plan_for(cfg, main, day, data, availability, profile["max_sessions"], habits,
+                              physio_now, options, others)
+    if vue not in ("semaine", "plan", "echeances", "reglages"):
+        vue = "semaine" if cal["main"] else "echeances"
+    if cal["main"] and vue in ("semaine", "plan"):
+        plan = plan_on(today, cal["main"]) if vue == "plan" else None
+        # la semaine en cours est celle du plan du lundi (forme et proposition de la veille) : elle
+        # ne bouge pas au fil des sorties de la semaine ; le plan affiche la même
+        monday_ = coach_plan.monday(today)
+        if monday_ == today:
+            frozen = plan or plan_on(today, cal["main"])
+        else:
+            main = cal["main"]
+            if not main.get("target_s"):
+                main = {**main, "proposal": coach.proposed_target(
+                    cfg, main, monday_ - timedelta(days=1), data, factors, dem)}
+            frozen = plan_on(monday_, main)
+        if frozen and frozen["weeks"]:
+            if plan and plan["weeks"] and plan["weeks"][0]["monday"] == frozen["weeks"][0]["monday"]:
+                plan["weeks"][0] = frozen["weeks"][0]
+            week = coach_week.week_view(frozen["weeks"][0], data["acts"], today, data["confirmed"])
     return render(request, "coach.html", "/coach", calendar=cal, vue=vue,
-                  availability=availability, plan=plan,
+                  availability=availability, plan=plan, week=week,
                   inferred=inferred, availability_saved=profile["availability"] is not None,
                   max_sessions=profile["max_sessions"], plan_options=profile,
                   period_labels=coach_plan.PERIOD_LABELS,

@@ -2,6 +2,23 @@
 {% from "_estimateur.html" import tip, chrono_text with context %}
 {% block title %}Coach · Fitness Trend{% endblock %}
 
+{% macro session_body(x) %}
+{% if x.steps and x.steps | length == 1 %}
+<div class="small">{% set t0 = x.steps[0].text | replace(x.minutes ~ " min en ", "") %}{{ t0[:1] | upper }}{{ t0[1:] }}{% if x.steps[0].target %} <span class="muted">— {{ x.steps[0].target }}</span>{% endif %}</div>
+{% elif x.steps %}
+<ol class="coach-steps small">
+  {% for st in x.steps %}<li class="step-{{ st.kind }}"><span>{{ st.text }}</span>{% if st.target %} <span class="muted">— {{ st.target }}</span>{% endif %}</li>{% endfor %}
+</ol>
+{% endif %}
+{% if x.description %}<div class="small muted">{{ x.description }}</div>{% endif %}
+{% endmacro %}
+
+{% macro done_line(d, extra=false) %}
+<div class="small coach-done"><a href="/sorties/{{ d.id }}">{{ "En plus : " if extra }}{{ d.name or "Sortie" }}</a> · {{ d.minutes }} min · {{ d.distance_km | string | replace(".", ",") }} km{% if d.gain_m %} · D+ {{ d.gain_m }} m{% endif %} · {{ d.role_label }}{% if d.load %} · charge {{ d.load }}{% endif %}</div>
+{% endmacro %}
+
+{% macro countdown(r) %}{% if r.days_left == 0 %}aujourd'hui{% elif r.days_left == 1 %}demain{% elif r.days_left < 14 %}dans {{ r.days_left }} jours{% else %}dans {{ r.weeks_left }} semaines{% endif %}{% endmacro %}
+
 {% block content %}
 {% set cal = calendar %}
 <section class="hero">
@@ -10,6 +27,7 @@
 </section>
 
 <nav class="segmented coach-tabs" aria-label="Sections du coach">
+  <a href="?vue=semaine" {% if vue == "semaine" %}aria-current="true"{% endif %}>Cette semaine</a>
   <a href="?vue=plan" {% if vue == "plan" %}aria-current="true"{% endif %}>Plan</a>
   <a href="?vue=echeances" {% if vue == "echeances" %}aria-current="true"{% endif %}>Échéances{% if cal.upcoming %} ({{ cal.upcoming | length }}){% endif %}</a>
   <a href="?vue=reglages" {% if vue == "reglages" %}aria-current="true"{% endif %}>Disponibilités et habitudes</a>
@@ -28,7 +46,84 @@
 </section>
 {% endif %}
 
-{% if vue == "plan" %}
+{% if vue == "semaine" %}
+{% if week %}
+{% set w = week %}
+<section class="card" id="semaine">
+  <div class="card-head">
+    <h2>Cette semaine {{ tip("La semaine du plan, calculée le lundi : elle ne bouge pas au fil de tes sorties (un changement de disponibilités, de période ou de course la recalcule). Tes sorties synchronisées sont rapprochées des séances prévues, le même jour d'abord, sinon à 2 jours au plus : rien à saisir. Une séance non faite n'est jamais rattrapée, la suite du plan en tient compte.") }}</h2>
+    <span class="muted small">semaine du <span data-short-date="{{ w.monday }}"></span> · {{ w.phase }}{% if w.kind not in ("charge", w.phase) %} ({{ w.kind }}){% endif %}</span>
+  </div>
+
+  {% if cal.upcoming %}
+  <ul class="coach-plan-races">
+    {% for r in cal.upcoming[:3] %}
+    <li class="coach-banner{% if r is sameas cal.main %} is-main{% endif %}">
+      <span class="pill priority-{{ r.priority }}">{{ r.priority }}</span>
+      <div>
+        <b>{{ r.name }}</b> · <span data-short-date="{{ r.race_date }}"></span> · <span class="strong">{{ countdown(r) }}</span>
+        <div class="muted small">{% if r.proposal %}temps prévu <b data-chrono="{{ r.proposal.realistic_s }}"></b> {{ tip("L'estimateur sur ta forme d'aujourd'hui, correction de l'admin comprise. La fitness projetée au jour J viendra avec une prochaine étape du coach.") }}{% else %}temps prévu indisponible{% endif %}{% if r.target_s %} · objectif <b data-chrono="{{ r.target_s }}"></b>{% endif %}</div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <section class="kpis coach-kpis">
+    <article class="kpi"><header>Séances faites</header>
+      <div class="kpi-value">{{ w.done.sessions }} / {{ w.planned.sessions }}</div>
+      <footer class="muted">{{ w.done.runs }} sortie{{ "s" if w.done.runs > 1 }} en tout{% if w.extra %}, dont {{ w.extra | length }} en plus{% endif %}</footer></article>
+    <article class="kpi"><header>Temps {{ tip("Temps en mouvement de tes sorties de la semaine, face aux minutes prévues (une course B ou C comprise, hors séances optionnelles).") }}</header>
+      <div class="kpi-value">{{ w.done.minutes }} <span class="small">min</span></div>
+      <footer class="muted">prévu {{ w.planned.minutes }} min</footer></article>
+    <article class="kpi"><header>Charge {{ tip("HRSS, comme sur la page Forme : 100 = une heure au seuil.") }}</header>
+      <div class="kpi-value">{{ w.done.load }}</div>
+      <footer class="muted">prévue {{ w.planned.load }}</footer></article>
+    {% if w.planned.gain_m or w.done.gain_m %}
+    <article class="kpi"><header>D+</header>
+      <div class="kpi-value">{{ w.done.gain_m }} <span class="small">m</span></div>
+      <footer class="muted">prévu {{ w.planned.gain_m | int }} m</footer></article>
+    {% endif %}
+  </section>
+
+  {% if w.key %}
+  <p class="coach-key"><span class="pill priority-B">séance clé</span> <b>{{ w.key.day | capitalize }} : {{ w.key.label }}</b>{% if w.key.status == "faite" %} <span class="state-good">· faite ✓</span>{% elif w.key.status == "passée" %} <span class="muted">· pas faite cette fois</span>{% endif %}<br><span class="small muted">{{ w.key_reason }}</span></p>
+  {% endif %}
+  {% if w.skip %}
+  <p class="small">Si le temps manque {{ tip("Le coach garde la séance clé, la sortie longue et les courses. Les séances optionnelles sautent d'abord, puis les footings, du plus court au plus long. Rien n'est rattrapé ensuite.") }} : saute {% for s in w.skip %}{{ "d'abord " if loop.first and not loop.last }}{{ "puis " if not loop.first }}le {{ s.label | lower }} du {{ s.day }} ({{ s.minutes }} min){{ ", " if not loop.last }}{% endfor %}.</p>
+  {% endif %}
+  {% for e in w.periods %}<p class="small notice coach-event">{{ e.label }}{% if e.kind != "reprise" %} du <span data-short-date="{{ e.start }}"></span> au <span data-short-date="{{ e.end }}"></span>{% else %} : semaine allégée{% endif %}.</p>{% endfor %}
+  {% for e in w.events %}<p class="small muted coach-event">Récupération de {{ e.name }} jusqu'au <span data-short-date="{{ e.until }}"></span> : ni séance dure ni sortie longue.</p>{% endfor %}
+
+  <ul class="coach-sessions-list coach-days">
+    {% for d in w.days %}
+    <li class="{{ 'is-today' if d.is_today }}{{ ' muted' if d.date < today and not d.sessions and not d.extra }}">
+      <span class="coach-day">{{ d.day }}{% if d.is_today %} <span class="pill priority-A">aujourd'hui</span>{% endif %} <span class="muted small" data-short-date="{{ d.date }}"></span></span>
+      <div>
+        {% for x in d.sessions %}
+        <div class="coach-day-session status-{{ {"faite": "done", "à venir": "next", "aujourd'hui": "today", "passée": "past"}[x.status] }}">
+          <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{% if x.key %} <span class="pill priority-B">séance clé</span>{% endif %}{% if x.optional %} <span class="pill priority-C">optionnelle</span>{% endif %}
+          {% if x.status == "faite" %}<span class="state-good strong"> · faite ✓</span>{% elif x.status == "passée" %}<span class="muted small"> · pas faite, pas de rattrapage</span>{% endif %}
+          {% if x.done %}{{ done_line(x.done) }}{% if x.note %}<div class="small muted">{{ x.note[:1] | upper }}{{ x.note[1:] }}.</div>{% endif %}
+          {% elif x.status != "passée" %}{{ session_body(x) }}{% endif %}
+        </div>
+        {% endfor %}
+        {% for e in d.extra %}{{ done_line(e, true) }}{% endfor %}
+        {% if not d.sessions and not d.extra %}<span class="muted small">Repos</span>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if w.strength %}<p class="small muted">Renforcement : {{ w.strength }} × 20 à 30 min cette semaine, un jour sans séance dure.</p>{% endif %}
+  <p class="small muted"><a href="?vue=plan">Tout le plan jusqu'à la course</a></p>
+</section>
+{% else %}
+<section class="card">
+  <p>{% if cal.upcoming %}Aucune semaine à afficher : le plan n'a pas pu être construit.{% else %}Aucune course à venir : ajoute ton objectif dans <a href="?vue=echeances">Échéances</a>. Sans course, le coach proposera bientôt un maintien de forme.{% endif %}</p>
+</section>
+{% endif %}
+
+{% elif vue == "plan" %}
 {% if plan %}
 {% set main = cal.main %}
 <section class="card" id="plan">
@@ -103,14 +198,7 @@
           <span class="coach-day">{{ x.day }} <span class="muted small" data-short-date="{{ x.date }}"></span></span>
           <div>
             <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{% if x.key %} <span class="pill priority-B">séance clé</span>{% endif %}{% if x.optional %} <span class="pill priority-C">optionnelle</span>{% endif %}{% if x.date < today %} <span class="small">· passé</span>{% endif %}
-            {% if x.steps and x.steps | length == 1 %}
-            <div class="small">{% set t0 = x.steps[0].text | replace(x.minutes ~ " min en ", "") %}{{ t0[:1] | upper }}{{ t0[1:] }}{% if x.steps[0].target %} <span class="muted">— {{ x.steps[0].target }}</span>{% endif %}</div>
-            {% elif x.steps %}
-            <ol class="coach-steps small">
-              {% for st in x.steps %}<li class="step-{{ st.kind }}"><span>{{ st.text }}</span>{% if st.target %} <span class="muted">— {{ st.target }}</span>{% endif %}</li>{% endfor %}
-            </ol>
-            {% endif %}
-            {% if x.description %}<div class="small muted">{{ x.description }}</div>{% endif %}
+            {{ session_body(x) }}
           </div>
         </li>
         {% endfor %}
