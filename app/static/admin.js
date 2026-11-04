@@ -51,6 +51,7 @@ async function init() {
     refreshPhysiology();
     refreshRaces();
     refreshCalibration();
+    refreshNotifications();
     refreshStrava();
   }
 }
@@ -648,3 +649,48 @@ $("sync-settings-form").addEventListener("submit", (e) => {
 });
 
 init();
+
+// ---------- notifications (bilan du dimanche) ----------
+
+for (let h = 0; h < 24; h++) $("nt-hour").add(new Option(`${h} h`, h));
+
+function renderNotifications(st) {
+  $("nt-status").textContent = st.configured
+    ? "Adresse ntfy renseignée dans le .env."
+    : "Aucune adresse ntfy dans le .env : rien ne sera envoyé.";
+  $("nt-test").disabled = !st.configured;
+  $("nt-enabled").checked = st.settings.review_enabled;
+  $("nt-hour").value = st.settings.review_hour;
+  $("nt-url").value = st.settings.public_url || "";
+}
+
+async function refreshNotifications() {
+  try { renderNotifications(await api("/notifications")); } catch (err) { /* session gérée ailleurs */ }
+}
+
+$("nt-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  busy(e.submitter, async () => {
+    try {
+      renderNotifications(await api("/notifications", {
+        review_enabled: $("nt-enabled").checked,
+        review_hour: Number($("nt-hour").value),
+        public_url: $("nt-url").value.trim() || null,
+      }));
+      showError("nt-error", null);
+      flash("nt-saved", "Enregistré.");
+    } catch (err) {
+      showError("nt-error", err);
+    }
+  });
+});
+
+$("nt-test").addEventListener("click", (e) => busy(e.currentTarget, async () => {
+  try {
+    await api("/notifications/test", {});
+    showError("nt-error", null);
+    flash("nt-saved", "Essai envoyé.");
+  } catch (err) {
+    showError("nt-error", err);
+  }
+}));

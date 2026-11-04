@@ -14,7 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
-from . import courses, db, elevation_job, metrics_job, settings, strava, tracked
+from . import coach_notify, courses, db, elevation_job, metrics_job, settings, strava, tracked
 from .auth import SESSION_COOKIE
 from .garmin_sync import SyncAlreadyRunning
 from .metrics import ZONE_BOUNDS
@@ -326,6 +326,48 @@ def estimator_calibration_update(values: dict, request: Request):
     finally:
         conn.close()
     return estimator_calibration(request)
+
+
+# ---------- notifications ----------
+
+def _notifications(request: Request) -> dict:
+    cfg = request.app.state.config
+    conn = db.connect(cfg.db_path)
+    try:
+        return {"settings": settings.get(conn, "notifications"), "configured": bool(cfg.ntfy_url)}
+    finally:
+        conn.close()
+
+
+@protected.get("/notifications")
+def notifications(request: Request):
+    """Réglages de la notification du bilan du dimanche ; l'adresse ntfy vient du .env."""
+    return _notifications(request)
+
+
+@protected.post("/notifications")
+def notifications_update(values: dict, request: Request):
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        settings.update(conn, "notifications", values)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    finally:
+        conn.close()
+    return _notifications(request)
+
+
+@protected.post("/notifications/test")
+def notifications_test(request: Request):
+    """Notification d'essai, avec le lien vers le bilan si l'adresse publique est réglée."""
+    state = _notifications(request)
+    try:
+        coach_notify.send(request.app.state.config, "Fitness Trend : essai",
+                          "Les notifications du bilan du dimanche arrivent bien.",
+                          coach_notify.review_link(state["settings"]), tags="running")
+    except coach_notify.NotifyError as e:
+        raise HTTPException(400, str(e)) from None
+    return {"sent": True}
 
 
 # ---------- courses ----------

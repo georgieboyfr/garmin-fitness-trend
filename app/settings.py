@@ -36,6 +36,9 @@ DEFAULTS = {
               "ramp_pct": 10, "long_extension": True,
               # périodes particulières (vacances, maladie...), vérifiées par coach.clean_profile
               "periods": None},
+    # notification du bilan du dimanche (ntfy, adresse dans le .env) : heure, et adresse publique
+    # de l'application pour le lien de la notification (facultative)
+    "notifications": {"review_enabled": True, "review_hour": 19, "public_url": None},
 }
 
 CORRECTION_LIMITS = (0.8, 1.2)
@@ -155,7 +158,28 @@ def _validate_coach(values: dict) -> dict:
     return out
 
 
-VALIDATORS = {"garmin_sync": _validate_garmin_sync, "coach": _validate_coach,
+def _validate_notifications(values: dict) -> dict:
+    out = {}
+    for key, value in values.items():
+        if key == "review_enabled":
+            if not isinstance(value, bool):
+                raise ValueError("review_enabled doit valoir true ou false")
+        elif key == "review_hour":
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 23:
+                raise ValueError("review_hour doit être un entier entre 0 et 23")
+        elif key == "public_url":
+            if value is not None:
+                if not isinstance(value, str) or not value.strip().startswith(("http://", "https://")):
+                    raise ValueError("public_url doit commencer par http:// ou https://, ou être vide")
+                value = value.strip().rstrip("/") or None
+        else:
+            raise ValueError(f"réglage inconnu : {key}")
+        out[key] = value
+    return out
+
+
+VALIDATORS = {"notifications": _validate_notifications,
+              "garmin_sync": _validate_garmin_sync, "coach": _validate_coach,
               "elevation": _validate_elevation,
               "races": _validate_races, "estimator": _validate_estimator,
               "physiology": _validate_physiology}

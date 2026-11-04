@@ -7,13 +7,16 @@ connecté. Un conteneur redémarré après l'heure prévue rattrape donc la sync
 
 Chaque semaine, une fois la synchro du jour faite (ou s'il n'y en a pas), la prédiction de chaque
 course suivie est enregistrée avec la forme du dimanche soir (tracked.py).
+
+Le dimanche soir, à l'heure réglée dans l'admin, une synchro rapporte les sorties du jour puis le
+bilan de la semaine du coach part par ntfy (coach_notify.py), une fois par semaine.
 """
 import logging
 import threading
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from . import db, settings, strava, tracked
+from . import coach_live, coach_notify, coach_plan, db, settings, strava, tracked
 
 log = logging.getLogger("scheduler")
 
@@ -43,7 +46,7 @@ class DailyScheduler:
 
     def _loop(self):
         while not self._stop.wait(self.interval_s):
-            for job in (self.scan_strava, self.tick, self.weekly):
+            for job in (self.scan_strava, self.tick, self.weekly, self.sunday_review):
                 try:
                     job()
                 except Exception:
@@ -114,3 +117,35 @@ class DailyScheduler:
         if done:
             log.info("Courses suivies : %d prédiction(s) de la semaine enregistrée(s)", done)
         return done
+
+    def sunday_review(self, now=None) -> bool:
+        """Bilan du dimanche soir par ntfy, une fois par semaine, après une synchro qui rapporte les
+        sorties du jour. Retourne True si une notification est partie."""
+        if not self.config.ntfy_url:
+            return False
+        now = now or datetime.now(ZoneInfo(self.config.timezone))
+        week = coach_plan.monday(now.date()).isoformat()
+        conn = db.connect(self.config.db_path)
+        try:
+            cfg = settings.get(conn, "notifications")
+            due = coach_notify.is_due(now, cfg, settings.get_state(conn, "coach_review_week"))
+            if not due or self.sync.running:
+                return False
+            # notée avant l'envoi : une notification en échec n'est pas relancée chaque minute
+            settings.set_state(conn, "coach_review_week", week)
+        finally:
+            conn.close()
+        if self.account.is_configured():
+            try:
+                self.sync.run(kind="garmin-auto")
+            except Exception:
+                pass  # déjà journalisée ; le bilan part avec les sorties déjà là
+        conn = db.connect(self.config.db_path)
+        try:
+            ctx = coach_live.Coach(self.config, conn, now.date(), None, True)
+            return coach_notify.notify_review(self.config, ctx, now.date(), cfg)
+        except coach_notify.NotifyError as e:
+            log.warning("Bilan du dimanche : %s", e)
+            return False
+        finally:
+            conn.close()

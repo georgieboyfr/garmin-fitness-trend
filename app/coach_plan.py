@@ -294,9 +294,12 @@ def fitness_after(fitness_now: float, load: float) -> float:
 
 # ---------- squelette : phases et types de semaines ----------
 
-def skeleton(today: date, race_date: date, race_duration_s: float | None) -> list[dict]:
-    """Semaines du plan, de la semaine en cours à celle de la course : phase et type."""
-    first, last = monday(today), monday(race_date)
+def skeleton(today: date, race_date: date, race_duration_s: float | None,
+             start: date | None = None) -> list[dict]:
+    """Semaines du plan, de sa semaine de départ (start, sinon la semaine en cours) à celle de la
+    course : phase et type. Un départ fixe garde les phases, le cycle des semaines allégées et la
+    rotation des séances d'une semaine sur l'autre ; seule la charge suit la forme du jour."""
+    first, last = monday(min(start, today) if start else today), monday(race_date)
     n = (last - first).days // 7 + 1
     taper = 1 if (race_duration_s or 0) < TAPER_SHORT_S else 2
     taper = min(taper, n)
@@ -709,6 +712,55 @@ def _finish(week: dict, sessions: list[dict], load: float, rates: dict) -> dict:
             "sessions": sessions}
 
 
+# ---------- réajustements de la semaine (bilan du dimanche) ----------
+
+BUSY_CUT = 1 / 3                # semaine chargée : un tiers des séances en moins (choix de Greg)
+BUSY_MIN_SESSIONS = 2           # au moins 2 séances gardées
+
+
+def drop_for_busy_week(week: dict, rates: dict) -> list[dict]:
+    """Semaine chargée : environ un tiers des séances retirées (au moins 2 gardées), les séances
+    optionnelles en plus ; d'abord les footings du plus court au plus long (habitudes en dernier),
+    puis une séance dure qui n'est pas la séance clé ; jamais la séance clé, la sortie longue ni une
+    course. Charge, minutes et D+ prévus recalculés. Retourne les séances retirées."""
+    sessions = week["sessions"]
+    counted = [s for s in sessions if not s.get("main") and not s.get("optional")]
+    n_drop = min(math.floor(len(counted) * BUSY_CUT), max(0, len(counted) - BUSY_MIN_SESSIONS))
+    keep = ("sortie longue", "course")
+    easy = sorted((s for s in counted if not s["hard"] and not s.get("key") and s["type"] not in keep),
+                  key=lambda s: (s.get("habit") is not None, s.get("minutes") or 0))
+    hard = [s for s in counted if s["hard"] and not s.get("key") and s["type"] not in keep]
+    dropped = [s for s in sessions if s.get("optional")] + (easy + hard)[:n_drop]
+    if not dropped:
+        return []
+    week["sessions"] = [s for s in sessions if all(s is not d for d in dropped)]
+    left = [s for s in week["sessions"] if not s.get("main") and not s.get("optional")]
+    week["planned_load"] = round(sum(session_load(s, rates) for s in left))
+    week["minutes"] = sum(s["minutes"] or 0 for s in left)
+    week["gain_m"] = round(sum(s.get("gain_m") or 0 for s in left), -1)
+    return dropped
+
+
+def _adjust_notes(built: dict, adj: dict, kind: str, capped: bool, rates: dict) -> list[dict]:
+    """Réajustements appliqués à une semaine, chacun avec sa phrase d'explication."""
+    notes = []
+    if adj.get("light") and kind == "allégée":
+        notes.append({"kind": "light", "text": adj["light"]})
+    if adj.get("busy"):
+        dropped = drop_for_busy_week(built, rates)
+        names = ", ".join(f"{x['label'].lower()} du {x['day']}" for x in dropped)
+        notes.append({"kind": "busy", "text": (
+            f"Semaine chargée : {names} en moins ; la séance clé et la sortie longue restent."
+            if dropped else "Semaine chargée : rien à retirer, la semaine est déjà courte.")})
+    if adj.get("free"):
+        notes.append({"kind": "free", "text": "Semaine libre : tes jours optionnels entrent dans le "
+                                              "plan, sans hausse de la progression."})
+    if capped:
+        notes.append({"kind": "cap", "text": "En avance sur le plan : la charge reste celle que "
+                                             "prévoyait le plan la semaine dernière, sans accélérer."})
+    return notes
+
+
 # ---------- plan complet ----------
 
 def _race_form(pct: float) -> tuple[str, str]:
@@ -891,7 +943,11 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
     rates = load_rates(acts, today)
     paces = {**paces, "lthr": lthr, "easy": rates["easy_pace"], "easy_vam": rates["easy_vam"]}
     state = fitness_state(acts, today)
-    weeks = skeleton(today, race_date, race.get("duration_s"))
+    # le plan part de sa semaine de départ (ajout de la course) : semaines passées comptées pour
+    # les phases, le cycle et la rotation des séances, mais seules celles à venir sont construites
+    weeks = skeleton(today, race_date, race.get("duration_s"), options.get("start"))
+    this_monday = monday(today)
+    adjusts = {a["monday"]: a for a in options.get("adjust") or []}
     cap_fitness = state["peak_12m"] * PEAK_MARGIN if state["peak_12m"] else None
     # capacité : les jours « oui », et les jours optionnels au prorata de leur fréquence ; ceux sans
     # fréquence sont des bonus hors du plan
@@ -934,6 +990,19 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
     long_hist = [max(recent_long, default=0) or DEFAULT_DAY_MIN]   # plus longues sorties, semaine par semaine
     cal = race_calendar(others or [], weeks[0]["monday"], race_date)
     for w in weeks:
+        key = (w["phase"], w["kind"])
+        if w["monday"] < this_monday:
+            # semaine passée : elle compte dans la rotation des séances et dans l'affûtage
+            phase_counts[key] = phase_counts.get(key, 0) + 1
+            if w["kind"] in ("affûtage", "course"):
+                taper_i += 1
+            continue
+        adj = adjusts.get(w["monday"].isoformat()) or {}
+        if adj.get("light") and w["kind"] == "charge":
+            # fatigue ressentie ou forme trop basse : semaine allégée à la place d'une semaine de
+            # charge ; la progression est décalée (la semaine suivante repart du niveau d'avant)
+            w = {**w, "kind": "allégée"}
+            key = (w["phase"], w["kind"])
         if w["kind"] == "charge":
             target = fitness + RAMP_PER_WEEK
             if cap_fitness:
@@ -966,14 +1035,25 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
             load = min(load, week_cap(w))
             if any(e["kind"] == "reprise" for e in events):
                 load *= RECOVERY_LOAD
-        # rang de la semaine parmi celles de même type de sa phase : les variantes tournent sur les
-        # semaines de charge seules, sans qu'une allégée en fasse sauter une
-        # rang parmi les semaines de même type de sa phase qui ont eu une séance de qualité : les
-        # variantes tournent sans qu'une semaine allégée ou sans séance (course, récupération) en
-        # fasse sauter une
-        key = (w["phase"], w["kind"])
+        # en avance sur le plan : progression maintenue, sans accélérer (jamais plus que la charge
+        # que prévoyait pour cette semaine le plan du lundi précédent)
+        capped_by_plan = bool(adj.get("cap_load") and load > adj["cap_load"])
+        if capped_by_plan:
+            load = adj["cap_load"]
+        # rang de la semaine parmi celles de même type de sa phase qui ont eu une séance de qualité :
+        # les variantes tournent sans qu'une semaine allégée ou sans séance (course, récupération)
+        # en fasse sauter une
         week_in_phase = phase_counts.get(key, 0)
-        built = build_week(w, days_of(w), load, rates, race, paces, habits, lthr,
+        wdays = days_of(w)
+        if events:
+            adj = {**adj, "free": False}      # une période particulière prime sur la semaine libre
+        if adj.get("free"):
+            # semaine libre : les jours optionnels entrent dans le plan, la charge visée ne change pas
+            have = {d["weekday"] for d in wdays}
+            wdays = sorted([{**d, "status": "oui"} for d in wdays]
+                           + [{**d, "status": "oui"} for d in days if d["weekday"] not in have],
+                           key=lambda d: d["weekday"])
+        built = build_week(w, wdays, load, rates, race, paces, habits, lthr,
                            week_in_phase,
                            extended.get(w["index"]), cal,
                            _spread(w["index"], steady_per_week),
@@ -982,6 +1062,7 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
                                     if x["type"] == "sortie longue" and not x.get("optional")]))
         if any(x["hard"] and x["type"] != "course" for x in built["sessions"]) or w["kind"] != "charge":
             phase_counts[key] = week_in_phase + 1
+        built["adjust"] = _adjust_notes(built, adj, w["kind"], capped_by_plan, rates)
         built["periods"] = events
         built["strength"] = 0 if any(e["kind"] in PERIOD_REST for e in events) else (
             STRENGTH.get(w["kind"]) if w["kind"] == "allégée" else STRENGTH.get(w["phase"], 0))

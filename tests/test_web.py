@@ -317,3 +317,54 @@ def test_coach_this_week_page(client, config):
     assert "dans 12 semaines" in r.text
     r = client.get("/coach?vue=plan")
     assert r.status_code == 200 and "Ton plan" in r.text
+
+
+def test_coach_review_answers_and_notification_settings(client, config):
+    ui = {"X-Requested-With": "admin-ui"}
+    assert client.post("/coach/bilan/2026-11-02", json={"feeling": "fatigué"}).status_code == 401
+    login(client)
+    assert client.post("/coach/bilan/2026-11-03", json={"feeling": "fatigué"}).status_code == 400  # un mardi
+    assert client.post("/coach/bilan/2026-11-02", json={"feeling": "épuisé"}).status_code == 400
+    r = client.post("/coach/bilan/2026-11-02", json={"next_week": "chargée", "feeling": "fatigué"})
+    assert r.status_code == 200
+    from app import coach_review
+    conn = db.connect(config.db_path)
+    row = coach_review.all_reviews(conn)["2026-11-02"]
+    conn.close()
+    assert row["next_week"] == "chargée" and row["feeling"] == "fatigué"
+
+    st = client.get("/admin/api/notifications").json()
+    assert st == {"settings": {"review_enabled": True, "review_hour": 19, "public_url": None},
+                  "configured": False}
+    st = client.post("/admin/api/notifications", headers=ui,
+                     json={"review_hour": 20, "public_url": "https://trend.example/"}).json()
+    assert st["settings"]["review_hour"] == 20 and st["settings"]["public_url"] == "https://trend.example"
+    r = client.post("/admin/api/notifications", headers=ui, json={"public_url": "ftp://x"})
+    assert r.status_code == 400
+    r = client.post("/admin/api/notifications/test", headers=ui, json={})
+    assert r.status_code == 400 and "NTFY_URL" in r.json()["detail"]
+
+
+def test_coach_page_shows_the_sunday_review(client, config, monkeypatch):
+    from datetime import date
+
+    from app import coach, settings, web
+    monkeypatch.setattr(web, "_today", lambda request: date(2026, 11, 8))           # un dimanche
+    conn = db.connect(config.db_path)
+    with conn:
+        race_id = coach.create(conn, {"name": "Semi du lac", "race_date": "2027-02-14", "priority": "A",
+                                      "gpx_id": None, "distance_m": 21100.0, "gain_m": 0.0,
+                                      "target_s": 6300.0})
+        conn.execute("UPDATE coach_races SET created_at='2026-11-02T08:00:00' WHERE id=?", (race_id,))
+    days = [{"weekday": d, "status": "oui" if d in (1, 3, 5) else "non", "max_min": 60} for d in range(7)]
+    settings.update(conn, "coach", {"availability": days})
+    conn.close()
+    login(client)
+    r = client.get("/coach?vue=semaine")
+    assert r.status_code == 200
+    assert "Bilan de la semaine" in r.text and 'data-url="/coach/bilan/2026-11-02"' in r.text
+    assert "Semaine peu suivie" in r.text and "La semaine prochaine" in r.text
+    r = client.post("/coach/bilan/2026-11-02", json={"next_week": "chargée", "feeling": None})
+    assert r.status_code == 200
+    r = client.get("/coach?vue=plan")
+    assert r.status_code == 200 and "Semaine chargée" in r.text

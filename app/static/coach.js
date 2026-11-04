@@ -163,4 +163,18 @@
       name: li.querySelector("[name=name]").value, keep: li.querySelector("[name=keep]").checked }));
     send(habits.dataset.url, { habits: list }, habits.querySelector("[role=status]"), "habitudes");
   });
+
+  // bilan du dimanche : deux réponses, chacune enregistrée au clic (un second clic l'efface) ;
+  // la page se recharge pour montrer la semaine réajustée
+  const bilan = document.querySelector("form.coach-bilan-form");
+  if (bilan) bilan.querySelectorAll("button[data-field]").forEach((btn) => btn.addEventListener("click", () => {
+    const pick = (field) => {
+      const on = bilan.querySelector(`button[data-field=${field}][aria-pressed=true]`);
+      return on ? on.dataset.value : null;
+    };
+    const body = { next_week: pick("next_week"), feeling: pick("feeling") };
+    const field = btn.dataset.field;
+    body[field] = btn.getAttribute("aria-pressed") === "true" ? null : btn.dataset.value;
+    send(bilan.dataset.url, body, bilan.querySelector("[role=status]"), "bilan");
+  }));
 })();

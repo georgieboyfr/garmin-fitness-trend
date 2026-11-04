@@ -20,8 +20,9 @@ from fastapi.templating import Jinja2Templates
 from . import (
     __version__,
     coach,
+    coach_live,
     coach_plan,
-    coach_week,
+    coach_review,
     courses,
     db,
     detail,
@@ -535,75 +536,86 @@ def coach_page(request: Request, vue: str = ""):
         return redirect
     cfg = request.app.state.config
     today = _today(request)
+    dem = getattr(request.app.state, "dem", None)
     conn = db.connect(cfg.db_path)
     try:
-        data = tracked.load_data(cfg, conn)
-        races = coach.all_races(conn)
-        profile = settings.get(conn, "coach")
-        factors = tracked.corrections(conn)
-        tracked_races = tracked.all_races(conn)
-        tracks = queries.track_signatures(conn)
-        lthr_est = metrics_job.lthr_estimate(conn, today)
-        hr_max = metrics_job.params_of(cfg, conn)["hr_max"]
+        sync_cfg = settings.get(conn, "garmin_sync")
+        synced = (not sync_cfg["enabled"]
+                  or settings.get_state(conn, "garmin_last_auto_day") == today.isoformat())
+        co = coach_live.Coach(cfg, conn, today, dem, synced)
+        cal = co.cal
+        # les courses s'informent entre elles : l'estimation suit la forme du jour, résultats des
+        # courses passées compris ; un objectif qui s'en écarte de plus de 3 % est signalé
+        recent_past = next((r for r in cal["past"]
+                            if (today - date.fromisoformat(r["race_date"])).days <= coach.DRIFT_SINCE_DAYS),
+                           None)
+        for r in cal["upcoming"]:
+            r["proposal"] = coach.proposed_target(cfg, r, today, co.data, co.factors, dem)
+            r["route"] = tracked._route_label(cfg, r)
+            if r["proposal"] and r.get("target_s"):
+                drift = r["proposal"]["realistic_s"] / r["target_s"] - 1
+                if abs(drift) >= coach.DRIFT_SHARE:
+                    r["drift_pct"] = round(drift * 100)
+                    r["drift_since"] = recent_past["name"] if recent_past else None
+        upcoming_tracked = [r for r in co.tracked_races
+                            if not r["race_date"] or r["race_date"] >= today.isoformat()]
+        plan = week = bilan = None
+        if vue not in ("semaine", "plan", "echeances", "reglages"):
+            vue = "semaine" if cal["main"] else "echeances"
+        if cal["main"] and vue in ("semaine", "plan"):
+            # la semaine en cours est celle du plan du lundi (forme et proposition de la veille) :
+            # elle ne bouge pas au fil des sorties de la semaine ; le plan affiche la même.
+            # Bilan : celui de la semaine en cours le dimanche, sinon celui de la semaine dernière
+            # (figé une fois la semaine close) ; ses réponses orientent la semaine qui suit.
+            monday_ = coach_plan.monday(today)
+            reviewed = monday_ if today.weekday() == 6 else monday_ - timedelta(days=7)
+            summary = co.review(reviewed, conn)
+            frozen = co.week_plan(monday_)
+            if vue == "plan":
+                # le dimanche, la semaine suivante tient compte des réponses du bilan du jour
+                nxt = co.adjust_for(monday_ + timedelta(days=7)) if reviewed == monday_ else None
+                plan = co.plan_on(today, cal["main"], [co.adjust_for(monday_), nxt])
+            if frozen and frozen["weeks"]:
+                if plan and plan["weeks"] and plan["weeks"][0]["monday"] == frozen["weeks"][0]["monday"]:
+                    plan["weeks"][0] = frozen["weeks"][0]
+                week = co.week_view(monday_, frozen)
+            if summary:
+                answers = co.answers(reviewed)
+                bilan = {"summary": summary, "answers": answers, "current": reviewed == monday_,
+                         "monday": reviewed.isoformat(),
+                         "orientation": coach_review.orientation(answers, summary)}
     finally:
         conn.close()
-    cal = coach.calendar(races, today)
-    dem = getattr(request.app.state, "dem", None)
-    # les courses s'informent entre elles : l'estimation suit la forme du jour, résultats des
-    # courses passées compris ; un objectif qui s'en écarte de plus de 3 % est signalé
-    recent_past = next((r for r in cal["past"]
-                        if (today - date.fromisoformat(r["race_date"])).days <= coach.DRIFT_SINCE_DAYS), None)
-    for r in cal["upcoming"]:
-        r["proposal"] = coach.proposed_target(cfg, r, today, data, factors, dem)
-        r["route"] = tracked._route_label(cfg, r)
-        if r["proposal"] and r.get("target_s"):
-            drift = r["proposal"]["realistic_s"] / r["target_s"] - 1
-            if abs(drift) >= coach.DRIFT_SHARE:
-                r["drift_pct"] = round(drift * 100)
-                r["drift_since"] = recent_past["name"] if recent_past else None
-    inferred = coach.availability_from_history(data["acts"], today)
-    habits = coach.effective_habits(profile["habits"], coach.habits_from_history(data["acts"], tracks, today))
-    upcoming_tracked = [r for r in tracked_races if not r["race_date"] or r["race_date"] >= today.isoformat()]
-    availability = coach.effective_availability(profile["availability"], inferred)
-    plan = week = None
-    options = {"ramp_pct": profile["ramp_pct"], "long_extension": profile["long_extension"],
-               "periods": profile["periods"]}
-
-    def plan_on(day: date, main: dict) -> dict | None:
-        physio_now = physio.physiology(data["efforts"], day, lthr_est, hr_max, data["trend"])
-        others = [r for r in cal["upcoming"] if r["id"] != main["id"]] + [
-            r for r in cal["past"]
-            if (today - date.fromisoformat(r["race_date"])).days <= coach_plan.RECOVERY_LOOKBACK_DAYS]
-        return coach.plan_for(cfg, main, day, data, availability, profile["max_sessions"], habits,
-                              physio_now, options, others)
-    if vue not in ("semaine", "plan", "echeances", "reglages"):
-        vue = "semaine" if cal["main"] else "echeances"
-    if cal["main"] and vue in ("semaine", "plan"):
-        plan = plan_on(today, cal["main"]) if vue == "plan" else None
-        # la semaine en cours est celle du plan du lundi (forme et proposition de la veille) : elle
-        # ne bouge pas au fil des sorties de la semaine ; le plan affiche la même
-        monday_ = coach_plan.monday(today)
-        if monday_ == today:
-            frozen = plan or plan_on(today, cal["main"])
-        else:
-            main = cal["main"]
-            if not main.get("target_s"):
-                main = {**main, "proposal": coach.proposed_target(
-                    cfg, main, monday_ - timedelta(days=1), data, factors, dem)}
-            frozen = plan_on(monday_, main)
-        if frozen and frozen["weeks"]:
-            if plan and plan["weeks"] and plan["weeks"][0]["monday"] == frozen["weeks"][0]["monday"]:
-                plan["weeks"][0] = frozen["weeks"][0]
-            week = coach_week.week_view(frozen["weeks"][0], data["acts"], today, data["confirmed"])
     return render(request, "coach.html", "/coach", calendar=cal, vue=vue,
-                  availability=availability, plan=plan, week=week,
-                  inferred=inferred, availability_saved=profile["availability"] is not None,
-                  max_sessions=profile["max_sessions"], plan_options=profile,
+                  availability=co.availability, plan=plan, week=week, bilan=bilan,
+                  next_week_choices=coach_review.NEXT_WEEK, feeling_choices=coach_review.FEELINGS,
+                  inferred=co.inferred, availability_saved=co.profile["availability"] is not None,
+                  max_sessions=co.profile["max_sessions"], plan_options=co.profile,
                   period_labels=coach_plan.PERIOD_LABELS,
-                  habits=habits,
+                  habits=co.habits,
                   priorities=coach.PRIORITIES, gpx_recent=gpx_store.recent(cfg),
                   tracked_races=upcoming_tracked,
                   today=today.isoformat())
+
+
+@router.post("/coach/bilan/{monday_}")
+async def coach_review_answers(request: Request, monday_: str):
+    """Réponses du bilan d'une semaine (semaine suivante, ressenti) : elles orientent la suivante."""
+    if (error := _session_error(request)):
+        return error
+    try:
+        day = date.fromisoformat(monday_)
+        if day.weekday() != 0:
+            raise ValueError("La semaine doit commencer un lundi.")
+        answers = coach_review.clean_answers(await request.json())
+    except ValueError as e:
+        return JSONResponse({"detail": str(e) or "Saisie invalide."}, status_code=400)
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        coach_review.save_answers(conn, day, answers)
+    finally:
+        conn.close()
+    return {"saved": True}
 
 
 async def _coach_values(request: Request):

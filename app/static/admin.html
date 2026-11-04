@@ -194,6 +194,28 @@
     </section>
 
     <section class="card">
+      <h2>Notifications</h2>
+      <p class="muted small">Le dimanche soir, le bilan de la semaine du coach part sur ton téléphone par
+        <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy</a> : une notification par semaine, et c'est tout.
+        L'adresse du sujet (et son jeton éventuel) se met dans le fichier <code>.env</code> : <code>NTFY_URL</code>,
+        <code>NTFY_TOKEN</code>. Une synchro Garmin part juste avant, pour compter les sorties du jour.</p>
+      <p class="small" id="nt-status"></p>
+      <form id="nt-form" class="settings">
+        <label class="switch"><input type="checkbox" id="nt-enabled"> Bilan du dimanche</label>
+        <label class="field inline"><span>Heure</span>
+          <select id="nt-hour"></select></label>
+        <label class="field"><span>Adresse publique de l'application (lien de la notification, facultatif)</span>
+          <input type="url" id="nt-url" placeholder="https://trend.exemple.fr"></label>
+        <p class="error-text" id="nt-error" hidden></p>
+        <div class="row">
+          <button class="btn" type="submit">Enregistrer</button>
+          <button class="btn ghost" type="button" id="nt-test">Envoyer un essai</button>
+          <span class="muted small" id="nt-saved" hidden></span>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
       <h2>Calibration de l'estimateur</h2>
       <p class="muted small">L'estimateur est rejoué sur tes courses confirmées avec la forme de la veille. Son écart
         moyen donne une correction proposée par terrain, à partir de 3 courses. Une fois appliquée, elle est figée et

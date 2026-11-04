@@ -344,6 +344,16 @@ def proposed_target(cfg, race: dict, today: date, data: dict, factors: dict, dem
 
 # ---------- plan vers la course A ----------
 
+def plan_start(race: dict, past: list[dict]) -> date:
+    """Départ du plan : le jour où la course principale a été ajoutée, ou le lendemain de la
+    dernière course A passée si elle est plus récente (le plan se reconstruit alors autour de la
+    suivante). Un départ fixe garde les phases et le cycle d'une semaine sur l'autre."""
+    created = date.fromisoformat((race.get("created_at") or race["race_date"])[:10])
+    after = [date.fromisoformat(r["race_date"]) + timedelta(days=1) for r in past
+             if r["priority"] == "A" and r["race_date"] < race["race_date"]]
+    return max([created, *after])
+
+
 def race_facts(cfg, race: dict, data: dict) -> dict:
     """Course avec sa durée visée (objectif, sinon temps proposé), sa distance et son D+ (tirés du
     GPX s'il existe) et son objectif en texte."""

@@ -186,4 +186,5 @@ def week_view(plan_week: dict, acts, today: date, race_ids=()) -> dict:
                  "load": sum(d["load"] for d in done), "gain_m": sum(d["gain_m"] for d in done)},
         "periods": plan_week.get("periods") or [], "events": plan_week.get("events") or [],
         "strength": plan_week.get("strength") or 0,
+        "adjust": plan_week.get("adjust") or [],
     }

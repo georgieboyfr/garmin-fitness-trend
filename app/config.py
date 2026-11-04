@@ -22,6 +22,9 @@ class Config:
     admin_password_hash: str = field(default="", repr=False)
     garmin_email: str = ""
     garmin_password: str = field(default="", repr=False)
+    # notifications ntfy : l'adresse du sujet vaut mot de passe (qui la connaît lit les messages)
+    ntfy_url: str = field(default="", repr=False)
+    ntfy_token: str = field(default="", repr=False)
 
     @property
     def db_path(self) -> Path:
@@ -90,6 +93,8 @@ def load_config(env=None) -> Config:
         admin_password_hash=(env.get("ADMIN_PASSWORD_HASH") or "").strip(),
         garmin_email=(env.get("GARMIN_EMAIL") or "").strip(),
         garmin_password=env.get("GARMIN_PASSWORD") or "",
+        ntfy_url=(env.get("NTFY_URL") or "").strip(),
+        ntfy_token=(env.get("NTFY_TOKEN") or "").strip(),
     )
     if not cfg.hr_rest < cfg.lthr < cfg.hr_max:
         raise ValueError("Il faut HR_REST < LTHR < HR_MAX")

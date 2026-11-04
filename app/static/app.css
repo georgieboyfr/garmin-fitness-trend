@@ -560,3 +560,13 @@ details.tracked-add > summary { cursor: pointer; font-weight: 600; margin: 12px 
 .coach-day-session.status-past > b { text-decoration: line-through; color: var(--muted); font-weight: 400; }
 .coach-done { margin-top: 2px; }
 .coach-key { margin: 0 0 8px; }
+.coach-bilan > details > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.coach-bilan > details > summary::-webkit-details-marker { display: none; }
+.coach-bilan .verdict-pill { background: var(--surface-2); }
+.coach-bilan.verdict-good .verdict-pill { background: var(--accent-soft); color: var(--up); }
+.coach-bilan-lines { margin: 4px 0 10px; padding-left: 18px; display: grid; gap: 2px; }
+.coach-bilan-races { list-style: none; padding: 0; margin: 0 0 10px; display: grid; gap: 4px; }
+.coach-bilan-form { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; margin-bottom: 6px; }
+.coach-bilan-form fieldset { border: 0; padding: 0; margin: 0; }
+.coach-bilan-form legend { font-size: 13px; color: var(--muted); padding: 0; }
+.coach-bilan-form .segmented { margin: 4px 0; }
