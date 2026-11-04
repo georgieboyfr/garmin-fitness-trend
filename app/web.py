@@ -26,6 +26,7 @@ from . import (
     gpx_store,
     hr_speed,
     metrics_job,
+    physio,
     queries,
     settings,
     stats,
@@ -170,12 +171,19 @@ def forme(request: Request):
         return redirect
     cfg = request.app.state.config
     conn = db.connect(cfg.db_path)
+    today = _today(request)
     try:
         acts = queries.running_activities(conn)
-        lthr = metrics_job.params_of(cfg, conn)["lthr"]
+        efforts = queries.best_efforts(conn)
+        params = metrics_job.params_of(cfg, conn)
+        lthr = params["lthr"]
+        trend = hr_speed.SpeedTrend(queries.steady_blocks(conn), lthr)
+        lthr_est = metrics_job.lthr_estimate(conn, today)
     finally:
         conn.close()
-    return render(request, "forme.html", "/forme", data=stats.forme(acts, _today(request), lthr))
+    return render(request, "forme.html", "/forme", data=stats.forme(acts, today, lthr),
+                  physio=physio.physiology(efforts, today, lthr_est, params["hr_max"], trend),
+                  lthr_used=lthr)
 
 
 @router.get("/sorties/{activity_id}")

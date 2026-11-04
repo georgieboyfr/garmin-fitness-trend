@@ -73,7 +73,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 12. VAP selon la courbe de Strava au lieu de Minetti (4 novembre 2026, demande de Greg ; commité, pas encore poussé)
   - [x] 13. Limites à 95 % (Bland-Altman) dans la précision de l'estimateur, après comparaison avec la thèse de L. Lerebourg (4 novembre 2026, section 10 du brief ; commité, pas encore poussé)
   - [x] 14. Indice de confiance de chaque estimation, avec ses raisons (4 novembre 2026, demande de Greg, section 10 du brief ; commité, pas encore poussé)
-  - [ ] 15. Page Forme : VMA, VO2max estimée, FC au seuil (% de la FC max) et allure au seuil (demande de Greg du 4 novembre 2026)
+  - [x] 15. Page Forme : VMA, VO2max estimée, FC au seuil (% de la FC max) et allure au seuil (demande de Greg du 4 novembre 2026, fait le même jour, section 10 du brief ; commité, pas encore poussé)
   - Points à trancher avec Greg au fil des étapes : terrain technique et chaleur (étape 6 ou plus tard), forme projetée à la date de la course (le coach de la phase 4 la fournira ; en attendant, forme actuelle maintenue)
   - Tranché : l'estimateur a son propre onglet dans le menu (3 novembre 2026)
 - [ ] Phase 4 — Coach (section 6 du brief ; terminé quand un plan est suivi sur 2 semaines réelles sans intervention manuelle ; v1.0.0). Logique de plan à base de règles explicites, en fonctions pures testées ; tout reste utilisable sans LLM

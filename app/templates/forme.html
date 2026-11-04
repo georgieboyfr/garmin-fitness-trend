@@ -87,6 +87,38 @@
   </article>
 </section>
 
+{% set pv, pt, ph = physio.vma, physio.threshold_pace, physio.threshold_hr %}
+<section class="kpis">
+  <article class="kpi">
+    <header>VMA {{ tip("Vitesse maximale aérobie, estimée par la vitesse de ton meilleur effort de 5 min sur route sur les 12 dernières semaines (6 mois à défaut) : la VMA se tient de 4 à 11 min, 6 en moyenne. Si tu n'as pas couru 5 min à fond sur la période, elle est sous-estimée ; un test (demi-Cooper, 6 min à fond) la précise.") }}</header>
+    {% if pv %}
+    <div class="kpi-value"><span data-num="{{ pv.kmh }}" data-dec="1"></span><span class="kpi-unit">km/h</span></div>
+    <footer class="muted"><span data-pace="{{ pv.pace_s_km }}"></span> · 5 min du <a href="/sorties/{{ pv.activity_id }}"><span data-short-date="{{ pv.date }}"></span></a>{% if pv.fallback %} (6 mois){% endif %}</footer>
+    {% else %}<div class="kpi-value">—</div><footer class="muted">aucun effort route de 5 min en 6 mois</footer>{% endif %}
+  </article>
+  <article class="kpi">
+    <header>VO2max estimée {{ tip("Consommation maximale d'oxygène tirée de la VMA : 3,5 ml/kg/min par km/h (Léger et Mercier, coût énergétique de la course). Estimation de terrain, à quelques ml près ; la valeur affichée par ta montre suit une autre méthode.") }}</header>
+    {% if pv %}
+    <div class="kpi-value"><span data-num="{{ pv.vo2max }}" data-dec="0"></span><span class="kpi-unit">ml/kg/min</span></div>
+    <footer class="muted">3,5 × VMA</footer>
+    {% else %}<div class="kpi-value">—</div>{% endif %}
+  </article>
+  <article class="kpi">
+    <header>FC au seuil {{ tip("Ta meilleure FC moyenne tenue une heure sur les 12 derniers mois (une heure à fond se court au seuil), en % de ta FC max réglée dans l'admin. Repère courant : 85 à 92 % de la FC max. Si elle s'écarte de la LTHR réglée, mets à jour la LTHR dans l'admin : elle sert aux zones et à la charge.") }}</header>
+    {% if ph %}
+    <div class="kpi-value"><span data-num="{{ ph.hr }}"></span><span class="kpi-unit">bpm</span></div>
+    <footer class="muted">{% if ph.pct_max %}{{ ph.pct_max }} % de ta FC max ({{ ph.hr_max }}) · {% endif %}<a href="/sorties/{{ ph.activity_id }}"><span data-short-date="{{ ph.date }}"></span></a>{% if ph.hr != lthr_used | round | int %} · LTHR réglée {{ lthr_used | round | int }}{% endif %}</footer>
+    {% else %}<div class="kpi-value">—</div><footer class="muted">aucune heure de course avec FC sur 12 mois</footer>{% endif %}
+  </article>
+  <article class="kpi">
+    <header>Allure au seuil {{ tip("L'allure que tu tiendrais une heure à fond, d'après le niveau de l'estimateur : tes meilleurs efforts route des 4 derniers mois, ramenés à ton aérobie du jour, formule de Riegel jusqu'à une heure. C'est l'allure des séances au seuil.") }}</header>
+    {% if pt %}
+    <div class="kpi-value" data-pace="{{ pt.pace_s_km }}"></div>
+    <footer class="muted"><span data-num="{{ pt.kmh }}" data-dec="1" data-unit="km/h"></span> · d'après ton {{ pt.reference.label }} du <a href="/sorties/{{ pt.reference.activity_id }}"><span data-short-date="{{ pt.reference.date }}"></span></a>{% if pt.fallback %} (6 mois){% endif %}</footer>
+    {% else %}<div class="kpi-value">—</div><footer class="muted">aucun effort route de 3 km ou plus en 6 mois</footer>{% endif %}
+  </article>
+</section>
+
 <section class="card">
   <div class="card-head">
     <h2>Fitness, fatigue et forme {{ tip("Modèle de Banister à partir de la charge HRSS de chaque sortie. Les barres grises sont la charge de chaque jour. Fais glisser la réglette du bas pour remonter dans le temps.") }}</h2>

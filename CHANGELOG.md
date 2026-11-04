@@ -5,6 +5,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 ## [Non publié]
 
 ### Ajouté
+- Page Forme : VMA (meilleur effort route de 5 min), VO2max estimée (3,5 × VMA), FC au seuil (meilleure heure sur 12 mois, en % de la FC max) et allure au seuil (une heure d'après le niveau de l'estimateur).
 - Indice de confiance de chaque estimation (route et GPX) : élevée, moyenne ou faible, avec ses raisons (extrapolation de distance, ancienneté et ajustement de la référence, précision mesurée sur les courses du terrain, durée au-delà de la plus longue sortie, pentes couvertes par le modèle allure-pente, exposant de fatigue par défaut).
 - Précision de l'estimateur (page Estimateur) : limites à 95 % de Bland-Altman (biais ± 1,96 écart-type) et écart-type des écarts, pour la route, le trail et la vraie précision des courses suivies ; indicatives sous 10 courses.
 
