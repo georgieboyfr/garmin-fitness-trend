@@ -29,6 +29,7 @@ from . import (
     settings,
     stats,
     tracked,
+    vma_tests,
 )
 
 PREDICTION_VERSION = f"{tracked.VERSION}-plan{coach_plan.PLAN_VERSION}"
@@ -48,6 +49,7 @@ class Coach:
         params = metrics_job.params_of(cfg, conn)
         self.hr_max = params["hr_max"]
         self.training = settings.get(conn, "training")
+        self.vmas = vma_tests.all_vmas(self.data["acts"], queries.best_efforts(conn), conn, self.training)
         lthr = self.data.get("lthr")
         self.hr = {"hr_max": self.hr_max, "hr_rest": params["hr_rest"],
                    "easy_hr": coach_workouts.easy_hr(self.training["easy_hr_method"], self.hr_max,
@@ -68,8 +70,9 @@ class Coach:
 
     def physio(self, day: date) -> dict:
         """Repères physiologiques du jour (VMA testée de l'admin prioritaire), avec la FC du coureur."""
+        vma = vma_tests.latest(self.vmas, day)     # VMA la plus récente : saisie ou test confirmé
         out = physio.physiology(self.data["efforts"], day, self.lthr_est, self.hr_max, self.data["trend"],
-                                self.training.get("vma_kmh"))
+                                vma["kmh"] if vma else self.training.get("vma_kmh"))
         return {**out, "hr": self.hr}
 
     def reference_check(self, race: dict, day: date | None = None) -> dict | None:
@@ -79,7 +82,9 @@ class Coach:
         if key not in self._checks:
             result = tracked.predict(self.cfg, race, day, self.data, self.dem)
             self._checks[key] = coach.reference_check(race, day, result, self.data["acts"],
-                                                      self.data.get("confirmed") or (), self.data.get("lthr"))
+                                                      self.data.get("confirmed") or (), self.data.get("lthr"),
+                                                      getattr(self.data["efforts"], "fresh_days",
+                                                              coach.REF_FRESH_DAYS))
         return self._checks[key]
 
     def optional_done(self) -> dict[int, list[str]]:

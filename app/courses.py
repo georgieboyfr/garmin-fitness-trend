@@ -4,7 +4,7 @@ confirmée la forme du jour J (modèle de Banister) et l'allure face aux sorties
 """
 from datetime import UTC, date, datetime, timedelta
 
-from . import metrics_job, queries, races, settings, stats
+from . import metrics_job, queries, races, settings, stats, vma_tests
 
 
 def _settings(conn) -> dict:
@@ -50,6 +50,27 @@ def overview(config, conn) -> dict:
         "rejected": sorted((_summary(by_id[i]) for i, st in decisions.items()
                             if st == "rejected" and i in by_id), key=lambda r: r["date"], reverse=True),
     }
+
+
+def vma_overview(conn) -> dict:
+    """Pour l'admin : tests de VMA (demi-Cooper) probables à valider, confirmés et rejetés."""
+    acts = _activities(conn)
+    by_id = {a["id"]: a for a in acts}
+    efforts = queries.best_efforts(conn)
+    decisions = vma_tests.decisions(conn)
+    races_ok = {i for i, s in queries.race_decisions(conn).items() if s == "confirmed"}
+    v5 = vma_tests.five_minute_speeds(efforts)
+    found = vma_tests.candidates(acts, efforts, races_ok, datetime.now(UTC).date())
+
+    def row(i, extra=None):
+        return {**_summary(by_id[i]), "vma_kmh": round(v5[i] * 3.6, 1) if i in v5 else None, **(extra or {})}
+    pending = [row(c["id"], {"reasons": c["reasons"]}) for c in found if c["id"] not in decisions]
+    pending.sort(key=lambda c: c["date"], reverse=True)
+    return {"pending": pending,
+            "confirmed": sorted((row(i) for i, st in decisions.items() if st == "confirmed" and i in by_id),
+                                key=lambda r: r["date"], reverse=True),
+            "rejected": sorted((row(i) for i, st in decisions.items() if st == "rejected" and i in by_id),
+                               key=lambda r: r["date"], reverse=True)}
 
 
 def decide(conn, activity_id: int, status: str | None):

@@ -64,6 +64,9 @@ EXPONENT_DAYS = 730
 EXPONENT_MIN_RATIO = 3.0       # la frontière doit couvrir au moins un rapport 3 entre distances
 MIN_REF_DISTANCE_M = 3000      # en dessous, effort trop court (part anaérobie)
 MIN_REF_DURATION_S = 1200
+RACE_FRESH_DAYS = 84            # course « récente » : 12 semaines (réglable dans l'admin) ; au-delà, une
+RACE_AGE_WEIGHT = 0.02          # VMA récente passe devant ; entre courses, chaque semaine d'âge pèse comme
+                                # 2 % d'écart de distance
 VMA_TEST_S = 360                # VMA testée (demi-Cooper) : 6 min à la VMA, référence pour toutes les
 VMA_EXPONENT = 1.08             # distances, extrapolée avec un exposant de Riegel plus prudent : 1,06
                                 # vient de coureurs très endurants ; 1,08 donne environ 86 % de la VMA
@@ -203,18 +206,15 @@ def current_form(acts, efforts, day: date, lthr: float, window_days: int = WINDO
 
 # ---------- route : Riegel à exposant personnel ----------
 
-def road_points(efforts, start: date, end: date, short: bool = False) -> list[dict]:
+def road_points(efforts, start: date, end: date) -> list[dict]:
     """Efforts route utilisables comme référence (distance, temps) : distances d'au moins 3 km et
-    durées d'au moins 20 min, le meilleur de chaque distance et de chaque durée sur la période ;
-    short : aussi la VMA testée (6 min à la VMA, kind « vma_test »)."""
+    durées d'au moins 20 min, le meilleur de chaque distance et de chaque durée sur la période,
+    entraînements compris."""
     best = {}
     for e in efforts:
         if e.get("terrain") != "road" or not _in_window(e["date"], start, end):
             continue
-        if e["kind"] == "vma_test" and short:
-            point = {"distance_m": float(e["value"]), "time_s": float(e["key"])}
-            label = "VMA testée"
-        elif e["kind"] == "distance" and e["key"] >= MIN_REF_DISTANCE_M:
+        if e["kind"] == "distance" and e["key"] >= MIN_REF_DISTANCE_M:
             point = {"distance_m": float(e["key"]), "time_s": float(e["value"])}
             label = DISTANCE_LABELS.get(e["key"], f"{e['key'] / 1000:g} km")
         elif e["kind"] == "duration" and e["key"] >= MIN_REF_DURATION_S:
@@ -226,6 +226,30 @@ def road_points(efforts, start: date, end: date, short: bool = False) -> list[di
         if k not in best or point["time_s"] / point["distance_m"] < best[k]["time_s"] / best[k]["distance_m"]:
             best[k] = {**point, "kind": e["kind"], "label": label, **_effort(e), "avg_hr": e.get("avg_hr")}
     return sorted(best.values(), key=lambda p: p["distance_m"])
+
+
+def race_points(efforts, start: date, end: date) -> list[dict]:
+    """Courses route confirmées de la période (efforts marqués « race ») : pour chacune, l'effort à la
+    plus longue distance de référence qu'elle contient, c'est-à-dire la course elle-même."""
+    best = {}
+    for e in efforts:
+        if (not e.get("race") or e.get("terrain") != "road" or e["kind"] != "distance"
+                or e["key"] < MIN_REF_DISTANCE_M or not _in_window(e["date"], start, end)):
+            continue
+        if e["id"] not in best or e["key"] > best[e["id"]]["distance_m"]:
+            best[e["id"]] = {"distance_m": float(e["key"]), "time_s": float(e["value"]), "kind": "race",
+                             "label": DISTANCE_LABELS.get(e["key"], f"{e['key'] / 1000:g} km") + " en course",
+                             **_effort(e), "avg_hr": e.get("avg_hr")}
+    return sorted(best.values(), key=lambda p: p["distance_m"])
+
+
+def vma_points(efforts, start: date, end: date) -> list[dict]:
+    """VMA datées de la période (saisie dans l'admin ou test confirmé, kind « vma_test ») : 6 min à
+    la VMA."""
+    return [{"distance_m": float(e["value"]), "time_s": float(e["key"]), "kind": "vma_test",
+             "label": f"VMA {e['value'] / e['key'] * 3.6:.1f} km/h".replace(".", ","), **_effort(e),
+             "avg_hr": None}
+            for e in efforts if e["kind"] == "vma_test" and _in_window(e["date"], start, end)]
 
 
 def personal_exponent(efforts, day: date) -> dict:
@@ -261,16 +285,26 @@ def predict_road(efforts, day: date, distance_m: float, gain_m: float = 0.0, exp
     jour ; la référence retenue porte alors son temps ajusté (time_s), le temps réel (raw_time_s)
     et l'ajustement (adjust_pct)."""
     exponent = exponent or STANDARD_EXPONENT
-    window = max(window_days, REFERENCE_DAYS)
-    target = equivalent_distance(distance_m, gain_m)
-    short = True                                 # VMA testée récente : toutes les distances
-    refs = road_points(efforts, day - timedelta(days=window - 1), day, short)
-    if not refs:
-        window = FALLBACK_WINDOW_DAYS
-        refs = road_points(efforts, day - timedelta(days=window - 1), day, short)
-    if not refs or distance_m <= 0:
+    if distance_m <= 0:
         return None
+    target = equivalent_distance(distance_m, gain_m)
     k = exponent["value"]
+    fresh = getattr(efforts, "fresh_days", RACE_FRESH_DAYS)
+    window = max(window_days, REFERENCE_DAYS)
+    # une course récente d'abord, sinon une VMA récente, puis plus anciennes (4, puis 6 mois), et
+    # seulement à défaut les efforts d'entraînement (une sortie à allure marathon n'est pas une course)
+    tiers = [("race", race_points, fresh), ("vma", vma_points, fresh), ("race", race_points, window),
+             ("vma", vma_points, window), ("race", race_points, FALLBACK_WINDOW_DAYS),
+             ("vma", vma_points, FALLBACK_WINDOW_DAYS), ("training", road_points, window),
+             ("training", road_points, FALLBACK_WINDOW_DAYS)]
+    refs, source = [], None
+    for tier, points, days in tiers:
+        refs = points(efforts, day - timedelta(days=days - 1), day)
+        if refs:
+            source, window = tier, days
+            break
+    if not refs:
+        return None
     for r in refs:
         factor = trend.ratio(date.fromisoformat(r["date"][:10]), day) if trend else 1.0
         r["raw_time_s"] = r["time_s"]
@@ -278,7 +312,16 @@ def predict_road(efforts, day: date, distance_m: float, gain_m: float = 0.0, exp
         r["adjust_pct"] = round((factor - 1) * 100, 1) + 0.0
         r["exponent"] = max(k, VMA_EXPONENT) if r["kind"] == "vma_test" else k
         r["predicted_s"] = round(riegel(r["time_s"], r["distance_m"], target, r["exponent"]))
-    best = min(refs, key=lambda r: r["predicted_s"])
+        r["source"] = source
+        r["age_days"] = (day - date.fromisoformat(r["date"][:10])).days
+    if source == "race":
+        # la course la plus proche de la distance visée, puis la plus récente
+        best = min(refs, key=lambda r: abs(math.log(target / r["distance_m"]))
+                   + RACE_AGE_WEIGHT * r["age_days"] / 7)
+    elif source == "vma":
+        best = max(refs, key=lambda r: r["date"])
+    else:
+        best = min(refs, key=lambda r: r["predicted_s"])
     time_s = riegel(best["time_s"], best["distance_m"], target, best["exponent"])
     spread = BASE_SPREAD + EXPONENT_SPREAD * abs(math.log(target / best["distance_m"]))
     times = {"optimistic": time_s * math.exp(-spread), "realistic": time_s,

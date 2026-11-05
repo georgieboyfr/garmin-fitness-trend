@@ -415,3 +415,31 @@ def test_confidence_flags_long_courses_poor_model_coverage_and_default_fatigue()
     trail_like = estimator.confidence(_estimate(ratio=8.0, riegel_target_m=15000), DAY, measured)
     assert any("proche" in r["text"] for r in trail_like["reasons"])      # Riegel jusqu'à 2 h seulement
     assert estimator.confidence(None, DAY) is None and estimator.confidence({"error": "x"}, DAY) is None
+
+
+def _eff(kind, key, value, day, act_id, race=False):
+    e = {"terrain": "road", "kind": kind, "key": key, "value": value, "date": f"{day}T10:00:00", "id": act_id,
+         "name": f"s{act_id}", "avg_hr": None}
+    return {**e, "race": True} if race else e
+
+
+def test_reference_is_a_recent_race_close_to_the_target_not_a_faster_training_run():
+    day = date(2026, 11, 5)
+    efforts = [_eff("distance", 10000, 2700, "2026-10-01", 1, race=True),        # 10 km en course, 45:00
+               _eff("distance", 5000, 1290, "2026-10-20", 2, race=True),         # 5 km en course
+               _eff("distance", 21097, 5600, "2026-10-25", 3)]                   # semi à l'entraînement
+    r = estimator.predict_road(efforts, day, 10000)
+    assert r["reference"]["source"] == "race" and r["reference"]["distance_m"] == 10000
+    semi = estimator.predict_road(efforts, day, 21097)
+    assert semi["reference"]["source"] == "race"                                 # pas l'entraînement
+
+
+def test_vma_only_when_no_recent_race_and_training_only_as_a_last_resort():
+    day = date(2026, 11, 5)
+    old_race = _eff("distance", 10000, 2700, "2026-06-20", 1, race=True)         # 20 semaines
+    vma = {"terrain": "road", "kind": "vma_test", "key": 360, "value": 1600.0, "date": "2026-11-04T12:00:00",
+           "id": None, "name": "VMA", "avg_hr": None}
+    training = _eff("distance", 10000, 2900, "2026-10-30", 2)
+    assert estimator.predict_road([old_race, vma, training], day, 10000)["reference"]["source"] == "vma"
+    assert estimator.predict_road([old_race, training], day, 10000)["reference"]["source"] == "race"
+    assert estimator.predict_road([training], day, 10000)["reference"]["source"] == "training"

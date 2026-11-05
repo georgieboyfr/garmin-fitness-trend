@@ -194,6 +194,26 @@
     </section>
 
     <section class="card">
+      <div class="card-head">
+        <h2>Tests VMA</h2>
+        <span class="pill" id="vma-pill"></span>
+      </div>
+      <p class="muted small">Sorties qui ressemblent à un test demi-Cooper (6 min le plus loin possible) : nom qui
+        parle de test, de VMA ou de Cooper, ou effort de 5 min proche de ton meilleur de l'année dans une sortie
+        courte. Un test confirmé donne une VMA datée (son meilleur 5 min) : elle règle les allures du coach et sert
+        de référence à l'estimateur quand aucune course n'est assez récente.</p>
+      <div id="vma-pending"></div>
+      <details>
+        <summary id="vma-confirmed-title">Tests confirmés</summary>
+        <div id="vma-confirmed"></div>
+      </details>
+      <details>
+        <summary id="vma-rejected-title">Sorties rejetées</summary>
+        <div id="vma-rejected"></div>
+      </details>
+    </section>
+
+    <section class="card">
       <h2>Notifications</h2>
       <p class="muted small">Le dimanche soir, le bilan de la semaine du coach part sur ton téléphone par
         <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy</a> : une notification par semaine, et c'est tout.
@@ -253,8 +273,9 @@
       <h3>Cibles du coach</h3>
       <p class="muted small">Plage de FC des séances d'endurance, et VMA des fractionnés (prioritaire sur l'estimation
         tirée de tes sorties, utile après un test sur piste ou un demi-Cooper : la distance courue en 6 min × 10 donne
-        la VMA en km/h). Datée, elle sert aussi de référence à l'estimateur pour les courses jusqu'à 15 km, pendant
-        4 mois.</p>
+        la VMA en km/h). Datée, elle sert aussi de référence à l'estimateur quand aucune course n'est plus récente que
+        le délai « course récente » (12 semaines par défaut) : seules les courses et les VMA servent de référence, pas
+        les entraînements.</p>
       <form id="training-form" class="settings">
         <div class="row">
           <label class="field inline"><span>FC d'endurance</span>
@@ -266,6 +287,8 @@
             <input type="number" id="training-vma" min="8" max="30" step="0.1" placeholder="estimée"></label>
           <label class="field inline"><span>Date du test</span>
             <input type="date" id="training-vma-date"></label>
+          <label class="field inline"><span>Course récente (semaines)</span>
+            <input type="number" id="training-fresh" min="4" max="26" step="1"></label>
         </div>
         <p class="muted small" id="training-note"></p>
         <p class="error-text" id="training-error" hidden></p>

@@ -14,7 +14,18 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
-from . import coach_notify, coach_workouts, courses, db, elevation_job, metrics_job, settings, strava, tracked
+from . import (
+    coach_notify,
+    coach_workouts,
+    courses,
+    db,
+    elevation_job,
+    metrics_job,
+    settings,
+    strava,
+    tracked,
+    vma_tests,
+)
 from .auth import SESSION_COOKIE
 from .garmin_sync import SyncAlreadyRunning
 from .metrics import ZONE_BOUNDS
@@ -436,6 +447,29 @@ def races_decide(activity_id: int, body: RaceDecision, request: Request):
     conn = db.connect(request.app.state.config.db_path)
     try:
         courses.decide(conn, activity_id, body.status)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    finally:
+        conn.close()
+    return {"activity_id": activity_id, "status": body.status}
+
+
+# ---------- tests de VMA ----------
+
+@protected.get("/vma-tests")
+def vma_tests_overview(request: Request):
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        return courses.vma_overview(conn)
+    finally:
+        conn.close()
+
+
+@protected.post("/vma-tests/{activity_id}")
+def vma_tests_decide(activity_id: int, body: RaceDecision, request: Request):
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        vma_tests.decide(conn, activity_id, body.status)
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
     finally:

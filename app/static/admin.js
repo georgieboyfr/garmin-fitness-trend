@@ -51,6 +51,7 @@ async function init() {
     refreshPhysiology();
     refreshTraining();
     refreshRaces();
+    refreshVmaTests();
     refreshCalibration();
     refreshNotifications();
     refreshStrava();
@@ -368,7 +369,13 @@ const RACE_ACTIONS = {
   rejected: [["C'est une course", "confirmed", "primary"], ["Remettre en attente", null, "ghost"]],
 };
 
-function raceRow(r, list) {
+const VMA_ACTIONS = {
+  pending: [["C'est un test", "confirmed", "primary"], ["Non", "rejected"]],
+  confirmed: [["Ce n'est pas un test", "rejected", "ghost"], ["Remettre en attente", null, "ghost"]],
+  rejected: [["C'est un test", "confirmed", "primary"], ["Remettre en attente", null, "ghost"]],
+};
+
+function raceRow(r, list, kind = "races") {
   const div = document.createElement("div");
   div.className = "race";
   const head = document.createElement("div");
@@ -379,7 +386,7 @@ function raceRow(r, list) {
   const meta = document.createElement("span");
   meta.className = "muted small";
   meta.textContent = `${fmtShort(r.date)} · ${(r.distance_km).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} km`
-    + ` · ${r.gain_m} m D+`;
+    + ` · ${r.gain_m} m D+` + (r.vma_kmh ? ` · VMA ${r.vma_kmh.toLocaleString("fr-FR")} km/h` : "");
   head.append(a, meta);
   div.append(head);
   if (r.description) {
@@ -393,7 +400,7 @@ function raceRow(r, list) {
     reasons.className = "race-reasons";
     const score = document.createElement("span");
     score.className = "score";
-    score.textContent = `score ${r.score} · `;
+    score.textContent = r.score != null ? `score ${r.score} · ` : "";
     reasons.append(score, r.reasons.join(" · "));
     div.append(reasons);
   }
@@ -404,12 +411,12 @@ function raceRow(r, list) {
     b.className = "btn small " + (cls || "");
     b.textContent = label;
     b.addEventListener("click", () => busy(b, async () => {
-      await api(`/races/${r.id}`, { status });
-      refreshRaces();
+      await api(`/${kind}/${r.id}`, { status });
+      if (kind === "races") refreshRaces(); else refreshVmaTests();
     }));
     return b;
   };
-  actions.append(...RACE_ACTIONS[list].map(([label, status, cls]) => button(label, status, cls)));
+  actions.append(...(kind === "races" ? RACE_ACTIONS : VMA_ACTIONS)[list].map(([label, status, cls]) => button(label, status, cls)));
   div.append(actions);
   return div;
 }
@@ -426,6 +433,22 @@ function renderRaces(st) {
   $("races-rejected").replaceChildren(...st.rejected.map((r) => raceRow(r, "rejected")));
   $("races-keywords").value = st.settings.keywords.join("\n");
   $("races-threshold").value = st.settings.threshold;
+}
+
+function renderVmaTests(st) {
+  const pill = $("vma-pill");
+  pill.textContent = st.pending.length ? `${st.pending.length} à valider` : "À jour";
+  pill.className = "pill " + (st.pending.length ? "warn" : "ok");
+  $("vma-pending").replaceChildren(...(st.pending.length ? st.pending.map((r) => raceRow(r, "pending", "vma-tests"))
+    : [Object.assign(document.createElement("p"), { className: "muted small", textContent: "Aucun test probable à valider." })]));
+  $("vma-confirmed-title").textContent = `Tests confirmés (${st.confirmed.length})`;
+  $("vma-confirmed").replaceChildren(...st.confirmed.map((r) => raceRow(r, "confirmed", "vma-tests")));
+  $("vma-rejected-title").textContent = `Sorties rejetées (${st.rejected.length})`;
+  $("vma-rejected").replaceChildren(...st.rejected.map((r) => raceRow(r, "rejected", "vma-tests")));
+}
+
+async function refreshVmaTests() {
+  try { renderVmaTests(await api("/vma-tests")); } catch (err) { /* session gérée ailleurs */ }
 }
 
 async function refreshRaces() {
@@ -513,6 +536,7 @@ function renderTraining(st) {
   $("training-method").value = st.settings.easy_hr_method;
   $("training-vma").value = st.settings.vma_kmh ?? "";
   $("training-vma-date").value = st.settings.vma_date ?? "";
+  $("training-fresh").value = st.settings.race_fresh_weeks;
   const r = (k) => (st.easy_hr[k] ? `${st.easy_hr[k][0]} à ${st.easy_hr[k][1]}` : "—");
   $("training-note").textContent = `Endurance : ${r("karvonen")} (Karvonen) ou ${r("fcmax")} (% de la FC max), `
     + "avec la FC max et la FC repos ci-dessus.";
@@ -530,6 +554,7 @@ $("training-form").addEventListener("submit", (e) => {
       const day = $("training-vma-date").value;
       renderTraining(await api("/training", { easy_hr_method: $("training-method").value,
                                               vma_kmh: vma ? Number(vma) : null,
+                                              race_fresh_weeks: Number($("training-fresh").value) || 12,
                                               ...(day ? { vma_date: day } : {}) }));
       showError("training-error", null);
       flash("training-saved", "Enregistré.");

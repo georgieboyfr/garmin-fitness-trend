@@ -29,6 +29,7 @@ from . import (
     settings,
     stats,
     trail,
+    vma_tests,
 )
 from .elevation import series_distance
 from .series import read_series
@@ -145,25 +146,36 @@ def predictions(conn, race_id: int) -> list[dict]:
 
 # ---------- prédictions ----------
 
-def with_tested_vma(efforts: list[dict], conn) -> list[dict]:
-    """Meilleurs efforts, plus la VMA testée saisie dans l'admin (demi-Cooper) comme effort route de
-    6 min à cette vitesse, à la date du test : une référence de l'estimateur jusqu'à 15 km."""
+class Efforts(list):
+    """Meilleurs efforts préparés pour l'estimateur, avec le délai d'une course « récente »."""
+    fresh_days = estimator.RACE_FRESH_DAYS
+
+
+def reference_efforts(efforts: list[dict], conn, acts=None) -> Efforts:
+    """Meilleurs efforts pour l'estimateur : ceux des courses confirmées marqués « race » (seules
+    les courses servent de référence, pas les entraînements), plus chaque VMA datée (saisie dans
+    l'admin ou test demi-Cooper confirmé) comme un effort route de 6 min à cette vitesse ; délai
+    d'une course récente réglé dans l'admin."""
     training = settings.get(conn, "training")
-    kmh, day = training.get("vma_kmh"), training.get("vma_date")
-    if not kmh or not day:
-        return efforts
-    return efforts + [{"terrain": "road", "kind": "vma_test", "key": estimator.VMA_TEST_S,
-                       "value": kmh / 3.6 * estimator.VMA_TEST_S, "date": f"{day}T12:00:00", "id": None,
-                       "name": "VMA testée (admin)", "avg_hr": None, "year": int(day[:4]),
-                       "description": None, "extra": None, "start_time_local": None}]
+    races = {i for i, s in queries.race_decisions(conn).items() if s == "confirmed"}
+    out = Efforts({**e, "race": True} if e.get("id") in races else e for e in efforts)
+    out.fresh_days = int(training.get("race_fresh_weeks") or estimator.RACE_FRESH_DAYS // 7) * 7
+    acts = acts if acts is not None else queries.running_activities(conn)
+    for v in vma_tests.all_vmas(acts, efforts, conn, training):
+        out.append({"terrain": "road", "kind": "vma_test", "key": estimator.VMA_TEST_S,
+                    "value": v["kmh"] / 3.6 * estimator.VMA_TEST_S, "date": f"{v['date']}T12:00:00",
+                    "id": v["activity_id"], "name": v["name"], "avg_hr": None, "year": int(v["date"][:4]),
+                    "description": None, "extra": None, "start_time_local": None})
+    return out
 
 
 def load_data(cfg, conn) -> dict:
     """Sorties, meilleurs efforts, courses confirmées, réglages de D+, LTHR et tendance FC / vitesse :
     tout ce dont les estimateurs ont besoin."""
     lthr = metrics_job.params_of(cfg, conn)["lthr"]
-    return {"acts": queries.running_activities(conn),
-            "efforts": with_tested_vma(queries.best_efforts(conn), conn),
+    acts = queries.running_activities(conn)
+    return {"acts": acts,
+            "efforts": reference_efforts(queries.best_efforts(conn), conn, acts),
             "confirmed": {i for i, s in queries.race_decisions(conn).items() if s == "confirmed"},
             "params": settings.get(conn, "elevation"), "lthr": lthr,
             "trend": hr_speed.SpeedTrend(queries.steady_blocks(conn), lthr)}

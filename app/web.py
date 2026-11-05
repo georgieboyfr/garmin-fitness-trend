@@ -37,6 +37,7 @@ from . import (
     stats,
     tracked,
     trail,
+    vma_tests,
 )
 from .auth import SESSION_COOKIE
 from .track_parser import parse_route
@@ -186,11 +187,12 @@ def forme(request: Request):
         trend = hr_speed.SpeedTrend(queries.steady_blocks(conn), lthr)
         lthr_est = metrics_job.lthr_estimate(conn, today)
         training = settings.get(conn, "training")
+        latest_vma = vma_tests.latest(vma_tests.all_vmas(acts, efforts, conn, training), today)
     finally:
         conn.close()
     return render(request, "forme.html", "/forme", data=stats.forme(acts, today, lthr),
                   physio=physio.physiology(efforts, today, lthr_est, params["hr_max"], trend,
-                                           training.get("vma_kmh")),
+                                           latest_vma["kmh"] if latest_vma else None),
                   lthr_used=lthr, zone_labels=metrics.zone_labels(lthr, params["hr_max"]))
 
 
@@ -274,7 +276,7 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
     conn = db.connect(cfg.db_path)
     try:
         acts = queries.running_activities(conn)
-        efforts = tracked.with_tested_vma(queries.best_efforts(conn), conn)
+        efforts = tracked.reference_efforts(queries.best_efforts(conn), conn, acts)
         lthr = metrics_job.params_of(cfg, conn)["lthr"]
         confirmed = {i for i, status in queries.race_decisions(conn).items() if status == "confirmed"}
         elevation_params = settings.get(conn, "elevation")
