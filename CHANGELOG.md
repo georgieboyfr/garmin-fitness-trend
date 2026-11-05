@@ -4,6 +4,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 
 ## [Non publié]
 
+## [1.1.0] - 2026-11-05
+
+Estimateur et coach affinés après la v1.0.0. Au premier démarrage, la base passe en version 20 (tests de VMA). Dans l'admin, carte Physiologie, « Cibles du coach » : ressaisir la VMA testée avec la date du test.
+
 ### Modifié
 - Coach, préparations 5 et 10 km : deux séances de qualité dès 4 jours en développement et en spécifique (une en foncier, en semaine allégée, la dernière semaine de charge et la semaine de course), sortie longue alors en endurance pure ; plus de spécifique ; sortie longue plafonnée (90 min pour 5 km, 100 min pour 10 km) et pas de seconde sortie longue optionnelle ; dernière semaine de charge allégée et footings courts la semaine de course, pour arriver frais.
 - Coach : temps prévu à la fin du plan avec l'effet des séances spécifiques (1 à 3 % selon la durée du spécifique, repère de la littérature), affiché à part du temps « charge seule ».

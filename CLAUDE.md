@@ -94,6 +94,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 10. v1.0.0 : tag, CHANGELOG, README, image construite par la CI (5 novembre 2026) ; reste la mise à jour du Synology et la vérification sur le téléphone (Greg). Le reste de l'étape 10 d'origine (durée ou distance, séance de remplacement, compatibilité dans le bilan) passe en phase 5 (décision de Greg)
   - Points à trancher avec Greg au fil des étapes : pondérations et seuils des règles (hausse de charge, durée d'affûtage, compatibilité) ; tranché : onglet « Coach » dans le menu, notification par ntfy (4 novembre 2026)
   - Hors phase 4 : envoi des séances vers le calendrier Garmin, séance de remplacement, coach conversationnel (ex-phase 4 bis), tous en phase 5
+- [x] v1.1.0 (5 novembre 2026) : préparations 5 et 10 km, objectif proposé à la fin du plan et verdict, effet des séances spécifiques, références de l'estimateur par courses et VMA (tests demi-Cooper détectés, base en version 20) ; reste la mise à jour du Synology (Greg)
 - [ ] Phase 5 — Extensions (une idée à la fois, choisie par Greg ; version mineure à chaque idée livrée). Classement proposé le 5 novembre 2026, à revoir par Greg :
 
 | Rang | Idée | Intérêt | Difficulté |

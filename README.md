@@ -50,8 +50,10 @@ Course à pied uniquement (route, trail, tapis) : les autres sports sont ignoré
 - **Courses** : détection automatique des courses, validation en un clic, forme le jour J.
 - **Estimateur** : temps de course « si je courais maintenant », avec une fourchette et un
   indice de confiance (élevée, moyenne, faible) qui en donne les raisons.
-  - Route : formule de Riegel depuis tes meilleurs efforts des 4 derniers mois, chacun ramené
-    à ta forme du jour par l'évolution de ta vitesse à FC égale.
+  - Route : formule de Riegel depuis une référence ramenée à ta forme du jour par l'évolution
+    de ta vitesse à FC égale : une course récente (12 semaines, réglable), la plus proche de la
+    distance visée ; sinon ta VMA la plus récente (saisie dans l'admin ou test demi-Cooper
+    détecté et confirmé) ; les entraînements seulement à défaut, avec un test proposé.
   - Trail sur un GPX importé : altitude du MNT, distance équivalente plat selon ton modèle
     allure-pente personnel, fatigue au-delà de 2 h tirée de tes sorties longues, arrêts
     habituels en course ou saisis aux ravitaillements ; tronçons (montée, descente,
@@ -190,6 +192,9 @@ construit l'image pour amd64 et arm64 et la publie sur
   précision, mesurée sur les prédictions enregistrées avant le départ des courses suivies.
   Avec peu de courses dans l'historique, elle n'est pas mesurable au début.
 - La VAP et le modèle allure-pente ignorent la technicité du terrain.
+- Une estimation tirée d'une VMA (test de 6 min) a une fourchette large, surtout sur semi et
+  marathon : une vraie course la resserre. L'effet des séances spécifiques sur le temps prévu
+  en fin de plan (1 à 3 %) est un repère de la littérature, pas une mesure sur tes données.
 - Les repères de la page Forme sont des estimations de terrain : la VMA vient du meilleur
   effort de 5 min sur route et reste sous-estimée sans effort de 5 min couru à fond
   récemment (la VO2max en découle) ; la FC au seuil est la meilleure heure de course, qui
