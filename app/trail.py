@@ -186,7 +186,7 @@ def fatigue_exponent(acts, model, day: date) -> dict:
 
 def total_time(ref, eq_m: float, k_fatigue: float) -> tuple[float, float | None]:
     """(temps total en s, distance équivalente atteinte à 2 h ou None si la course dure moins)."""
-    k = estimator.RIEGEL_DEFAULT
+    k = ref.get("exponent") or estimator.RIEGEL_DEFAULT     # VMA testée : exposant plus prudent
     t = estimator.riegel(ref["time_s"], ref["distance_m"], eq_m, k)
     if t <= FATIGUE_START_S:
         return t, None

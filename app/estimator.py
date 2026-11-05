@@ -64,8 +64,11 @@ EXPONENT_DAYS = 730
 EXPONENT_MIN_RATIO = 3.0       # la frontière doit couvrir au moins un rapport 3 entre distances
 MIN_REF_DISTANCE_M = 3000      # en dessous, effort trop court (part anaérobie)
 MIN_REF_DURATION_S = 1200
-VMA_TEST_S = 360                # VMA testée (demi-Cooper) : 6 min à la VMA, référence courte...
-SHORT_REF_MAX_M = 15000         # ... retenue jusqu'à 15 km seulement (au-delà, extrapolation trop forte)
+VMA_TEST_S = 360                # VMA testée (demi-Cooper) : 6 min à la VMA, référence pour toutes les
+VMA_EXPONENT = 1.08             # distances, extrapolée avec un exposant de Riegel plus prudent : 1,06
+                                # vient de coureurs très endurants ; 1,08 donne environ 86 % de la VMA
+                                # sur 10 km, 81 % sur semi, 77 % sur marathon (repères amateurs : 85 à 88,
+                                # 80 à 85, 70 à 80 %)
 REFERENCE_DAYS = 126           # références route cherchées sur 4 mois (choix de Greg), ajustées par la FC
 # Réglages de l'estimateur (fenêtres, exposants, part d'arrêt, ajustement FC) choisis sur les courses
 # de Greg jusqu'à cette date, puis figés : l'erreur mesurée sur ces courses-là est optimiste
@@ -203,8 +206,7 @@ def current_form(acts, efforts, day: date, lthr: float, window_days: int = WINDO
 def road_points(efforts, start: date, end: date, short: bool = False) -> list[dict]:
     """Efforts route utilisables comme référence (distance, temps) : distances d'au moins 3 km et
     durées d'au moins 20 min, le meilleur de chaque distance et de chaque durée sur la période ;
-    short : aussi la VMA testée (6 min à la VMA, kind « vma_test »), pour une course de 15 km au
-    plus."""
+    short : aussi la VMA testée (6 min à la VMA, kind « vma_test »)."""
     best = {}
     for e in efforts:
         if e.get("terrain") != "road" or not _in_window(e["date"], start, end):
@@ -261,7 +263,7 @@ def predict_road(efforts, day: date, distance_m: float, gain_m: float = 0.0, exp
     exponent = exponent or STANDARD_EXPONENT
     window = max(window_days, REFERENCE_DAYS)
     target = equivalent_distance(distance_m, gain_m)
-    short = target <= SHORT_REF_MAX_M
+    short = True                                 # VMA testée récente : toutes les distances
     refs = road_points(efforts, day - timedelta(days=window - 1), day, short)
     if not refs:
         window = FALLBACK_WINDOW_DAYS
@@ -274,9 +276,10 @@ def predict_road(efforts, day: date, distance_m: float, gain_m: float = 0.0, exp
         r["raw_time_s"] = r["time_s"]
         r["time_s"] = r["time_s"] * factor
         r["adjust_pct"] = round((factor - 1) * 100, 1) + 0.0
-        r["predicted_s"] = round(riegel(r["time_s"], r["distance_m"], target, k))
+        r["exponent"] = max(k, VMA_EXPONENT) if r["kind"] == "vma_test" else k
+        r["predicted_s"] = round(riegel(r["time_s"], r["distance_m"], target, r["exponent"]))
     best = min(refs, key=lambda r: r["predicted_s"])
-    time_s = riegel(best["time_s"], best["distance_m"], target, k)
+    time_s = riegel(best["time_s"], best["distance_m"], target, best["exponent"])
     spread = BASE_SPREAD + EXPONENT_SPREAD * abs(math.log(target / best["distance_m"]))
     times = {"optimistic": time_s * math.exp(-spread), "realistic": time_s,
              "prudent": time_s * math.exp(spread)}

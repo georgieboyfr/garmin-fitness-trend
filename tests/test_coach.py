@@ -259,14 +259,15 @@ def test_reference_check_flags_old_or_easy_references():
     assert coach.reference_check({"gpx_id": "abc"}, today, ref, [], (), 178) is None
 
 
-def test_tested_vma_is_a_road_reference_up_to_15_km():
+def test_tested_vma_is_a_road_reference_for_every_distance():
     from app import estimator
     vma = [{"terrain": "road", "kind": "vma_test", "key": 360, "value": 1500.0,
             "date": "2026-11-05T12:00:00", "id": None, "name": "VMA testée", "avg_hr": None}]
     r = estimator.predict_road(vma, date(2026, 11, 5), 10000)
     assert r and r["reference"]["label"] == "VMA testée"
-    assert 44 * 60 < r["realistic_s"] < 46 * 60                  # 15 km/h : environ 44:50 sur 10 km
-    assert estimator.predict_road(vma, date(2026, 11, 5), 21097) is None   # au-delà de 15 km : non
+    assert 46 * 60 < r["realistic_s"] < 47 * 60                  # 15 km/h : environ 86 % de la VMA
+    semi = estimator.predict_road(vma, date(2026, 11, 5), 21097)
+    assert semi and 0.79 < 21.097 / (semi["realistic_s"] / 3600) / 15 < 0.83   # semi : environ 81 %
 
 
 def test_specificity_effect_grows_with_specific_weeks_and_is_bounded():

@@ -214,8 +214,9 @@ class Coach:
     def race_day_proposal(self, race: dict, recorded: dict | None = None) -> dict | None:
         """Objectif proposé : le temps prévu à la fin du plan, pas celui de la forme du jour.
         L'estimation d'aujourd'hui (correction de l'admin comprise), projetée sur la fitness que le
-        plan donne avant la course ; le temps enregistré cette semaine s'il existe (mêmes chiffres
-        que la courbe). today : l'estimation avec la forme du jour, pour comparer."""
+        plan donne avant la course, toujours recalculée (une VMA testée ou une course de la semaine
+        comptent aussitôt ; le temps enregistré le lundi, lui, sert à la courbe). today : l'estimation
+        avec la forme du jour, pour comparer. recorded : ignoré, gardé pour les appels existants."""
         today_est = coach.proposed_target(self.cfg, race, self.today, self.data, self.factors, self.dem)
         if not today_est:
             return None
@@ -225,12 +226,6 @@ class Coach:
         # charge) : seulement pour la course que le plan prépare
         main = self.main_on(self.today)
         effect = coach.specificity_effect(plan, race) if main and main["id"] == race.get("id") else None
-        if recorded and recorded.get("week") == monday_.isoformat():
-            base = {k: recorded[k] for k in ("optimistic_s", "realistic_s", "prudent_s")} | {
-                "today": today_est, "fitness_now": recorded.get("fitness_now"),
-                "fitness_race": recorded.get("fitness_race"),
-                "in_plan": recorded.get("fitness_race") is not None}
-            return coach.with_specificity(base, effect)
         fitness_now = tracked.fitness_on(self.data["acts"], self.today)
         fitness_race = coach.race_fitness_in_plan(plan, race)
         p = coach.projected(today_est, fitness_now, fitness_race, self.slope(self.today)["value"])

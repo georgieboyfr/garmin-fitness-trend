@@ -7,7 +7,8 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 ### Modifié
 - Coach, préparations 5 et 10 km : deux séances de qualité dès 4 jours en développement et en spécifique (une en foncier, en semaine allégée, la dernière semaine de charge et la semaine de course), sortie longue alors en endurance pure ; plus de spécifique ; sortie longue plafonnée (90 min pour 5 km, 100 min pour 10 km) et pas de seconde sortie longue optionnelle ; dernière semaine de charge allégée et footings courts la semaine de course, pour arriver frais.
 - Coach : temps prévu à la fin du plan avec l'effet des séances spécifiques (1 à 3 % selon la durée du spécifique, repère de la littérature), affiché à part du temps « charge seule ».
-- Estimateur : la VMA testée (datée dans l'admin) sert de référence pour les courses jusqu'à 15 km ; sans effort à fond récent, le coach le signale et propose un test demi-Cooper dans le plan.
+- Estimateur : la VMA testée (datée dans l'admin) sert de référence pour toutes les distances, avec une extrapolation prudente (exposant de Riegel 1,08) ; sans effort à fond récent, le coach le signale et propose un test demi-Cooper dans le plan.
+- Coach : temps proposé en fin de plan toujours recalculé (il reprenait celui du lundi, d'avant une nouvelle VMA).
 - Coach : objectif proposé = temps prévu le jour de la course si le plan est suivi (et non plus avec la forme du jour, affichée à côté) ; verdict de ton objectif (trop ambitieux, réaliste, prudent) avec l'écart en % ; en semaine allégée, footing optionnel au lieu d'une seconde sortie longue.
 - Coach : allure seuil jamais plus lente que 85 % de la VMA, pyramide à 92 % de la VMA ; footing optionnel d'une heure au plus.
 
