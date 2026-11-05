@@ -62,6 +62,7 @@ class Coach:
         self._weeks: dict[str, dict | None] = {}
         self._summaries: dict[str, dict] = {}
         self._slopes: dict[date, dict] = {}
+        self._checks: dict = {}
 
     # ---------- plan ----------
 
@@ -70,6 +71,16 @@ class Coach:
         out = physio.physiology(self.data["efforts"], day, self.lthr_est, self.hr_max, self.data["trend"],
                                 self.training.get("vma_kmh"))
         return {**out, "hr": self.hr}
+
+    def reference_check(self, race: dict, day: date | None = None) -> dict | None:
+        """L'estimation de cette course a-t-elle un effort à fond récent ? (coach.reference_check)"""
+        day = day or self.today
+        key = (race.get("id"), day)
+        if key not in self._checks:
+            result = tracked.predict(self.cfg, race, day, self.data, self.dem)
+            self._checks[key] = coach.reference_check(race, day, result, self.data["acts"],
+                                                      self.data.get("confirmed") or (), self.data.get("lthr"))
+        return self._checks[key]
 
     def optional_done(self) -> dict[int, list[str]]:
         """Sorties optionnelles faites, lues dans les bilans des semaines (figés ou calculés) :
@@ -95,8 +106,10 @@ class Coach:
         others = [r for r in cal["upcoming"] if r["id"] != main["id"]] + [
             r for r in cal["past"]
             if (day - date.fromisoformat(r["race_date"])).days <= coach_plan.RECOVERY_LOOKBACK_DAYS]
+        check = self.reference_check(main, day)
         options = {"ramp_pct": self.profile["ramp_pct"], "long_extension": self.profile["long_extension"],
                    "periods": self.profile["periods"], "start": coach.plan_start(main, cal["past"]),
+                   "test_needed": bool(check and check["stale"]),
                    "nuance": self.profile.get("nuance"), "optional_done": self.optional_done(),
                    "adjust": [a for a in adjust if a]}
         plan = coach.plan_for(self.cfg, main, day, self.data, self.availability,

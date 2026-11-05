@@ -274,7 +274,7 @@ def estimateur(request: Request, distance: str = "", gain: str = "", weeks: str 
     conn = db.connect(cfg.db_path)
     try:
         acts = queries.running_activities(conn)
-        efforts = queries.best_efforts(conn)
+        efforts = tracked.with_tested_vma(queries.best_efforts(conn), conn)
         lthr = metrics_job.params_of(cfg, conn)["lthr"]
         confirmed = {i for i, status in queries.race_decisions(conn).items() if status == "confirmed"}
         elevation_params = settings.get(conn, "elevation")
@@ -571,6 +571,7 @@ def coach_page(request: Request, vue: str = ""):
             # objectif proposé : le temps prévu à la fin du plan ; verdict de l'objectif du coureur
             r["proposal"] = co.race_day_proposal(r, r["projection"])
             r["target_verdict"] = coach.target_verdict(r.get("target_s"), r["proposal"])
+            r["reference_check"] = co.reference_check(r)
             r["target_review"] = coach.target_review(r["predictions"], r.get("target_s"),
                                                      r.get("target_kept_week"))
             if r["target_review"]:

@@ -244,3 +244,26 @@ def test_threshold_pace_is_never_slower_than_85_percent_of_vma():
     assert coach._paces(physio)["threshold"] == pytest.approx(240 / 0.85)
     physio = {"threshold_pace": {"pace_s_km": 270.0}, "vma": {"pace_s_km": 240.0}}
     assert coach._paces(physio)["threshold"] == 270.0                     # estimation déjà plus rapide
+
+
+def test_reference_check_flags_old_or_easy_references():
+    today = date(2026, 11, 5)
+    ref = {"reference": {"date": "2026-09-17", "label": "20 min", "activity_id": 1, "name": "x",
+                         "avg_hr": 150}}
+    c = coach.reference_check({"gpx_id": None}, today, ref, [], (), 178)
+    assert c["stale"] and "pas un effort à fond" in c["reasons"][0]
+    ref["reference"]["avg_hr"] = 172
+    assert not coach.reference_check({"gpx_id": None}, today, ref, [], (), 178)["stale"]
+    old = {"reference": {"date": "2026-07-01", "label": "10 km", "activity_id": 2, "avg_hr": 175}}
+    assert coach.reference_check({"gpx_id": None}, today, old, [], (), 178)["stale"]
+    assert coach.reference_check({"gpx_id": "abc"}, today, ref, [], (), 178) is None
+
+
+def test_tested_vma_is_a_road_reference_up_to_15_km():
+    from app import estimator
+    vma = [{"terrain": "road", "kind": "vma_test", "key": 360, "value": 1500.0,
+            "date": "2026-11-05T12:00:00", "id": None, "name": "VMA testée", "avg_hr": None}]
+    r = estimator.predict_road(vma, date(2026, 11, 5), 10000)
+    assert r and r["reference"]["label"] == "VMA testée"
+    assert 44 * 60 < r["realistic_s"] < 46 * 60                  # 15 km/h : environ 44:50 sur 10 km
+    assert estimator.predict_road(vma, date(2026, 11, 5), 21097) is None   # au-delà de 15 km : non

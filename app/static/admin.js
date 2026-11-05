@@ -512,6 +512,7 @@ $("phy-reset").addEventListener("click", (e) =>
 function renderTraining(st) {
   $("training-method").value = st.settings.easy_hr_method;
   $("training-vma").value = st.settings.vma_kmh ?? "";
+  $("training-vma-date").value = st.settings.vma_date ?? "";
   const r = (k) => (st.easy_hr[k] ? `${st.easy_hr[k][0]} à ${st.easy_hr[k][1]}` : "—");
   $("training-note").textContent = `Endurance : ${r("karvonen")} (Karvonen) ou ${r("fcmax")} (% de la FC max), `
     + "avec la FC max et la FC repos ci-dessus.";
@@ -526,8 +527,10 @@ $("training-form").addEventListener("submit", (e) => {
   const vma = $("training-vma").value.trim().replace(",", ".");
   busy(e.submitter, async () => {
     try {
+      const day = $("training-vma-date").value;
       renderTraining(await api("/training", { easy_hr_method: $("training-method").value,
-                                              vma_kmh: vma ? Number(vma) : null }));
+                                              vma_kmh: vma ? Number(vma) : null,
+                                              ...(day ? { vma_date: day } : {}) }));
       showError("training-error", null);
       flash("training-saved", "Enregistré.");
     } catch (err) {

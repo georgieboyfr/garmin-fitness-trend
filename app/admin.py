@@ -322,6 +322,11 @@ def training(request: Request):
 def training_update(values: dict, request: Request):
     conn = db.connect(request.app.state.config.db_path)
     try:
+        current = settings.get(conn, "training")
+        # date du test : celle de la saisie d'une nouvelle VMA, sauf si elle est donnée
+        if ("vma_kmh" in values and "vma_date" not in values
+                and (values["vma_kmh"] != current["vma_kmh"] or not current.get("vma_date"))):
+            values = {**values, "vma_date": datetime.now().date().isoformat() if values["vma_kmh"] else None}
         settings.update(conn, "training", values)
     except ValueError as e:
         raise HTTPException(400, str(e)) from None

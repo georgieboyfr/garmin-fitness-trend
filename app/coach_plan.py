@@ -1188,6 +1188,7 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
     # le plan part de sa semaine de départ (ajout de la course) : semaines passées comptées pour
     # les phases, le cycle et la rotation des séances, mais seules celles à venir sont construites
     short = paces.get("race_kind") in SHORT_KINDS
+    test_needed = bool(options.get("test_needed")) and not is_trail(race)
     weeks = skeleton(today, race_date, race.get("duration_s"), options.get("start"), short)
     this_monday = monday(today)
     adjusts = {a["monday"]: a for a in options.get("adjust") or []}
@@ -1313,6 +1314,13 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
         if any(x["hard"] and x["type"] != "course" for x in built["sessions"]) or w["kind"] != "charge":
             phase_counts[key] = week_in_phase + 1
         built["adjust"] = _adjust_notes(built, adj, w["kind"], capped_by_plan, rates)
+        # estimation sans effort à fond récent : un test demi-Cooper à la place de la première séance
+        # clé possible à partir de la semaine prochaine (semaine de charge, hors dernière semaine et
+        # périodes particulières)
+        if (test_needed and w["kind"] == "charge" and not w.get("pre_taper") and not events
+                and w["monday"] > this_monday            # la semaine en cours, figée le lundi, ne bouge pas
+                and _maintenance_test(built, False, paces, rates, wk.demi_cooper(paces), today.isoformat())):
+            test_needed = False
         built["periods"] = events
         if any(e["kind"] in PERIOD_REST for e in events):
             built["strength_days"] = []
@@ -1588,16 +1596,23 @@ def usual_long(acts, today: date, race_ids=()) -> float | None:
     return round(median(longest.values())) if longest else None
 
 
-def _maintenance_test(built: dict, trail: bool, paces: dict, rates: dict):
-    """Test facultatif à la place de la séance clé (gardée en remplacement)."""
+def _maintenance_test(built: dict, trail: bool, paces: dict, rates: dict, test: dict | None = None,
+                      after: str = "") -> bool:
+    """Test facultatif à la place de la séance clé (gardée en remplacement) : celui du maintien
+    (5 km ou montée connue), ou `test` (demi-Cooper). Retourne s'il a été placé."""
+    placed = False
     for j, s in enumerate(built["sessions"]):
-        if s.get("key") and s["hard"] and s["type"] != "course":
-            t = wk.test_run(trail, paces)
-            built["sessions"][j] = {**s, **t, "key": True, "alt": {k: v for k, v in s.items() if k != "alt"}}
+        if s.get("key") and s["hard"] and s["type"] != "course" and s["date"] >= after:
+            t = test or wk.test_run(trail, paces)
+            main = {k: v for k, v in s.items() if k not in ("alt", "ideal")}
+            built["sessions"][j] = {**s, **t, "key": True, "alt": main, "ideal": None,
+                                    "load": round(session_load(t, rates))}
+            placed = True
             break
     counted = [s for s in built["sessions"] if not s.get("main") and not s.get("optional")]
     built["planned_load"] = round(sum(session_load(s, rates) for s in counted))
     built["minutes"] = sum(s["minutes"] or 0 for s in counted)
+    return placed
 
 
 def build_maintenance(today: date, acts, availability: list[dict], max_sessions: int | None,

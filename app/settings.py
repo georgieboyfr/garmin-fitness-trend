@@ -42,7 +42,7 @@ DEFAULTS = {
     # cibles d'entraînement du coach, réglées dans l'admin : plage de FC de l'endurance (karvonen :
     # 60 à 70 % de la FC de réserve ; fcmax : 65 à 75 % de la FC max) et VMA testée en km/h (None :
     # estimée sur les sorties)
-    "training": {"easy_hr_method": "karvonen", "vma_kmh": None},
+    "training": {"easy_hr_method": "karvonen", "vma_kmh": None, "vma_date": None},
     # notification du bilan du dimanche (ntfy, adresse dans le .env) : heure, et adresse publique
     # de l'application pour le lien de la notification (facultative)
     "notifications": {"review_enabled": True, "review_hour": 19, "public_url": None},
@@ -179,6 +179,12 @@ def _validate_training(values: dict) -> dict:
             if value is not None and bad:
                 raise ValueError("vma_kmh doit être un nombre entre 8 et 30 km/h, ou null")
             value = round(float(value), 1) if value is not None else None
+        elif key == "vma_date":
+            if value is not None:
+                try:
+                    date.fromisoformat(value)
+                except (TypeError, ValueError):
+                    raise ValueError("vma_date doit être une date AAAA-MM-JJ") from None
         else:
             raise ValueError(f"réglage inconnu : {key}")
         out[key] = value

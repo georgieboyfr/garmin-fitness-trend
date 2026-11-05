@@ -252,7 +252,9 @@
       <p class="muted small" id="phy-zones"></p>
       <h3>Cibles du coach</h3>
       <p class="muted small">Plage de FC des séances d'endurance, et VMA des fractionnés (prioritaire sur l'estimation
-        tirée de tes sorties, utile après un test sur piste ou un demi-Cooper).</p>
+        tirée de tes sorties, utile après un test sur piste ou un demi-Cooper : la distance courue en 6 min × 10 donne
+        la VMA en km/h). Datée, elle sert aussi de référence à l'estimateur pour les courses jusqu'à 15 km, pendant
+        4 mois.</p>
       <form id="training-form" class="settings">
         <div class="row">
           <label class="field inline"><span>FC d'endurance</span>
@@ -262,6 +264,8 @@
             </select></label>
           <label class="field inline"><span>VMA testée (km/h)</span>
             <input type="number" id="training-vma" min="8" max="30" step="0.1" placeholder="estimée"></label>
+          <label class="field inline"><span>Date du test</span>
+            <input type="date" id="training-vma-date"></label>
         </div>
         <p class="muted small" id="training-note"></p>
         <p class="error-text" id="training-error" hidden></p>

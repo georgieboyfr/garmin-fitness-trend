@@ -597,6 +597,33 @@ def maintenance_for(cfg, today: date, data: dict, availability: list[dict], max_
                                         data.get("confirmed") or ())
 
 
+MAX_EFFORT_LTHR = 0.95          # effort à fond : FC moyenne d'au moins 95 % de la LTHR
+REF_FRESH_DAYS = 56             # référence de l'estimateur : un effort à fond de moins de 8 semaines
+
+
+def reference_check(race: dict, today: date, result: dict | None, acts, confirmed=(),
+                    lthr: float | None = None) -> dict | None:
+    """L'estimation s'appuie-t-elle sur un effort à fond récent ? Sa référence (route) doit dater de
+    moins de 8 semaines (adaptations et désentraînement en 6 à 8 semaines) et venir d'une course,
+    d'une VMA testée ou d'un effort à fond : FC moyenne d'au moins 95 % de la LTHR sur l'effort (de
+    20 min au semi, un effort à fond se court autour du seuil ou au-dessus). Sinon l'estimation est
+    sans doute prudente : un test demi-Cooper est proposé. None sur un trail."""
+    if not result or race.get("gpx_id") or not result.get("reference"):
+        return None
+    ref = result["reference"]
+    age = (today - date.fromisoformat(ref["date"][:10])).days
+    hr = ref.get("avg_hr")
+    hard = (ref.get("kind") == "vma_test" or ref.get("activity_id") in confirmed
+            or bool(hr and lthr and hr >= MAX_EFFORT_LTHR * lthr))
+    reasons = []
+    if age > REF_FRESH_DAYS:
+        reasons.append(f"elle date de {age // 7} semaines")
+    if not hard:
+        reasons.append("ce n'était pas un effort à fond" + (f" (FC moyenne {round(hr)})" if hr else ""))
+    return {"stale": bool(reasons), "reasons": reasons, "label": ref.get("label"), "date": ref["date"][:10],
+            "name": ref.get("name"), "activity_id": ref.get("activity_id"), "age_days": age}
+
+
 THRESHOLD_VMA_SHARE = 0.85      # allure seuil au plus lent : 85 % de la VMA
 ROAD_DISTANCES = (5000, 10000, 21097.5, 42195)
 READY_SHARE = 2 / 3             # prêt sans préparation : plus longue sortie récente ≥ 2/3 de la course

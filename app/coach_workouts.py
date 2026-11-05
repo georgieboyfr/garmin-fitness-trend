@@ -822,6 +822,26 @@ def test_run(trail: bool, p: dict) -> dict:
     return with_gain(s, p)
 
 
+def demi_cooper(p: dict) -> dict:
+    """Test demi-Cooper : 6 min le plus loin possible sur le plat (piste idéalement), après un
+    échauffement avec quelques accélérations. Distance en mètres / 100 = VMA en km/h (6 min à la
+    VMA, Léger et Mercier). Proposé quand l'estimateur n'a pas d'effort à fond récent."""
+    steps = [_warmup(20, p),
+             step("work", "3 × 20 s en accélération progressive, 1 min au trot entre", 3,
+                  target_info(STRIDE, p)),
+             step("recovery", "2 min au trot, puis départ", 2, target_info(RECOVERY, p)),
+             step("work", "6 min le plus loin possible, régulier, sur le plat (piste idéalement)", 6,
+                  target_info(VO2, p, pace_s=p.get("vma"))),
+             _cooldown(15, p)]
+    s = _session("test", "Test demi-Cooper", steps,
+                 "Ton estimation manque d'un effort à fond récent. Distance parcourue en 6 min (m) / 100 "
+                 "= ta VMA en km/h : saisis-la dans l'admin (Cibles du coach), avec la date. Elle règle les "
+                 "allures des séances et sert de référence à l'estimateur jusqu'au 10 km. Sans envie de "
+                 "test, fais la séance prévue à la place.")
+    s["gain_m"] = 0
+    return s
+
+
 def long_variant(phase: str, kind: str, trail: bool, week_in_phase: int, no_downhill: bool = False) -> str:
     if kind in ("affûtage", "course", "allégée"):
         return "vallonnée" if trail else "classique"

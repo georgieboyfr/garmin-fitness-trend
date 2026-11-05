@@ -64,6 +64,8 @@ EXPONENT_DAYS = 730
 EXPONENT_MIN_RATIO = 3.0       # la frontière doit couvrir au moins un rapport 3 entre distances
 MIN_REF_DISTANCE_M = 3000      # en dessous, effort trop court (part anaérobie)
 MIN_REF_DURATION_S = 1200
+VMA_TEST_S = 360                # VMA testée (demi-Cooper) : 6 min à la VMA, référence courte...
+SHORT_REF_MAX_M = 15000         # ... retenue jusqu'à 15 km seulement (au-delà, extrapolation trop forte)
 REFERENCE_DAYS = 126           # références route cherchées sur 4 mois (choix de Greg), ajustées par la FC
 # Réglages de l'estimateur (fenêtres, exposants, part d'arrêt, ajustement FC) choisis sur les courses
 # de Greg jusqu'à cette date, puis figés : l'erreur mesurée sur ces courses-là est optimiste
@@ -198,14 +200,19 @@ def current_form(acts, efforts, day: date, lthr: float, window_days: int = WINDO
 
 # ---------- route : Riegel à exposant personnel ----------
 
-def road_points(efforts, start: date, end: date) -> list[dict]:
+def road_points(efforts, start: date, end: date, short: bool = False) -> list[dict]:
     """Efforts route utilisables comme référence (distance, temps) : distances d'au moins 3 km et
-    durées d'au moins 20 min, le meilleur de chaque distance et de chaque durée sur la période."""
+    durées d'au moins 20 min, le meilleur de chaque distance et de chaque durée sur la période ;
+    short : aussi la VMA testée (6 min à la VMA, kind « vma_test »), pour une course de 15 km au
+    plus."""
     best = {}
     for e in efforts:
         if e.get("terrain") != "road" or not _in_window(e["date"], start, end):
             continue
-        if e["kind"] == "distance" and e["key"] >= MIN_REF_DISTANCE_M:
+        if e["kind"] == "vma_test" and short:
+            point = {"distance_m": float(e["value"]), "time_s": float(e["key"])}
+            label = "VMA testée"
+        elif e["kind"] == "distance" and e["key"] >= MIN_REF_DISTANCE_M:
             point = {"distance_m": float(e["key"]), "time_s": float(e["value"])}
             label = DISTANCE_LABELS.get(e["key"], f"{e['key'] / 1000:g} km")
         elif e["kind"] == "duration" and e["key"] >= MIN_REF_DURATION_S:
@@ -215,7 +222,7 @@ def road_points(efforts, start: date, end: date) -> list[dict]:
             continue
         k = (e["kind"], e["key"])
         if k not in best or point["time_s"] / point["distance_m"] < best[k]["time_s"] / best[k]["distance_m"]:
-            best[k] = {**point, "kind": e["kind"], "label": label, **_effort(e)}
+            best[k] = {**point, "kind": e["kind"], "label": label, **_effort(e), "avg_hr": e.get("avg_hr")}
     return sorted(best.values(), key=lambda p: p["distance_m"])
 
 
@@ -253,14 +260,15 @@ def predict_road(efforts, day: date, distance_m: float, gain_m: float = 0.0, exp
     et l'ajustement (adjust_pct)."""
     exponent = exponent or STANDARD_EXPONENT
     window = max(window_days, REFERENCE_DAYS)
-    refs = road_points(efforts, day - timedelta(days=window - 1), day)
+    target = equivalent_distance(distance_m, gain_m)
+    short = target <= SHORT_REF_MAX_M
+    refs = road_points(efforts, day - timedelta(days=window - 1), day, short)
     if not refs:
         window = FALLBACK_WINDOW_DAYS
-        refs = road_points(efforts, day - timedelta(days=window - 1), day)
+        refs = road_points(efforts, day - timedelta(days=window - 1), day, short)
     if not refs or distance_m <= 0:
         return None
     k = exponent["value"]
-    target = equivalent_distance(distance_m, gain_m)
     for r in refs:
         factor = trend.ratio(date.fromisoformat(r["date"][:10]), day) if trend else 1.0
         r["raw_time_s"] = r["time_s"]
