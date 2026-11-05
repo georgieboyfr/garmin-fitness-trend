@@ -190,3 +190,18 @@
     send(bilan.dataset.url, body, bilan.querySelector("[role=status]"), "bilan");
   }));
 })();
+
+// blocs repliables mémorisés (le plan en un coup d'œil) : ouvert ou fermé d'une visite à l'autre
+(() => {
+  document.querySelectorAll("details[data-remember]").forEach((d) => {
+    const key = "gft." + d.dataset.remember;
+    try {
+      const saved = localStorage.getItem(key);
+      if (saved !== null) d.open = saved === "1";
+    } catch (e) { /* stockage indisponible : ouvert par défaut */ }
+    d.addEventListener("toggle", () => {
+      try { localStorage.setItem(key, d.open ? "1" : "0"); } catch (e) { /* rien */ }
+      if (d.open) window.dispatchEvent(new Event("resize"));     // graphiques redimensionnés
+    });
+  });
+})();

@@ -26,6 +26,30 @@ HR_WINDOWS_S = {"hr_best_20min": 1200, "hr_best_30min": 1800, "hr_best_60min": 3
 DECOUPLING_MIN_S = 3600
 
 
+def zone_labels(lthr: float, hr_max: float | None) -> list[dict]:
+    """Zones de FC (Friel, en % de la LTHR) avec leurs bornes en battements et en % de la FC max,
+    pour les afficher : « Z2 · 151 à 159 (79 à 84 % FC max) »."""
+    bounds = [round(b * lthr) for b in ZONE_BOUNDS]
+
+    def pct(x):
+        return round(x / hr_max * 100) if hr_max and x else None
+    out = []
+    for i in range(5):
+        low = bounds[i - 1] if i else None
+        high = bounds[i] - 1 if i < 4 else None
+        if low is None:
+            text, share = f"sous {high + 1}", f"sous {pct(high + 1)} %"
+        elif high is None:
+            text, share = f"{low} et plus", f"{pct(low)} % et plus"
+        else:
+            text, share = f"{low} à {high}", f"{pct(low)} à {pct(high)} %"
+        if hr_max:
+            text += f" ({share} FC max)"
+        out.append({"name": f"Z{i + 1}", "low": low, "high": high, "low_pct": pct(low), "high_pct": pct(high),
+                    "label": f"Z{i + 1} · {text}"})
+    return out
+
+
 def _seconds(timestamps) -> np.ndarray:
     t = np.asarray(timestamps, dtype="datetime64[s]").astype(np.int64)
     return (t - t[0]).astype(float) if t.size else t.astype(float)

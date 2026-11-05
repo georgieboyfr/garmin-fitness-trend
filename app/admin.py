@@ -14,7 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
-from . import coach_notify, courses, db, elevation_job, metrics_job, settings, strava, tracked
+from . import coach_notify, coach_workouts, courses, db, elevation_job, metrics_job, settings, strava, tracked
 from .auth import SESSION_COOKIE
 from .garmin_sync import SyncAlreadyRunning
 from .metrics import ZONE_BOUNDS
@@ -299,6 +299,35 @@ def physiology_update(values: dict, request: Request):
     if not request.app.state.garmin_sync.running:
         _start_background(request, kind="recalcul", local_only=True)
     return physiology(request)
+
+
+# ---------- cibles d'entraînement du coach ----------
+
+@protected.get("/training")
+def training(request: Request):
+    """Méthode de la plage de FC d'endurance et VMA testée, avec la plage qui en découle."""
+    cfg = request.app.state.config
+    conn = db.connect(cfg.db_path)
+    try:
+        current = settings.get(conn, "training")
+        p = metrics_job.params_of(cfg, conn)
+    finally:
+        conn.close()
+    return {"settings": current,
+            "easy_hr": {m: coach_workouts.easy_hr(m, p["hr_max"], p["hr_rest"], p["lthr"])
+                        for m in ("karvonen", "fcmax")}}
+
+
+@protected.post("/training")
+def training_update(values: dict, request: Request):
+    conn = db.connect(request.app.state.config.db_path)
+    try:
+        settings.update(conn, "training", values)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    finally:
+        conn.close()
+    return training(request)
 
 
 # ---------- estimateur : calibration ----------

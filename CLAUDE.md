@@ -90,6 +90,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 9. Disponibilités et habitudes (sortie habituelle gardée à sa place avec un rôle selon la phase), deux propositions par séance, bibliothèque de séances, variété des séances et des parcours habituels, indicateur de monotonie (fait le 4 novembre 2026 ; repères à valider, section 10 du brief)
   - [x] 9 bis. Fiche d'une échéance : nom cliquable, lien vers l'estimateur, temps de passage km par km pour un temps au choix (demande de Greg du 4 novembre 2026, fait le même jour)
   - [x] Pré-version v1.0.0-alpha (étapes 1 à 9 bis) pour test sur le Synology avant la fin de la phase (demande de Greg du 4 novembre 2026 ; image `1.0.0-alpha`, pas `latest`)
+  - [x] 9 ter. Retours de Greg sur le plan (liste du 5 novembre 2026, fait le même jour) : optionnelles, FC d'endurance et VMA réglables dans l'admin, retour au calme, sorties longues, charge par séance, renfo, séances selon la course et la phase, programme du jour (section 10 du brief)
   - [ ] 10. Unités au choix (allure, zones de FC, sensation ; durée ou distance), séance de remplacement avec pourcentage de compatibilité et suggestion d'ajustement, bilan de semaine détaillé
   - [ ] 11. Vérification ordinateur et mobile, plan suivi 2 semaines réelles sans intervention, v1.0.0
   - Points à trancher avec Greg au fil des étapes : pondérations et seuils des règles (hausse de charge, durée d'affûtage, compatibilité) ; tranché : onglet « Coach » dans le menu, notification par ntfy (4 novembre 2026)

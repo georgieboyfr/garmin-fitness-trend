@@ -93,7 +93,11 @@
     <header>VMA {{ tip("Vitesse maximale aérobie, estimée par la vitesse de ton meilleur effort de 5 min sur route sur les 12 dernières semaines (6 mois à défaut) : la VMA se tient de 4 à 11 min, 6 en moyenne. Si tu n'as pas couru 5 min à fond sur la période, elle est sous-estimée ; un test (demi-Cooper, 6 min à fond) la précise.") }}</header>
     {% if pv %}
     <div class="kpi-value"><span data-num="{{ pv.kmh }}" data-dec="1"></span><span class="kpi-unit">km/h</span></div>
+    {% if pv.tested %}
+    <footer class="muted"><span data-pace="{{ pv.pace_s_km }}"></span> · testée, saisie dans l'admin{% if pv.estimate %} · estimée sur tes sorties : <span data-num="{{ pv.estimate.kmh }}" data-dec="1"></span> km/h{% endif %}</footer>
+    {% else %}
     <footer class="muted"><span data-pace="{{ pv.pace_s_km }}"></span> · 5 min du <a href="/sorties/{{ pv.activity_id }}"><span data-short-date="{{ pv.date }}"></span></a>{% if pv.fallback %} (6 mois){% endif %}</footer>
+    {% endif %}
     {% else %}<div class="kpi-value">—</div><footer class="muted">aucun effort route de 5 min en 6 mois</footer>{% endif %}
   </article>
   <article class="kpi">
@@ -134,6 +138,7 @@
   <article class="card">
     <h2>Temps par zone de FC {{ tip("Répartition du temps de course par zone de fréquence cardiaque, calées sur la LTHR. En 80/20, environ 80 % du temps est en zones 1 et 2 (endurance fondamentale) ; si tout se fait en zone 3, c'est du « tempo » permanent.") }}</h2>
     <div class="chart chart-small" id="chart-zones" role="img" aria-label="Répartition du temps par zone de FC, par année"></div>
+    <p class="small muted">{% for z in zone_labels %}{{ z.label }}{{ " · " if not loop.last }}{% endfor %}</p>
   </article>
 </section>
 
@@ -160,7 +165,7 @@
   <div class="chart" id="chart-decoupling" role="img" aria-label="Découplage cardiaque des sorties de plus d'une heure"></div>
 </section>
 
-<script type="application/json" id="page-data">{{ {"series": data.series, "peaks": data.peaks, "ef_points": data.ef_points, "ef_monthly": data.ef_monthly, "ef_trend": data.ef_trend, "decoupling": data.decoupling, "zones": data.zones} | tojson }}</script>
+<script type="application/json" id="page-data">{{ {"series": data.series, "peaks": data.peaks, "ef_points": data.ef_points, "ef_monthly": data.ef_monthly, "ef_trend": data.ef_trend, "decoupling": data.decoupling, "zones": data.zones, "zone_labels": zone_labels} | tojson }}</script>
 {% endblock %}
 
 {% block scripts %}

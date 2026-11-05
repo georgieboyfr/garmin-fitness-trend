@@ -187,6 +187,7 @@
   <article class="card">
     <h2>Temps par zone de FC</h2>
     <div class="chart chart-zones" id="chart-zones" role="img" aria-label="Temps passé dans chaque zone de FC"></div>
+    <p class="small muted">{% for z in zone_labels %}{{ z.label }}{{ " · " if not loop.last }}{% endfor %}</p>
     {% if d.bests.distance or d.bests.climb %}
     <h2 class="subhead">Meilleurs efforts dans la sortie {{ tip("Meilleur temps sur chaque distance à l'intérieur de la sortie, et son classement parmi toutes tes sorties de même terrain (route ou trail) : dans l'année de la sortie, puis toutes années confondues. La VAM est classée route et trail confondus.") }}</h2>
     {% macro rank_line(r) -%}
@@ -227,7 +228,7 @@
 </section>
 {% endif %}
 
-<script type="application/json" id="page-data">{{ {"profiles": d.profiles, "zones": d.zones_s, "passages": d.passages, "id": d.id} | tojson }}</script>
+<script type="application/json" id="page-data">{{ {"profiles": d.profiles, "zones": d.zones_s, "zone_labels": zone_labels, "passages": d.passages, "id": d.id} | tojson }}</script>
 {% endblock %}
 
 {% block scripts %}

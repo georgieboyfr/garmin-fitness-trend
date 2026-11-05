@@ -85,7 +85,7 @@ def test_week_puts_long_run_on_longest_day_and_never_two_hard_days_in_a_row():
     assert all(abs(h - 5) > 1 for h in hard)                               # pas à côté de la sortie longue
     assert all(s["minutes"] <= next(d["max_min"] for d in days if d["weekday"] == s["weekday"])
                for s in w["sessions"])
-    assert "FC sous 153" in text(by[5]) and "m de D+" in text(by[5])
+    assert "FC 128 à 144" in text(by[5]) and "m de D+" in text(by[5])
 
 
 def test_hill_sessions_go_on_a_hilly_habit_day_flat_sessions_elsewhere():
@@ -202,9 +202,10 @@ def test_long_runs_finish_steady_every_other_charge_week():
     for i in (1, 2):
         w = cp.build_week({**week(phase="foncier"), "index": i}, days, 220, RATES, RACE, {}, [], 170, 0)
         labels.append(next(s for s in w["sessions"] if s["type"] == "sortie longue"))
-    assert "fin soutenue" not in labels[0]["label"] and "fin soutenue" in labels[1]["label"]
-    finish = labels[1]["steps"][-1]
-    assert finish["kind"] == "work" and "allure soutenue" in finish["text"]
+    assert "soutenu" not in labels[0]["label"] and "bloc soutenu" in labels[1]["label"]
+    block = next(x for x in labels[1]["steps"] if x["kind"] == "work")      # trail : au milieu
+    assert "au milieu" in block["text"] and "allure soutenue" in block["text"]
+    assert labels[1]["steps"][-1]["kind"] == "steady"                       # on revient en endurance
     assert cp.session_load(labels[1], RATES) > labels[1]["minutes"] * RATES["easy"] / 60   # elle charge plus
 
 
@@ -368,15 +369,18 @@ def test_an_optional_day_once_every_three_weeks_enters_the_plan_those_weeks():
     days = cp.chosen_days(a, 4)
     assert [d["weekday"] for d in cp.week_days(days, 3)] == [0, 1, 3, 5]
     assert cp.week_days(days, 3)[-1]["status"] == "oui"
-    assert [d["weekday"] for d in cp.week_days(days, 4)] == [0, 1, 3]
+    assert [(d["weekday"], d["status"]) for d in cp.week_days(days, 4)][-1] == (5, "optionnel")
     acts = [run(TODAY - timedelta(days=i), 60, 90, 0.0) for i in range(1, 200, 2)]
     plan = cp.build_plan({**RACE, "race_date": "2027-05-22", "duration_s": 3 * 3600}, TODAY, acts, a, 4, [],
                          {}, 170)
     by_index = {w["index"]: w for w in plan["weeks"]}
     sat = [i for i, w in by_index.items()
-           if any(s["weekday"] == 5 and s["type"] != "course" for s in w["sessions"])]
+           if any(s["weekday"] == 5 and s["type"] != "course" and not s.get("optional")
+                  for s in w["sessions"])]
     assert sat and all(i % 3 == 0 for i in sat)
-    assert not any(s.get("optional") for w in plan["weeks"] for s in w["sessions"])     # compté, pas en bonus
+    # les autres semaines, le samedi garde une sortie, optionnelle
+    assert all(any(s["weekday"] == 5 and s.get("optional") for s in w["sessions"])
+               for i, w in by_index.items() if i % 3 and w["kind"] != "course")
     longest = max((s for w in plan["weeks"] for s in w["sessions"] if s["type"] == "sortie longue"),
                   key=lambda s: s["minutes"])
     assert longest["weekday"] == 5                                   # la plus longue tombe un weekend libre
@@ -409,7 +413,8 @@ def test_steady_runs_spread_over_weeks_and_quality_sessions_fill_the_day():
     assert len(steady) == 1 and any(x["kind"] == "work" for x in steady[0]["steps"])
     assert cp.session_load(steady[0], rates) > steady[0]["minutes"] * rates["easy"] / 60
     q = next(s for s in w["sessions"] if s["hard"])
-    assert q["steps"][-1]["text"].startswith("puis") and q["minutes"] <= 70     # durée de ses séances
+    assert q["steps"][-1]["kind"] == "cooldown" and q["minutes"] <= 70      # durée de ses séances
+    assert q["steps"][-1]["minutes"] >= 10
 
 
 def test_periods_replace_the_usual_days_with_the_planned_sessions():
@@ -767,3 +772,38 @@ def test_library_lists_every_family_with_the_runner_paces():
     assert len(lib) >= 7 and all(f["sessions"] for f in lib)
     labels = {s["label"] for f in lib for s in f["sessions"]}
     assert {"Fartlek", "Pyramide", "Seuil", "Tempo", "Côtes courtes", "Sortie longue progressive"} <= labels
+
+
+def test_optional_day_done_recently_stays_optional():
+    a = avail((0, "oui", 50), (1, "oui", 60), (3, "oui", 80), (5, "optionnel", 120))
+    a[5]["every"] = 3
+    days = cp.chosen_days(a, 4)
+    monday_ = date(2026, 11, 23)
+    assert cp.week_days(days, 3, monday_, {})[-1]["status"] == "oui"
+    done = {5: ["2026-11-09"]}                                        # faite il y a 2 semaines
+    assert cp.week_days(days, 3, monday_, done)[-1]["status"] == "optionnel"
+    old = {5: ["2026-11-02"]}                                         # il y a 3 semaines : hors fenêtre
+    assert cp.week_days(days, 3, monday_, old)[-1]["status"] == "oui"
+
+
+def test_strength_days_avoid_the_eve_of_hard_sessions_and_long_runs():
+    days = cp.chosen_days(avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 70), (5, "oui", 150)), 4)
+    w = cp.build_week(week(phase="foncier"), days, 220, RATES, RACE, {}, [], 170, 0)
+    heavy = {s["weekday"] for s in w["sessions"] if s["hard"] or s["type"] == "sortie longue"}
+    assert len(w["strength_days"]) == 2
+    assert all(d + 1 not in heavy for d in w["strength_days"])
+    assert all(b - a > 1 for a, b in zip(w["strength_days"], w["strength_days"][1:], strict=False))
+
+
+def test_every_session_has_an_estimated_load():
+    days = cp.chosen_days(avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 70), (5, "oui", 150)), 4)
+    w = cp.build_week(week(phase="foncier"), days, 220, RATES, RACE, {}, [], 170, 0)
+    assert all(s["load"] > 0 for s in w["sessions"])
+    assert all(s["alt"]["load"] > 0 for s in w["sessions"] if s.get("alt"))
+
+
+def test_race_kind_from_distance():
+    assert cp.race_kind({"distance_m": 10000}) == "10k"
+    assert cp.race_kind({"distance_m": 21097}) == "semi"
+    assert cp.race_kind({"distance_m": 42195}) == "marathon"
+    assert cp.race_kind({"distance_m": 24000, "gain_m": 1400}) is None       # trail

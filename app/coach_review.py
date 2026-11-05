@@ -136,6 +136,9 @@ def review(week: dict, plan: dict, end: dict, races: list[dict]) -> dict:
             "planned": planned, "done": done, "lines": lines,
             "key": {"label": key["label"], "status": key["status"], "type": key.get("type")} if key else None,
             "missed": [{"label": s["label"], "day": s["day"]} for s in missed],
+            # jours des sorties optionnelles faites : la règle « une sur n » en tient compte
+            "optional_done": sorted({s["weekday"] for s in week["sessions"]
+                                     if s.get("optional") and s.get("done")}),
             "pending": len(pending),
             "fitness": {"planned": planned_fit, "actual": form["fitness"], "ahead": ahead},
             "form": form, "races": out_races,

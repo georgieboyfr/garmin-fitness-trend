@@ -4,7 +4,7 @@ Coach (phase 4), étape 3 : écran « Cette semaine » (fonctions pures, version
 - La semaine prévue est celle du plan calculé le lundi : elle ne bouge pas au fil des sorties de
   la semaine (seuls un changement de réglages ou de calendrier la recalculent).
 - Séances faites détectées dans les sorties synchronisées, sans rien saisir : chaque sortie est
-  rapprochée de la séance prévue la plus proche, le même jour d'abord, sinon à 2 jours au plus
+  rapprochée de la séance prévue la plus proche, le même jour d'abord, sinon à 1 jour au plus
   (séance déplacée) ; une sortie sans séance proche compte « en plus ».
 - Rôle d'une sortie lu sur son temps par zone de FC (mêmes seuils que le plan) : facile, soutenue
   ou séance dure ; sortie longue si elle dure au moins 80 % de la sortie longue prévue.
@@ -19,7 +19,7 @@ from datetime import date, timedelta
 from .coach_plan import WEEKDAYS, _run_kind
 
 WEEK_VERSION = 1
-MOVE_MAX_DAYS = 2           # séance déplacée : faite au plus 2 jours avant ou après
+MOVE_MAX_DAYS = 1           # séance déplacée : faite au plus 1 jour avant ou après (choix de Greg)
 DAY_COST = 1.5              # rapprochement : un jour d'écart pèse plus qu'un rôle différent
 ROLE_COST = 1.0
 LONG_SHARE_DONE = 0.8       # sortie longue faite : au moins 80 % de la durée prévue
@@ -165,6 +165,37 @@ def key_reason(s: dict, phase: str) -> str:
     return f"La séance qui fait progresser en phase de {phase} : celle à garder si la semaine se complique."
 
 
+WHY = {
+    "footing": "Endurance fondamentale : c'est elle qui construit le moteur. Lent, en aisance respiratoire, "
+               "tu dois pouvoir parler.",
+    "footing vallonné": "Endurance sur terrain varié : le cardio reste bas, les jambes apprennent "
+                        "le dénivelé. "
+                        "Marcher dans les raidillons, c'est voulu.",
+    "footing soutenu": "Un cran au-dessus de l'endurance, sans être une séance : du volume un peu "
+                       "plus riche.",
+    "lignes droites": "Un footing avec quelques accélérations : travail de foulée et de vitesse, "
+                      "sans fatigue.",
+    "sprints en côte": "Un footing avec des sprints très courts en côte : force et puissance, sans fatigue.",
+    "sortie longue": "La sortie qui apprend à durer : régulière, en aisance, la plus importante pour "
+                     "l'endurance.",
+    "test": "Un repère de forme sans dossard, facultatif.",
+}
+
+
+def session_why(s: dict | None, phase: str) -> str:
+    """Pourquoi la séance du jour, en une phrase ; un jour sans séance, pourquoi le repos."""
+    if not s:
+        return "Repos : c'est pendant la récupération que le corps assimile l'entraînement."
+    if s.get("optional"):
+        return ("Sortie optionnelle : en bonus si tu as le temps et l'envie, le plan ne compte pas dessus. "
+                "Tu peux aussi la faire la veille ou le lendemain.")
+    if s.get("key") or s["type"] == "course":
+        return key_reason(s, phase)
+    if s.get("hard"):
+        return "La seconde séance de qualité de la semaine : utile, mais elle saute avant la séance clé."
+    return WHY.get(s["type"], WHY["footing"])
+
+
 def week_view(plan_week: dict, acts, today: date, race_ids=()) -> dict:
     """Écran « Cette semaine » : séances prévues et faites, séance clé et pourquoi, ce qui peut
     sauter, bilan de la semaine en cours (séances, minutes, charge, D+ faits face aux prévus)."""
@@ -184,7 +215,14 @@ def week_view(plan_week: dict, acts, today: date, race_ids=()) -> dict:
         "days": days, "sunday": (monday_ + timedelta(days=6)).isoformat(),
         "version": WEEK_VERSION, "monday": plan_week["monday"], "phase": plan_week["phase"],
         "kind": plan_week["kind"], "sessions": rows, "extra": m["extra"],
-        "today_session": next((s for s in rows if s["date"] == today.isoformat()), None),
+        "today_session": next((s for s in rows if s["date"] == today.isoformat() and not s.get("optional")),
+                              next((s for s in rows if s["date"] == today.isoformat()), None)),
+        "today_why": session_why(next((s for s in rows if s["date"] == today.isoformat()
+                                       and not s.get("optional")),
+                                      next((s for s in rows if s["date"] == today.isoformat()), None)),
+                                 plan_week["phase"]),
+        "today": today.isoformat(), "today_weekday": today.weekday(),
+        "strength_days": plan_week.get("strength_days") or [],
         "key": key, "key_reason": key_reason(key, plan_week["phase"]) if key else None,
         "skip": skippable(rows, today),
         "planned": {"sessions": len(counted), "minutes": plan_week["minutes"],

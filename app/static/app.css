@@ -577,3 +577,8 @@ details.tracked-add > summary { cursor: pointer; font-weight: 600; margin: 12px 
 .coach-bilan-form fieldset { border: 0; padding: 0; margin: 0; }
 .coach-bilan-form legend { font-size: 13px; color: var(--muted); padding: 0; }
 .coach-bilan-form .segmented { margin: 4px 0; }
+.coach-today { margin: 0 0 14px; padding: 12px 14px; border-radius: 10px; background: var(--accent-soft); border-left: 4px solid var(--accent); }
+.coach-today h3 { margin: 0 0 4px; font-size: 1.05em; }
+.coach-today.is-done { border-left-color: var(--good, var(--accent)); }
+.coach-glance > summary { cursor: pointer; list-style: revert; }
+.coach-glance > summary h3 { display: inline; }

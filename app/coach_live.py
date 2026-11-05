@@ -45,7 +45,13 @@ class Coach:
         self.tracked_races = tracked.all_races(conn)
         tracks = queries.track_signatures(conn)
         self.lthr_est = metrics_job.lthr_estimate(conn, today)
-        self.hr_max = metrics_job.params_of(cfg, conn)["hr_max"]
+        params = metrics_job.params_of(cfg, conn)
+        self.hr_max = params["hr_max"]
+        self.training = settings.get(conn, "training")
+        lthr = self.data.get("lthr")
+        self.hr = {"hr_max": self.hr_max, "hr_rest": params["hr_rest"],
+                   "easy_hr": coach_workouts.easy_hr(self.training["easy_hr_method"], self.hr_max,
+                                                     params["hr_rest"], lthr)}
         self.reviews = coach_review.all_reviews(conn)
         self.choices = coach.choices(conn)
         self.cal = coach.calendar(self.races, today)
@@ -59,6 +65,22 @@ class Coach:
 
     # ---------- plan ----------
 
+    def physio(self, day: date) -> dict:
+        """Repères physiologiques du jour (VMA testée de l'admin prioritaire), avec la FC du coureur."""
+        out = physio.physiology(self.data["efforts"], day, self.lthr_est, self.hr_max, self.data["trend"],
+                                self.training.get("vma_kmh"))
+        return {**out, "hr": self.hr}
+
+    def optional_done(self) -> dict[int, list[str]]:
+        """Sorties optionnelles faites, lues dans les bilans des semaines (figés ou calculés) :
+        {jour de la semaine : lundis des semaines où celle de ce jour a été faite}."""
+        out: dict[int, list[str]] = {}
+        summaries = {m: r.get("summary") for m, r in self.reviews.items()} | self._summaries
+        for monday_, summary in summaries.items():
+            for wd in (summary or {}).get("optional_done") or ():
+                out.setdefault(wd, []).append(monday_)
+        return out
+
     def main_on(self, day: date) -> dict | None:
         """Course principale vue de ce jour-là."""
         return coach.calendar(self.races, day)["main"]
@@ -67,8 +89,7 @@ class Coach:
         """Plan vers la course principale vue de ce jour-là ; sans course à venir, maintien de forme."""
         main = main or self.main_on(day)
         cal = coach.calendar(self.races, day)
-        physio_now = physio.physiology(self.data["efforts"], day, self.lthr_est, self.hr_max,
-                                       self.data["trend"])
+        physio_now = self.physio(day)
         if not main:
             return coach_plan.apply_choices(self.maintenance_on(day, cal, physio_now, adjust), self.choices)
         others = [r for r in cal["upcoming"] if r["id"] != main["id"]] + [
@@ -76,7 +97,7 @@ class Coach:
             if (day - date.fromisoformat(r["race_date"])).days <= coach_plan.RECOVERY_LOOKBACK_DAYS]
         options = {"ramp_pct": self.profile["ramp_pct"], "long_extension": self.profile["long_extension"],
                    "periods": self.profile["periods"], "start": coach.plan_start(main, cal["past"]),
-                   "nuance": self.profile.get("nuance"),
+                   "nuance": self.profile.get("nuance"), "optional_done": self.optional_done(),
                    "adjust": [a for a in adjust if a]}
         plan = coach.plan_for(self.cfg, main, day, self.data, self.availability,
                               self.profile["max_sessions"], self.habits, physio_now, options, others)
@@ -89,18 +110,18 @@ class Coach:
                   if (day - date.fromisoformat(r["race_date"])).days <= coach_plan.RECOVERY_LOOKBACK_DAYS]
         options = {"ramp_pct": self.profile["ramp_pct"], "periods": self.profile["periods"],
                    "start": coach.maintenance_start(cal["past"]), "adjust": [a for a in adjust if a],
+                   "optional_done": self.optional_done(),
                    "orientation": self.profile.get("orientation")}
         return coach.maintenance_for(self.cfg, day, self.data, self.availability,
                                      self.profile["max_sessions"], self.habits, physio_now, options, recent)
 
     def library(self) -> list[dict]:
         """Bibliothèque de séances avec les allures, la FC et la vitesse de montée du coureur."""
-        physio_now = physio.physiology(self.data["efforts"], self.today, self.lthr_est, self.hr_max,
-                                       self.data["trend"])
+        physio_now = self.physio(self.today)
         rates = coach_plan.load_rates(self.data["acts"], self.today)
         paces = {**coach._paces(physio_now), "lthr": self.data.get("lthr"), "easy": rates["easy_pace"],
                  "easy_vam": rates["easy_vam"], "race": None}
-        return coach_workouts.library(paces)
+        return coach_workouts.library(paces, rates)
 
     def week_plan(self, monday_: date, depth: int = 0) -> dict | None:
         """Plan calculé le lundi d'une semaine (proposition d'objectif de la veille), réajustement

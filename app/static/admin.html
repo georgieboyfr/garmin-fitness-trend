@@ -250,6 +250,26 @@
         </div>
       </form>
       <p class="muted small" id="phy-zones"></p>
+      <h3>Cibles du coach</h3>
+      <p class="muted small">Plage de FC des séances d'endurance, et VMA des fractionnés (prioritaire sur l'estimation
+        tirée de tes sorties, utile après un test sur piste ou un demi-Cooper).</p>
+      <form id="training-form" class="settings">
+        <div class="row">
+          <label class="field inline"><span>FC d'endurance</span>
+            <select id="training-method">
+              <option value="karvonen">Karvonen : 60 à 70 % de la FC de réserve</option>
+              <option value="fcmax">65 à 75 % de la FC max</option>
+            </select></label>
+          <label class="field inline"><span>VMA testée (km/h)</span>
+            <input type="number" id="training-vma" min="8" max="30" step="0.1" placeholder="estimée"></label>
+        </div>
+        <p class="muted small" id="training-note"></p>
+        <p class="error-text" id="training-error" hidden></p>
+        <div class="row">
+          <button class="btn primary" type="submit">Enregistrer</button>
+          <span class="muted small" id="training-saved" hidden></span>
+        </div>
+      </form>
     </section>
 
     <section class="card">

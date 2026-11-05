@@ -151,9 +151,10 @@
   const totalZones = D.zones.reduce((a, b) => a + b, 0);
   GFT.chart("chart-zones", (t) => ({
     grid: { left: 8, right: 40, top: 4, bottom: 4, containLabel: true },
-    tooltip: { ...t.tooltip, formatter: (p) => `${p.name} : <b>${GFT.duration(p.value)}</b>` },
+    tooltip: { ...t.tooltip, formatter: (p) => `${(D.zone_labels || [])[p.dataIndex]?.label || p.name} : <b>${GFT.duration(p.value)}</b>` },
     xAxis: { type: "value", show: false },
-    yAxis: { type: "category", data: ["Z1", "Z2", "Z3", "Z4", "Z5"], inverse: true, ...t.axis, splitLine: { show: false } },
+    yAxis: { type: "category", inverse: true, ...t.axis, splitLine: { show: false },
+             data: (D.zone_labels || []).length ? D.zone_labels.map((z) => z.label.split(" (")[0]) : ["Z1", "Z2", "Z3", "Z4", "Z5"] },
     series: [{ type: "bar", barMaxWidth: 18,
       data: D.zones.map((v, i) => ({ value: v,
         itemStyle: { color: [t.series[2], t.series[1], t.series[4], t.series[0], t.series[5]][i], borderRadius: 4 } })),

@@ -6,6 +6,7 @@ coureur.
 - VMA : vitesse du meilleur effort de 5 min sur route. La VMA se tient de 4 à 11 min, 6 en
   moyenne (Billat) ; un effort de 5 min à fond en donne donc une bonne estimation. Sous-estimée
   si aucun effort de 5 min n'a été couru à fond sur la période.
+  Une VMA testée (demi-Cooper, piste), saisie dans l'admin, la remplace.
 - VO2max : 3,5 ml/kg/min par km/h de VMA (Léger et Mercier, coût énergétique de la course).
 - FC au seuil : meilleure FC moyenne tenue une heure sur 12 mois (une heure à fond se court au
   seuil), rapportée à la FC max.
@@ -68,7 +69,15 @@ def threshold_hr(lthr_estimate: dict | None, hr_max: float | None) -> dict | Non
             "activity_id": best["activity_id"]}
 
 
-def physiology(efforts, day: date, lthr_estimate: dict | None, hr_max: float | None, trend=None) -> dict:
-    return {"version": PHYSIO_VERSION, "vma": vma(efforts, day),
+def tested_vma(kmh: float, estimate: dict | None) -> dict:
+    """VMA testée, saisie dans l'admin : prioritaire sur l'estimation (gardée pour comparer)."""
+    return {"kmh": round(kmh, 1), "pace_s_km": round(3600 / kmh, 1), "vo2max": round(kmh * VO2_PER_KMH, 1),
+            "tested": True, "estimate": estimate}
+
+
+def physiology(efforts, day: date, lthr_estimate: dict | None, hr_max: float | None, trend=None,
+               vma_kmh: float | None = None) -> dict:
+    estimate = vma(efforts, day)
+    return {"version": PHYSIO_VERSION, "vma": tested_vma(vma_kmh, estimate) if vma_kmh else estimate,
             "threshold_pace": threshold_pace(efforts, day, trend),
             "threshold_hr": threshold_hr(lthr_estimate, hr_max)}

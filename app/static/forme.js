@@ -68,12 +68,13 @@
   }));
 
   // ---------- zones de FC par année ----------
-  const ZONE_NAMES = ["Z1", "Z2", "Z3", "Z4", "Z5"];
+  // zones avec leurs FC et leur % de FC max (légende courte, détail dans l'info-bulle)
+  const ZONE_NAMES = (D.zone_labels || []).length ? D.zone_labels.map((z) => z.label) : ["Z1", "Z2", "Z3", "Z4", "Z5"];
   GFT.chart("chart-zones", (t) => {
     const colors = [t.series[2], t.series[1], t.series[4], t.series[0], t.series[5]];
     return {
       grid: { left: 8, right: 8, top: 32, bottom: 8, containLabel: true },
-      legend: { top: 0, left: 0, itemWidth: 12, textStyle: { color: t.muted } },
+      legend: { top: 0, left: 0, itemWidth: 12, textStyle: { color: t.muted }, formatter: (n) => n.split(" (")[0] },
       tooltip: { trigger: "axis", ...t.tooltip, valueFormatter: (v) => `${GFT.num(v, 0)} %` },
       xAxis: { type: "category", data: D.zones.map((z) => String(z.year)), ...t.axis },
       yAxis: { type: "value", max: 100, ...t.axis, axisLabel: { ...t.axis.axisLabel, formatter: "{value} %" } },

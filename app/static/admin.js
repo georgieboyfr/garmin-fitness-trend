@@ -49,6 +49,7 @@ async function init() {
     refreshSync(true);
     refreshElevation(true);
     refreshPhysiology();
+    refreshTraining();
     refreshRaces();
     refreshCalibration();
     refreshNotifications();
@@ -505,6 +506,35 @@ $("phy-form").addEventListener("submit", (e) => {
 $("phy-use-estimate").addEventListener("click", () => { $("phy-lthr").value = phyEstimate; });
 $("phy-reset").addEventListener("click", (e) =>
   busy(e.currentTarget, () => savePhysiology({ lthr: null, hr_max: null, hr_rest: null })));
+
+// ---------- cibles du coach ----------
+
+function renderTraining(st) {
+  $("training-method").value = st.settings.easy_hr_method;
+  $("training-vma").value = st.settings.vma_kmh ?? "";
+  const r = (k) => (st.easy_hr[k] ? `${st.easy_hr[k][0]} à ${st.easy_hr[k][1]}` : "—");
+  $("training-note").textContent = `Endurance : ${r("karvonen")} (Karvonen) ou ${r("fcmax")} (% de la FC max), `
+    + "avec la FC max et la FC repos ci-dessus.";
+}
+
+async function refreshTraining() {
+  try { renderTraining(await api("/training")); } catch (err) { /* session gérée ailleurs */ }
+}
+
+$("training-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const vma = $("training-vma").value.trim().replace(",", ".");
+  busy(e.submitter, async () => {
+    try {
+      renderTraining(await api("/training", { easy_hr_method: $("training-method").value,
+                                              vma_kmh: vma ? Number(vma) : null }));
+      showError("training-error", null);
+      flash("training-saved", "Enregistré.");
+    } catch (err) {
+      showError("training-error", err);
+    }
+  });
+});
 
 // ---------- calibration de l'estimateur ----------
 

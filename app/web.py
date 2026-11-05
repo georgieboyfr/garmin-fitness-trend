@@ -29,6 +29,7 @@ from . import (
     estimator,
     gpx_store,
     hr_speed,
+    metrics,
     metrics_job,
     physio,
     queries,
@@ -184,11 +185,13 @@ def forme(request: Request):
         lthr = params["lthr"]
         trend = hr_speed.SpeedTrend(queries.steady_blocks(conn), lthr)
         lthr_est = metrics_job.lthr_estimate(conn, today)
+        training = settings.get(conn, "training")
     finally:
         conn.close()
     return render(request, "forme.html", "/forme", data=stats.forme(acts, today, lthr),
-                  physio=physio.physiology(efforts, today, lthr_est, params["hr_max"], trend),
-                  lthr_used=lthr)
+                  physio=physio.physiology(efforts, today, lthr_est, params["hr_max"], trend,
+                                           training.get("vma_kmh")),
+                  lthr_used=lthr, zone_labels=metrics.zone_labels(lthr, params["hr_max"]))
 
 
 @router.get("/sorties/{activity_id}")
@@ -212,7 +215,13 @@ def sortie(request: Request, activity_id: int):
         return HTMLResponse(TEMPLATES.get_template("not_found.html").render(
             version=__version__, asset_version=ASSET_VERSION, nav=[
             (path, label) for path, label, ready in PAGES if ready], active=""), status_code=404)
-    return render(request, "sortie.html", "/sorties", data=data)
+    conn = db.connect(cfg.db_path)
+    try:
+        params = metrics_job.params_of(cfg, conn)
+    finally:
+        conn.close()
+    return render(request, "sortie.html", "/sorties", data=data,
+                  zone_labels=metrics.zone_labels(params["lthr"], params["hr_max"]))
 
 
 
@@ -627,7 +636,7 @@ def coach_page(request: Request, vue: str = ""):
                   default_levels=coach_plan.DEFAULT_LEVEL, effects=effects,
                   orientations=coach_plan.ORIENTATIONS, nuances=coach_plan.NUANCES,
                   habits=co.habits,
-                  priorities=coach.PRIORITIES, gpx_recent=gpx_store.recent(cfg),
+                  priorities=coach.PRIORITIES, gpx_recent=gpx_store.recent(cfg), weekdays=coach_plan.WEEKDAYS,
                   tracked_races=upcoming_tracked,
                   today=today.isoformat())
 

@@ -532,9 +532,11 @@ def race_facts(cfg, race: dict, data: dict) -> dict:
 
 
 def _paces(physio_now: dict) -> dict:
+    """Repères du coureur pour les cibles des séances : allures (seuil, VMA testée ou estimée) et FC
+    (FC max, plage d'endurance), passées par physio_now["hr"]."""
     threshold, vma = physio_now.get("threshold_pace"), physio_now.get("vma")
     return {"threshold": threshold["pace_s_km"] if threshold else None,
-            "vma": vma["pace_s_km"] if vma else None}
+            "vma": vma["pace_s_km"] if vma else None, **(physio_now.get("hr") or {})}
 
 
 def _kept_habits(habits: list[dict]) -> list[dict]:
@@ -607,7 +609,8 @@ def plan_for(cfg, race: dict, today: date, data: dict, availability: list[dict],
     trail_race = coach_plan.is_trail({**race, "distance_m": distance, "gain_m": gain})
     # allure moyenne de course : sans objet en trail, où le dénivelé la fausse
     paces = {**_paces(physio_now),
-             "race": duration / distance * 1000 if duration and distance and not trail_race else None}
+             "race": duration / distance * 1000 if duration and distance and not trail_race else None,
+             "race_kind": coach_plan.race_kind({**race, "distance_m": distance, "gain_m": gain})}
     kept = _kept_habits(habits)
     side = [race_facts(cfg, r, data) for r in others or []]
     return coach_plan.build_plan(full, today, data["acts"], availability, max_sessions, kept, paces,

@@ -2,32 +2,38 @@
 {% from "_estimateur.html" import tip, chrono_text with context %}
 {% block title %}Coach · Fitness Trend{% endblock %}
 
+{% macro intensity_title(i) %}{% if i.hr_max_pct and i.hr_max_pct[0] and i.hr_max_pct[1] %}{{ i.hr_max_pct[0] }} à {{ i.hr_max_pct[1] }} % de la FC max{% elif i.hr_max_pct and i.hr_max_pct[1] %}sous {{ i.hr_max_pct[1] }} % de la FC max{% elif i.hr_max_pct and i.hr_max_pct[0] %}au-dessus de {{ i.hr_max_pct[0] }} % de la FC max{% endif %}{% if i.vma_pct %}{{ " · " if i.hr_max_pct }}{{ i.vma_pct }} % de la VMA{% endif %}{% endmacro %}
+
+{% macro target_span(st) %}{% if st.target %} <span class="muted"{% if st.intensity %} title="{{ intensity_title(st.intensity) }}"{% endif %}>— {{ st.target }}</span>{% endif %}{% endmacro %}
+
 {% macro session_body(x, show_alt=true) %}
 {% if x.steps and x.steps | length == 1 %}
-<div class="small">{% set t0 = x.steps[0].text | replace(x.minutes ~ " min en ", "") %}{{ t0[:1] | upper }}{{ t0[1:] }}{% if x.steps[0].target %} <span class="muted">— {{ x.steps[0].target }}</span>{% endif %}</div>
+<div class="small">{% set t0 = x.steps[0].text | replace(x.minutes ~ " min en ", "") %}{{ t0[:1] | upper }}{{ t0[1:] }}{{ target_span(x.steps[0]) }}</div>
 {% elif x.steps %}
 <ol class="coach-steps small">
-  {% for st in x.steps %}<li class="step-{{ st.kind }}"><span>{{ st.text }}</span>{% if st.target %} <span class="muted">— {{ st.target }}</span>{% endif %}</li>{% endfor %}
+  {% for st in x.steps %}<li class="step-{{ st.kind }}"><span>{{ st.text }}</span>{{ target_span(st) }}</li>{% endfor %}
 </ol>
 {% endif %}
 {% if x.description %}<div class="small muted">{{ x.description }}</div>{% endif %}
 {% if x.route %}{% set r = x.route %}<div class="small coach-route-tip">Parcours proposé {{ tip("Un de tes parcours habituels (couru au moins 3 fois dans l'année), de durée proche, plat ou vallonné comme la séance ; le moins récemment couru d'abord, pour varier. Une idée, pas une obligation.") }} : <a href="/sorties/{{ r.activity_id }}">{{ r.name or "parcours" }}</a> · {{ r.distance_km | string | replace(".", ",") }} km{% if r.gain_m %} · D+ {{ r.gain_m }} m{% endif %} · {{ r.minutes }} min d'habitude, dernière fois le <span data-short-date="{{ r.last }}"></span></div>{% endif %}
-{% if show_alt and x.alt %}<div class="small">{{ "Proposition du coach" if x.chosen else "Ou, même rôle" }} : <b>{{ x.alt.label }}</b>{% if x.alt.minutes %} · {{ x.alt.minutes }} min{% endif %}{% if x.chosen %} <span class="pill priority-C">ton choix</span>{% endif %}</div>{% endif %}
+{% if show_alt and x.alt %}<div class="small">{{ "Proposition du coach" if x.chosen else "Ou, même rôle" }} : <b>{{ x.alt.label }}</b>{% if x.alt.minutes %} · {{ x.alt.minutes }} min{% endif %}{% if x.alt.load %} · charge ≈ {{ x.alt.load }}{% endif %}{% if x.chosen %} <span class="pill priority-C">ton choix</span>{% endif %}</div>{% endif %}
 {% endmacro %}
 
 {% macro choice_line(x) %}
-{% if x.alt and x.status in ("à venir", "aujourd'hui") %}
+{% if x.alt and ((x.status in ("à venir", "aujourd'hui")) if x.status is defined else x.date >= today) %}
 <details class="coach-alt small">
-  <summary>{% if x.chosen %}Ton choix · proposition du coach : <b>{{ x.alt.label }}</b>{% else %}Autre proposition, même rôle : <b>{{ x.alt.label }}</b>{% endif %}{% if x.alt.minutes %} · {{ x.alt.minutes }} min{% endif %}</summary>
+  <summary>{% if x.chosen %}Ton choix · proposition du coach : <b>{{ x.alt.label }}</b>{% else %}Autre proposition, même rôle : <b>{{ x.alt.label }}</b>{% endif %}{% if x.alt.minutes %} · {{ x.alt.minutes }} min{% endif %}{% if x.alt.load %} · charge ≈ {{ x.alt.load }}{% endif %}</summary>
   {{ session_body(x.alt, false) }}
   <div class="aid-actions"><button class="btn-ghost" type="button" data-choice="{{ x.date }}" data-label="{{ '' if x.chosen else x.label }}">{{ "Revenir à la proposition du coach" if x.chosen else "Choisir celle-ci" }}</button><span class="small muted" role="status"></span></div>
 </details>
 {% endif %}
 {% endmacro %}
 
-{% macro done_line(d, extra=false) %}
-<div class="small coach-done"><a href="/sorties/{{ d.id }}">{{ "En plus : " if extra }}{{ d.name or "Sortie" }}</a> · {{ d.minutes }} min · {{ d.distance_km | string | replace(".", ",") }} km{% if d.gain_m %} · D+ {{ d.gain_m }} m{% endif %} · {{ d.role_label }}{% if d.load %} · charge {{ d.load }}{% endif %}</div>
+{% macro done_line(d, extra=false, planned=none) %}
+<div class="small coach-done"><a href="/sorties/{{ d.id }}">{{ "En plus : " if extra }}{{ d.name or "Sortie" }}</a> · {{ d.minutes }} min{% if planned and planned.minutes %} <span class="muted">(prévu {{ planned.minutes }})</span>{% endif %} · {{ d.distance_km | string | replace(".", ",") }} km{% if d.gain_m %} · D+ {{ d.gain_m }} m{% endif %} · {{ d.role_label }}{% if d.load %} · charge {{ d.load }}{% endif %}{% if planned and planned.load %} <span class="muted">(prévue ≈ {{ planned.load }})</span>{% endif %}</div>
 {% endmacro %}
+
+{% macro strength_text(w) %}{{ w.strength }} × 15 à 20 min{% if w.strength_days %}, {% for d in w.strength_days %}{{ weekdays[d] }}{{ " et " if loop.revindex == 2 else ", " if not loop.last }}{% endfor %}{% endif %}{% endmacro %}
 
 {% macro countdown(r) %}{% if r.days_left == 0 %}aujourd'hui{% elif r.days_left == 1 %}demain{% elif r.days_left < 14 %}dans {{ r.days_left }} jours{% else %}dans {{ r.weeks_left }} semaines{% endif %}{% endmacro %}
 
@@ -120,15 +126,15 @@
       </summary>
       {% for n in w.adjust %}<p class="small notice coach-event">{{ n.text }}</p>{% endfor %}
       {% for e in w.periods %}{{ period_line(e) }}{% endfor %}
-      {% if w.strength %}<p class="small muted coach-event">Renforcement {{ tip("Hors course à pied, non compté dans la charge. 2 à 3 séances par semaine pendant 8 à 12 semaines améliorent l'économie de course (méta-analyse de Balsalobre-Fernández, 2016) ; une séance d'entretien ensuite. Jamais la veille d'une séance clé ou d'une course.") }} : {{ w.strength }} × 20 à 30 min (squats, fentes, mollets, gainage{% if plan.trail %}, descentes de marche et squats lents pour l'excentrique{% else %}, sauts{% endif %}), un jour sans séance dure.</p>{% endif %}
+      {% if w.strength %}<p class="small muted coach-event">Renforcement {{ tip("Hors course à pied, non compté dans la charge. 2 à 3 séances par semaine pendant 8 à 12 semaines améliorent l'économie de course (méta-analyse de Balsalobre-Fernández, 2016) ; une séance d'entretien ensuite. Le jour proposé : un jour de footing (le plus court) ou de séance dure, « dur les jours durs », jamais la veille d'une séance dure, d'une sortie longue ou d'une course.") }} : {{ strength_text(w) }} (squats, fentes, mollets, gainage{% if plan.trail %}, descentes de marche et squats lents pour l'excentrique{% else %}, sauts{% endif %}).</p>{% endif %}
       {% for e in w.events %}<p class="small muted coach-event">Récupération de {{ e.name }} jusqu'au <span data-short-date="{{ e.until }}"></span> : ni séance dure ni sortie longue, charge réduite.</p>{% endfor %}
       <ul class="coach-sessions-list">
         {% for x in w.sessions %}
         <li class="{{ 'muted' if x.date < today }}">
           <span class="coach-day">{{ x.day }} <span class="muted small" data-short-date="{{ x.date }}"></span></span>
           <div>
-            <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{{ session_pills(x) }}{% if x.date < today %} <span class="small">· passé</span>{% endif %}
-            {{ session_body(x) }}
+            <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{% if x.load %} <span class="muted small">· charge ≈ {{ x.load }}</span>{% endif %}{{ session_pills(x) }}{% if x.date < today %} <span class="small">· passé</span>{% endif %}
+            {{ session_body(x, false) }}{{ choice_line(x) }}
           </div>
         </li>
         {% endfor %}
@@ -170,8 +176,7 @@
 {% block content %}
 {% set cal = calendar %}
 <section class="hero">
-  <h1>Coach</h1>
-  <p class="muted">Démarrage en 5 minutes : tes courses à venir, et si tu veux tes disponibilités et tes habitudes. Rien d'autre n'est obligatoire : sans réponse, le coach part de tes 12 dernières semaines.</p>
+  <h1>Coach {{ tip("Démarrage en 5 minutes : tes courses à venir, et si tu veux tes disponibilités et tes habitudes. Rien d'autre n'est obligatoire : sans réponse, le coach part de tes 12 dernières semaines.") }}</h1>
 </section>
 
 <nav class="segmented coach-tabs" aria-label="Sections du coach">
@@ -208,6 +213,14 @@
 
   {% for r in week_races %}{{ race_day(r) }}{% endfor %}
 
+  {% set t = w.today_session %}
+  <section class="coach-today{% if t and t.status == 'faite' %} is-done{% endif %}" id="aujourdhui">
+    <h3>Aujourd'hui{% if t %} : {{ t.label }}{% if t.minutes %} · {{ t.minutes }} min{% endif %}{% if t.load and not t.done %} <span class="muted small">· charge ≈ {{ t.load }}</span>{% endif %}{{ session_pills(t) }}{% if t.status == "faite" %} <span class="state-good strong">· faite ✓</span>{% endif %}{% else %} : repos{% endif %}</h3>
+    <p class="small">{{ w.today_why }}</p>
+    {% if t %}{% if t.done %}{{ done_line(t.done, false, t) }}{% else %}{{ session_body(t, false) }}{{ choice_line(t) }}{% endif %}{% endif %}
+    {% if w.today_weekday in w.strength_days %}<p class="small muted">Et 15 à 20 min de renforcement aujourd'hui.</p>{% endif %}
+  </section>
+
   <section class="kpis coach-kpis">
     <article class="kpi"><header>Séances faites</header>
       <div class="kpi-value">{{ w.done.sessions }} / {{ w.planned.sessions }}</div>
@@ -242,9 +255,9 @@
       <div>
         {% for x in d.sessions %}
         <div class="coach-day-session status-{{ {"faite": "done", "à venir": "next", "aujourd'hui": "today", "passée": "past"}[x.status] }}">
-          <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{{ session_pills(x) }}
+          <b>{{ x.label }}</b>{% if x.minutes %} · {{ x.minutes }} min{% endif %}{% if x.load and not x.done %} <span class="muted small">· charge ≈ {{ x.load }}</span>{% endif %}{{ session_pills(x) }}
           {% if x.status == "faite" %}<span class="state-good strong"> · faite ✓</span>{% elif x.status == "passée" %}<span class="muted small"> · pas faite, pas de rattrapage</span>{% endif %}
-          {% if x.done %}{{ done_line(x.done) }}{% if x.note %}<div class="small muted">{{ x.note[:1] | upper }}{{ x.note[1:] }}.</div>{% endif %}
+          {% if x.done %}{{ done_line(x.done, false, x) }}{% if x.note %}<div class="small muted">{{ x.note[:1] | upper }}{{ x.note[1:] }}.</div>{% endif %}
           {% elif x.status != "passée" %}{{ session_body(x, false) }}{{ choice_line(x) }}{% endif %}
         </div>
         {% endfor %}
@@ -254,7 +267,7 @@
     </li>
     {% endfor %}
   </ul>
-  {% if w.strength %}<p class="small muted">Renforcement : {{ w.strength }} × 20 à 30 min cette semaine, un jour sans séance dure.</p>{% endif %}
+  {% if w.strength %}<p class="small muted">Renforcement {{ tip("Hors course à pied, non compté dans la charge. Jamais la veille d'une séance dure, d'une sortie longue ou d'une course.") }} : {{ strength_text(w) }}.</p>{% endif %}
   {% if monotony %}{% set mo = monotony %}
   <p class="small {{ 'notice' if mo.high_last or mo.high_planned else 'muted' }}">Monotonie {{ tip("Indicateur de Foster : la charge moyenne des 7 jours divisée par son écart-type, repos compris. Il monte quand tous les jours se ressemblent (même sortie, même charge, pas de jour vraiment facile ni de repos), ce qui est associé aux maladies et à la lassitude au-delà d'un seuil propre à chacun. Le coach te compare à toi-même : alerte au-delà de ta borne haute (Q3 + 1,5 × l'écart interquartile de tes semaines courues de l'année).") }} : {% if mo.last is not none %}semaine dernière {{ mo.last | string | replace(".", ",") }}{% endif %}{% if mo.planned is not none %}{{ " · " if mo.last is not none }}cette semaine prévue {{ mo.planned | string | replace(".", ",") }}{% endif %} · tes semaines habituelles {{ mo.usual[0] | string | replace(".", ",") }} à {{ mo.usual[1] | string | replace(".", ",") }}.{% if mo.high_last %} Tes jours se ressemblaient beaucoup la semaine dernière : alterne franchement facile et dur, ou garde un vrai jour de repos.{% elif mo.high_planned %} La semaine prévue est très uniforme : n'hésite pas à choisir l'autre proposition d'une séance pour varier.{% endif %}</p>
   {% endif %}
@@ -303,7 +316,7 @@
       <span class="pill priority-{{ r.priority }}">{{ r.priority }}</span>
       <div>
         <b><a href="/coach/courses/{{ r.id }}">{{ r.name }}</a></b> · <span data-short-date="{{ r.race_date }}"></span> · {% if r.days_left == 0 %}aujourd'hui{% elif r.days_left < 14 %}dans {{ r.days_left }} jours{% else %}dans {{ r.weeks_left }} semaines{% endif %}
-        <div class="muted small">{{ r.route }} · {{ predicted(r) }}{% if r.target_s %} · objectif <b data-chrono="{{ r.target_s }}"></b>{% else %} · objectif <a href="?vue=echeances">à fixer</a>{% endif %} · {% if r is sameas main %}le plan est construit pour elle{% elif r.priority == "B" %}mini-affûtage, puis récupération{% else %}courue comme une grosse séance{% endif %}</div>
+        <div class="muted small">{{ predicted(r) }}{% if r.target_s %} · objectif <b data-chrono="{{ r.target_s }}"></b>{% else %} · objectif <a href="?vue=echeances">à fixer</a>{% endif %} · {% if r is sameas main %}le plan est construit pour elle{% elif r.priority == "B" %}mini-affûtage, puis récupération{% else %}courue comme une grosse séance{% endif %}</div>
       </div>
     </li>
     {% endfor %}
@@ -311,7 +324,8 @@
   {% if plan.nuance_warning %}<p class="small notice">{{ plan.nuance_warning }} {{ tip("Ta nuance reste appliquée : le coach le dit une fois, c'est toi qui choisis. Elle se change dans Disponibilités et habitudes, Ton plan.") }}</p>{% elif plan.options.nuance %}<p class="small muted">Nuance : {{ nuances[plan.options.nuance] | lower }}, appliquée une semaine de charge sur deux.</p>{% endif %}
   {% set c = plan.continue %}
   {% set week_load = plan.weeks | selectattr("kind", "equalto", "charge") | map(attribute="planned_load") | max if plan.weeks | selectattr("kind", "equalto", "charge") | list else none %}
-  <h3 class="coach-glance-title">Le plan en un coup d'œil {{ tip("Comparé à « sans plan » : tu continues avec ta charge moyenne d'une période passée aussi longue que le plan (12 à 52 semaines), sans affûtage. Même modèle que la page Forme (fitness sur 6 semaines, fatigue sur une semaine), mêmes chiffres de départ.") }}</h3>
+  <details class="coach-glance" data-remember="coach-glance" open>
+  <summary><h3 class="coach-glance-title">Le plan en un coup d'œil {{ tip("Comparé à « sans plan » : tu continues avec ta charge moyenne d'une période passée aussi longue que le plan (12 à 52 semaines), sans affûtage. Même modèle que la page Forme (fitness sur 6 semaines, fatigue sur une semaine), mêmes chiffres de départ.") }}</h3></summary>
   <section class="kpis coach-kpis">
     <article class="kpi state-{{ 'good' if plan.race_form_zone in ('fresh', 'transition') else 'warn' }}"><header>Fraîcheur le jour J {{ tip("La fraîcheur (fitness moins fatigue, comme sur la page Forme), rapportée à ta fitness pour valoir quel que soit ton volume : de 5 à 25 %, frais et prêt pour une course. C'est elle qui fait la performance du jour : l'affûtage échange un peu de fitness contre beaucoup de fraîcheur.") }}</header>
       <div class="kpi-value">{{ plan.race_form_pct }} %</div>
@@ -343,6 +357,7 @@
   {% endif %}
   <div class="chart chart-small" id="chart-plan" role="img" aria-label="Fitness et fraîcheur jusqu'à la course, avec et sans le plan"></div>
   <script type="application/json" id="plan-series">{{ plan.series | tojson }}</script>
+  </details>
   {% if plan.capacity_limited %}
   <p class="small notice">Tes disponibilités limitent la charge : {{ plan.capacity_min }} min par semaine sur tes {{ plan.days | length }} jours retenus, de quoi tenir une fitness d'environ {{ plan.capacity_fitness | string | replace(".", ",") }}. Pour progresser davantage, allonge un jour ou ajoute une séance.</p>
   {% endif %}

@@ -39,6 +39,10 @@ DEFAULTS = {
               # orientation sans course (coach_plan.ORIENTATIONS, None : maintien) et nuance d'une
               # préparation (coach_plan.NUANCES), vérifiées par coach.clean_profile
               "orientation": None, "nuance": None},
+    # cibles d'entraînement du coach, réglées dans l'admin : plage de FC de l'endurance (karvonen :
+    # 60 à 70 % de la FC de réserve ; fcmax : 65 à 75 % de la FC max) et VMA testée en km/h (None :
+    # estimée sur les sorties)
+    "training": {"easy_hr_method": "karvonen", "vma_kmh": None},
     # notification du bilan du dimanche (ntfy, adresse dans le .env) : heure, et adresse publique
     # de l'application pour le lien de la notification (facultative)
     "notifications": {"review_enabled": True, "review_hour": 19, "public_url": None},
@@ -164,6 +168,23 @@ def _validate_coach(values: dict) -> dict:
     return out
 
 
+def _validate_training(values: dict) -> dict:
+    out = {}
+    for key, value in values.items():
+        if key == "easy_hr_method":
+            if value not in ("karvonen", "fcmax"):
+                raise ValueError("easy_hr_method doit valoir karvonen ou fcmax")
+        elif key == "vma_kmh":
+            bad = isinstance(value, bool) or not isinstance(value, int | float) or not 8 <= value <= 30
+            if value is not None and bad:
+                raise ValueError("vma_kmh doit être un nombre entre 8 et 30 km/h, ou null")
+            value = round(float(value), 1) if value is not None else None
+        else:
+            raise ValueError(f"réglage inconnu : {key}")
+        out[key] = value
+    return out
+
+
 def _validate_notifications(values: dict) -> dict:
     out = {}
     for key, value in values.items():
@@ -188,7 +209,7 @@ VALIDATORS = {"notifications": _validate_notifications,
               "garmin_sync": _validate_garmin_sync, "coach": _validate_coach,
               "elevation": _validate_elevation,
               "races": _validate_races, "estimator": _validate_estimator,
-              "physiology": _validate_physiology}
+              "physiology": _validate_physiology, "training": _validate_training}
 
 
 def get(conn, group: str) -> dict:
