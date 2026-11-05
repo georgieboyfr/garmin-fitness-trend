@@ -582,3 +582,4 @@ details.tracked-add > summary { cursor: pointer; font-weight: 600; margin: 12px 
 .coach-today.is-done { border-left-color: var(--good, var(--accent)); }
 .coach-glance > summary { cursor: pointer; list-style: revert; }
 .coach-glance > summary h3 { display: inline; }
+.coach-units { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 12px; }

@@ -807,3 +807,22 @@ def test_race_kind_from_distance():
     assert cp.race_kind({"distance_m": 21097}) == "semi"
     assert cp.race_kind({"distance_m": 42195}) == "marathon"
     assert cp.race_kind({"distance_m": 24000, "gain_m": 1400}) is None       # trail
+
+
+def test_truncated_quality_session_offers_the_ideal_one_and_it_can_be_chosen():
+    days = cp.chosen_days(avail((0, "oui", 50), (1, "oui", 50), (3, "oui", 50), (5, "oui", 150)), 4)
+    w = cp.build_week(week(phase="développement"), days, 200, RATES, RACE, {"threshold": 298}, [], 170, 6)
+    q = next(s for s in w["sessions"] if s["hard"])
+    assert q["minutes"] <= 50 and q.get("ideal") and q["ideal"]["minutes"] > 50
+    assert q["ideal"]["load"] > 0 and "en entier" in q["ideal"]["description"]
+    plan = {"weeks": [w], "rates": RATES}
+    cp.apply_choices(plan, {q["date"]: cp.IDEAL_CHOICE + q["label"]})
+    chosen = next(s for s in w["sessions"] if s["date"] == q["date"])
+    assert chosen["chosen"] == "ideal" and chosen["minutes"] == q["ideal"]["minutes"]
+    assert chosen["alt"]["label"] == q["label"]                     # retour possible à la proposition
+
+
+def test_session_fitting_the_day_has_no_ideal():
+    days = cp.chosen_days(avail((0, "oui", 120), (1, "oui", 120), (3, "oui", 120), (5, "oui", 150)), 4)
+    w = cp.build_week(week(phase="développement"), days, 300, RATES, RACE, {"threshold": 298}, [], 170, 0)
+    assert not any(s.get("ideal") for s in w["sessions"])

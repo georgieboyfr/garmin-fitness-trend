@@ -137,13 +137,17 @@ def target_info(intensity: dict, p: dict | float | None, pace: str = "", pace_s:
     if not isinstance(p, dict):
         p = {"lthr": p}
     if pace_s and not pace:
-        pace = pace_band(pace_s, band)
+        pace = pace_band(pace_s, band) if band else f"≈ {pace_text(pace_s)} /km"
     parts = [pace] if pace else []
     hr = hr_range(intensity, p)
     info = {"key": intensity["key"], "rpe": intensity["rpe"], "feel": intensity["feel"]}
+    if pace:
+        info["pace_text"] = pace
     if hr:
         low, high = hr
         info["hr"] = [low, high]
+        if p.get("lthr"):
+            info["zone"] = zone_text(low, high, p["lthr"])
         if low and high:
             parts.append(f"FC {low} à {high}")
         elif high:
@@ -159,6 +163,18 @@ def target_info(intensity: dict, p: dict | float | None, pace: str = "", pace_s:
     parts.append(f"effort {intensity['rpe']}/10, {intensity['feel']}")
     info["text"] = " · ".join(parts)
     return info
+
+
+ZONE_BOUNDS = (0.85, 0.90, 0.95, 1.00)   # zones de Friel, en part de la LTHR (comme metrics)
+
+
+def zone_text(low: int | None, high: int | None, lthr: float) -> str:
+    """Zone (ou plage de zones) de Friel d'une plage de FC : « Z1 », « Z2 à Z3 », « Z5 »."""
+    def zone(bpm: float) -> int:
+        return 1 + sum(bpm >= b * lthr for b in ZONE_BOUNDS)
+    first = zone(low) if low else 1
+    last = zone(high) if high else 5
+    return f"Z{first}" if first == last else f"Z{first} à Z{last}"
 
 
 def step(kind: str, text: str, minutes: float, cible: str | dict = "") -> dict:
@@ -184,8 +200,9 @@ def _cooldown(minutes: float, p: dict) -> dict:
                 target_info(EASY, p))
 
 
-def _easy_pace(p: dict, km: bool = True) -> str:
-    return f"≈ {pace_text(p.get('easy'))} /km" if p.get("easy") and km else ""
+def _easy_s(p: dict, km: bool = True) -> float | None:
+    """Allure habituelle en endurance, sur le plat (sinon pas d'allure : l'effort guide)."""
+    return p.get("easy") if km else None
 
 
 def resize(s: dict, extra: float, p: dict) -> dict:
@@ -290,7 +307,7 @@ def strides(total_min: float, p: dict) -> dict:
     """Footing et lignes droites d'environ total_min : le footing, 8 accélérations, le retour au calme."""
     base_min = max(15, round5(total_min - 20))
     steps = [step("steady", f"{_minutes(base_min)} en endurance", base_min,
-                  target_info(EASY, p, _easy_pace(p))),
+                  target_info(EASY, p, pace_s=_easy_s(p), band=0)),
              step("work", "8 × 20 s en accélération progressive, jamais à fond", 8 * 20 / 60,
                   target_info(STRIDE, p)),
              step("recovery", "récupération 1 min au trot ou en marchant entre les accélérations", 7,
@@ -378,7 +395,7 @@ def easy_steps(minutes: float, p: dict, km: bool = True) -> list[dict]:
     pace = p.get("easy")
     dist = f", environ {round(minutes * 60 / pace)} km sur le plat" if km and pace else ""
     return [step("steady", f"{_minutes(minutes)} en endurance fondamentale{dist}", minutes,
-                 target_info(EASY, p, _easy_pace(p, km)))]
+                 target_info(EASY, p, pace_s=_easy_s(p, km), band=0))]
 
 
 def fit(make, level: int, day_max: float) -> dict:
@@ -551,13 +568,13 @@ def _variations(minutes: float, p: dict) -> list[dict]:
     work = (target_info(RACE_ROAD, p, pace_s=p["race"], band=0.01) if race else target_info(STEADY, p))
     dist = f", environ {round(first * 60 / p['easy'])} km" if p.get("easy") else ""
     steps = [step("steady", f"{_minutes(first)} en endurance{dist}", first,
-                  target_info(EASY, p, _easy_pace(p))),
+                  target_info(EASY, p, pace_s=_easy_s(p), band=0)),
              step("work", f"{reps} × 6 min {what}", reps * 6, work),
              step("recovery", "4 min en endurance entre les blocs, sans s'arrêter", (reps - 1) * 4,
                   target_info(EASY, p))]
     if rest >= 5:
         steps.append(step("steady", f"{_minutes(rest)} en endurance", rest,
-                          target_info(EASY, p, _easy_pace(p))))
+                          target_info(EASY, p, pace_s=_easy_s(p), band=0)))
     steps.append(_cooldown(cool(), p))
     return steps
 

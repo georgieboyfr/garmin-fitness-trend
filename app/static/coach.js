@@ -205,3 +205,38 @@
     });
   });
 })();
+
+// unité des cibles (allure, FC, % FC max, % VMA, zone, sensation), effort sur 10 toujours gardé ;
+// choix gardé dans ce navigateur
+(() => {
+  const buttons = [...document.querySelectorAll("[data-unit]")];
+  if (!buttons.length) return;
+  const KEY = "gft.coach-unit";
+  const feel = (i) => i.feel;
+  const hr = (i) => !i.hr ? null : i.hr[0] && i.hr[1] ? `FC ${i.hr[0]} à ${i.hr[1]}`
+    : i.hr[1] ? `FC sous ${i.hr[1]}` : `FC au-dessus de ${i.hr[0]}`;
+  const hrmax = (i) => { const p = i.hr_max_pct; if (!p) return null;
+    return p[0] && p[1] ? `${p[0]} à ${p[1]} % FC max` : p[1] ? `sous ${p[1]} % FC max` : `au-dessus de ${p[0]} % FC max`; };
+  const pick = {
+    allure: (i) => i.pace_text || null, fc: hr, fcmax: hrmax,
+    vma: (i) => (i.vma_pct ? `${i.vma_pct} % VMA` : null), zone: (i) => i.zone || null, sensation: feel,
+  };
+  const render = (unit) => {
+    buttons.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.unit === unit)));
+    document.querySelectorAll(".coach-target[data-i]").forEach((el) => {
+      if (!el.dataset.text) el.dataset.text = el.textContent;
+      if (unit === "tout") { el.textContent = el.dataset.text; return; }
+      const i = JSON.parse(el.dataset.i);
+      const value = pick[unit](i);
+      el.textContent = value ? `${value} · effort ${i.rpe}/10` : `${i.feel} · effort ${i.rpe}/10`;
+    });
+  };
+  let unit = "tout";
+  try { unit = localStorage.getItem(KEY) || "tout"; } catch (e) { /* stockage indisponible */ }
+  if (!pick[unit] && unit !== "tout") unit = "tout";
+  render(unit);
+  buttons.forEach((b) => b.addEventListener("click", () => {
+    try { localStorage.setItem(KEY, b.dataset.unit); } catch (e) { /* rien */ }
+    render(b.dataset.unit);
+  }));
+})();

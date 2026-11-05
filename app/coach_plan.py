@@ -599,6 +599,7 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
         if d is None:
             break
         q = wk.quality(phase, kind, rank, trail, week_in_phase, paces, d["max_min"], nuance, no_down)
+        ideal = ideal_session(proto, q, d)
         if kind == "charge" and q["hard"] and rates.get("quality_min"):
             q = _fill(q, min(d["max_min"], rates["quality_min"]), paces)
         cost = q["minutes"] * (rates["quality"] if q["hard"] else rates["easy"]) / rates["easy"]
@@ -609,6 +610,8 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
             alt = _fill(alt, min(d["max_min"], rates["quality_min"]), paces)
         if alt:
             q["alt"] = alt
+        if ideal:
+            q["ideal"] = ideal
         habit = habit_by_day.get(d["weekday"])
         if habit:
             q["label"] += f" ({habit['name']})"
@@ -780,6 +783,24 @@ def strength_days(sessions: list[dict], n: int, cal: dict | None = None,
     return sorted(out)
 
 
+def _work(s: dict) -> list[str]:
+    return [x["text"] for x in s["steps"] if x["kind"] in ("work", "recovery")]
+
+
+def ideal_session(proto: dict, q: dict, day: dict) -> dict | None:
+    """Séance idéale quand celle du jour est tronquée par son temps maximal (palier plus bas, ou
+    échauffement raccourci) : la séance prévue en entier, proposée en plus, au choix du coureur."""
+    shorter_warmup = (q["steps"] and proto["steps"] and q["steps"][0]["kind"] == "warmup"
+                      and q["steps"][0]["minutes"] < proto["steps"][0]["minutes"])
+    if proto["type"] != q["type"] or (_work(proto) == _work(q) and not shorter_warmup):
+        return None
+    out = {**proto, "ideal": True}
+    out["description"] = ("La séance prévue en entier, plus longue que ton temps du "
+                          f"{WEEKDAYS[day['weekday']]} "
+                          f"({day['max_min']} min) : si tu as le temps. " + proto["description"])
+    return out
+
+
 def _fill(q: dict, day_max: float, paces: dict) -> dict:
     """Une séance dure comme les séances du coureur (durée médiane de ses sorties de qualité, dans
     le temps du jour) : la partie structurée, puis un footing (la charge par heure des séances est
@@ -826,8 +847,9 @@ def _finish(week: dict, sessions: list[dict], load: float, rates: dict) -> dict:
         s["day"] = WEEKDAYS[s["weekday"]]
         if not s.get("main"):
             s["load"] = round(session_load(s, rates))
-        if s.get("alt"):
-            s["alt"]["load"] = round(session_load(s["alt"], rates))
+        for k in ("alt", "ideal"):
+            if s.get(k):
+                s[k]["load"] = round(session_load(s[k], rates))
     counted = [s for s in sessions if not s.get("main") and not s.get("optional")]
     minutes = sum(s["minutes"] or 0 for s in counted)
     planned = sum(session_load(s, rates) for s in counted)
@@ -1721,10 +1743,14 @@ def build_maintenance(today: date, acts, availability: list[dict], max_sessions:
             "orientation": options.get("orientation") or "maintien", "orientation_label": orient["label"]}
 
 
+IDEAL_CHOICE = "idéale|"         # choix enregistré de la séance idéale : préfixe + libellé du coach
+
+
 def apply_choices(plan: dict | None, choices: dict, rates: dict | None = None) -> dict | None:
     """Choix du coureur entre les deux propositions d'une séance (étape 9) : {jour : libellé de la
     proposition du coach au moment du choix} ; la seconde proposition prend sa place (la première
-    devient l'autre choix) si la séance de ce jour est toujours la même. Charge, minutes et D+ de
+    devient l'autre choix) si la séance de ce jour est toujours la même ; « idéale|libellé » : la
+    séance idéale (séance tronquée par le temps du jour, proposée en entier). Charge, minutes et D+ de
     la semaine recalculés : le reste du plan en tient compte."""
     if not plan or not choices:
         return plan
@@ -1732,11 +1758,14 @@ def apply_choices(plan: dict | None, choices: dict, rates: dict | None = None) -
     for w in plan["weeks"]:
         changed = False
         for j, x in enumerate(w["sessions"]):
-            label = choices.get(x["date"])
-            if label and x.get("alt") and x["label"] == label:
-                main = {k: v for k, v in x.items() if k != "alt"}
+            label = choices.get(x["date"]) or ""
+            want_ideal = label.startswith(IDEAL_CHOICE)
+            label = label[len(IDEAL_CHOICE):] if want_ideal else label
+            pick = x.get("ideal") if want_ideal else x.get("alt")
+            if label and pick and x["label"] == label:
+                main = {k: v for k, v in x.items() if k not in ("alt", "ideal")}
                 keep = {k: x[k] for k in ("weekday", "date", "day", "key", "habit", "optional") if k in x}
-                w["sessions"][j] = {**x["alt"], **keep, "alt": main, "chosen": True}
+                w["sessions"][j] = {**pick, **keep, "alt": main, "chosen": "ideal" if want_ideal else True}
                 changed = True
         if changed and rates:
             counted = [x for x in w["sessions"] if not x.get("main") and not x.get("optional")]

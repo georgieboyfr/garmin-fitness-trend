@@ -4,7 +4,7 @@
 
 {% macro intensity_title(i) %}{% if i.hr_max_pct and i.hr_max_pct[0] and i.hr_max_pct[1] %}{{ i.hr_max_pct[0] }} à {{ i.hr_max_pct[1] }} % de la FC max{% elif i.hr_max_pct and i.hr_max_pct[1] %}sous {{ i.hr_max_pct[1] }} % de la FC max{% elif i.hr_max_pct and i.hr_max_pct[0] %}au-dessus de {{ i.hr_max_pct[0] }} % de la FC max{% endif %}{% if i.vma_pct %}{{ " · " if i.hr_max_pct }}{{ i.vma_pct }} % de la VMA{% endif %}{% endmacro %}
 
-{% macro target_span(st) %}{% if st.target %} <span class="muted"{% if st.intensity %} title="{{ intensity_title(st.intensity) }}"{% endif %}>— {{ st.target }}</span>{% endif %}{% endmacro %}
+{% macro target_span(st) %}{% if st.target %} <span class="muted">— <span class="coach-target"{% if st.intensity %} title="{{ intensity_title(st.intensity) }}" data-i="{{ st.intensity | tojson | forceescape }}"{% endif %}>{{ st.target }}</span></span>{% endif %}{% endmacro %}
 
 {% macro session_body(x, show_alt=true) %}
 {% if x.steps and x.steps | length == 1 %}
@@ -20,12 +20,21 @@
 {% endmacro %}
 
 {% macro choice_line(x) %}
-{% if x.alt and ((x.status in ("à venir", "aujourd'hui")) if x.status is defined else x.date >= today) %}
+{% if (x.alt or x.ideal) and ((x.status in ("à venir", "aujourd'hui")) if x.status is defined else x.date >= today) %}
+{% if x.ideal and not x.chosen %}
 <details class="coach-alt small">
-  <summary>{% if x.chosen %}Ton choix · proposition du coach : <b>{{ x.alt.label }}</b>{% else %}Autre proposition, même rôle : <b>{{ x.alt.label }}</b>{% endif %}{% if x.alt.minutes %} · {{ x.alt.minutes }} min{% endif %}{% if x.alt.load %} · charge ≈ {{ x.alt.load }}{% endif %}</summary>
+  <summary>Séance idéale, en entier : <b>{{ x.ideal.label }}</b>{% if x.ideal.minutes %} · {{ x.ideal.minutes }} min{% endif %}{% if x.ideal.load %} · charge ≈ {{ x.ideal.load }}{% endif %} {{ tip("Ton temps maximal de ce jour raccourcit la séance prévue (palier plus bas ou échauffement réduit). Si tu as le temps, la séance prévue en entier ; sinon, garde celle du jour.") }}</summary>
+  {{ session_body(x.ideal, false) }}
+  <div class="aid-actions"><button class="btn-ghost" type="button" data-choice="{{ x.date }}" data-label="idéale|{{ x.label }}">Choisir la séance idéale</button><span class="small muted" role="status"></span></div>
+</details>
+{% endif %}
+{% if x.alt %}
+<details class="coach-alt small">
+  <summary>{% if x.chosen %}Ton choix{{ " (séance idéale)" if x.chosen == "ideal" }} · proposition du coach : <b>{{ x.alt.label }}</b>{% else %}Autre proposition, même rôle : <b>{{ x.alt.label }}</b>{% endif %}{% if x.alt.minutes %} · {{ x.alt.minutes }} min{% endif %}{% if x.alt.load %} · charge ≈ {{ x.alt.load }}{% endif %}</summary>
   {{ session_body(x.alt, false) }}
   <div class="aid-actions"><button class="btn-ghost" type="button" data-choice="{{ x.date }}" data-label="{{ '' if x.chosen else x.label }}">{{ "Revenir à la proposition du coach" if x.chosen else "Choisir celle-ci" }}</button><span class="small muted" role="status"></span></div>
 </details>
+{% endif %}
 {% endif %}
 {% endmacro %}
 
@@ -187,6 +196,11 @@
   <a href="?vue=seances" {% if vue == "seances" %}aria-current="true"{% endif %}>Séances</a>
 </nav>
 
+<div class="coach-units small" role="group" aria-label="Unité des cibles">
+  <span class="muted">Cibles en {{ tip("Comment lire l'intensité de chaque étape : tout (allure, FC, effort), seulement l'allure, la FC, le % de la FC max, le % de la VMA, la zone de FC ou la sensation (facile, moyen, dur, très dur). L'effort sur 10 reste toujours affiché. Quand l'unité ne s'applique pas à une étape (allure en côte, par exemple), la sensation la remplace. Ton choix est gardé dans ce navigateur.") }} :</span>
+  <div class="segmented">{% for k, label in (("tout", "tout"), ("allure", "allure"), ("fc", "FC"), ("fcmax", "% FC max"), ("vma", "% VMA"), ("zone", "zone"), ("sensation", "sensation")) %}<button type="button" data-unit="{{ k }}" aria-pressed="{{ 'true' if k == 'tout' else 'false' }}">{{ label }}</button>{% endfor %}</div>
+</div>
+
 {% if cal.conflicts %}
 <section class="card notice coach-conflicts">
   <h2>Calendrier à arbitrer {{ tip("Le coach repère deux courses A à moins de 8 semaines, une course B moins de 3 semaines avant une A (sa récupération mange l'affûtage) et une course C dans la semaine d'une A. Il propose une solution ; c'est toi qui choisis, ou tu gardes ton calendrier tel quel.") }}</h2>
@@ -207,7 +221,7 @@
 {% set w = week %}
 <section class="card" id="semaine">
   <div class="card-head">
-    <h2>Cette semaine {{ tip("La semaine du plan, calculée le lundi : elle ne bouge pas au fil de tes sorties (un changement de disponibilités, de période ou de course la recalcule). Tes sorties synchronisées sont rapprochées des séances prévues, le même jour d'abord, sinon à 2 jours au plus : rien à saisir. Une séance non faite n'est jamais rattrapée, la suite du plan en tient compte.") }}</h2>
+    <h2>Cette semaine {{ tip("La semaine du plan, calculée le lundi : elle ne bouge pas au fil de tes sorties (un changement de disponibilités, de période ou de course la recalcule). Tes sorties synchronisées sont rapprochées des séances prévues, le même jour d'abord, sinon à 1 jour près : rien à saisir. Une séance non faite n'est jamais rattrapée, la suite du plan en tient compte.") }}</h2>
     <span class="muted small">semaine du <span data-short-date="{{ w.monday }}"></span> · {{ w.phase }}{% if w.kind not in ("charge", w.phase) %} ({{ w.kind }}){% endif %}</span>
   </div>
 

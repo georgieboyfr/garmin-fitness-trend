@@ -119,3 +119,11 @@ def test_no_downhill_session_close_to_the_race():
         s = wk.quality("spécifique", "charge", 0, True, w, P, 999, no_downhill=True)
         assert s["type"] != "descente"
     assert "descentes" not in {wk.long_variant("développement", "charge", True, w, True) for w in range(6)}
+
+
+def test_targets_carry_zone_and_pace_for_every_unit():
+    work = next(x for x in wk.seuil(1, HR)["steps"] if x["kind"] == "work")["intensity"]
+    assert work["zone"] == "Z4 à Z5" and work["pace_text"] == "4:52 à 5:04 /km"
+    easy = wk.easy_steps(45, HR)[0]["intensity"]
+    assert easy["zone"] == "Z1 à Z2" and easy["pace_text"] == "≈ 6:00 /km" and easy["vma_pct"] == 71
+    assert wk.zone_text(None, 150, 170) == "Z1 à Z2" and wk.zone_text(170, None, 170) == "Z5"

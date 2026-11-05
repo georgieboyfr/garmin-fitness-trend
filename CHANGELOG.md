@@ -4,6 +4,13 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 
 ## [Non publié]
 
+### Modifié
+- Coach, retours de Greg sur le plan : sorties optionnelles toujours proposées et marquées (un jour « une semaine sur n » reste optionnel si une sortie de ce jour a été faite dans les semaines d'avant) ; séance reconnue à 1 jour près ; FC d'endurance en % de la FC de réserve (Karvonen) ou de la FC max, au choix dans l'admin (134 à 148 au lieu de « sous 160 » pour Greg) ; allure VMA selon la longueur de la fraction et VMA testée saisie dans l'admin ; toujours 10 min de retour au calme à la fin ; bloc soutenu au milieu des sorties longues vallonnées ; sorties longues sur le plat avec variations d'allure, et alternative sur le plat à la même charge pour une sortie vallonnée ; charge estimée de chaque séance, comparée à celle de la sortie faite ; renforcement de 15 à 20 min aux jours suggérés.
+- Coach : séance idéale proposée en plus quand le temps du jour raccourcit la séance, au choix ; unité des cibles au choix (allure, FC, % FC max, % VMA, zone, sensation), l'effort sur 10 toujours affiché.
+- Coach, contenu des phases d'après la littérature : séances du développement selon la course (VMA pour 5 et 10 km, seuil et tempo pour semi et marathon), allure de course en blocs qui s'allongent en phase spécifique (3 × 2 km à 3 × 5 km pour un semi, par exemple), pas de descente travaillée dans les 3 semaines avant un trail.
+- Coach, écran : le programme du jour en tête de Cette semaine avec son rôle ; choix de l'autre proposition aussi dans le Plan ; plan en un coup d'œil repliable et mémorisé ; texte de démarrage en info-bulle ; cibles toujours dans le même ordre (allure, FC, effort et sensation), avec le % de la FC max et de la VMA en info-bulle.
+- Pages Forme et Sortie : zones de FC avec leurs FC et leur % de la FC max ; VMA testée affichée sur la page Forme.
+
 ## [1.0.0-alpha] - 2026-11-04
 
 Pré-version de la phase 4 (coach) pour la tester sur le serveur avant la fin de la phase : étapes 1 à 9 bis faites, restent les unités au choix, la séance de remplacement, le bilan de semaine détaillé et la validation sur 2 semaines réelles. Image `1.0.0-alpha` seulement (pas `latest`). Au premier démarrage, la base passe en version 19 (calendrier du coach, bilans, temps prévus, choix des séances). Notification du dimanche : `NTFY_URL` et `NTFY_TOKEN` à ajouter au `.env`.
