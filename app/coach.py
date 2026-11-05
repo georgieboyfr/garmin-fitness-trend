@@ -545,8 +545,13 @@ def _paces(physio_now: dict) -> dict:
     """Repères du coureur pour les cibles des séances : allures (seuil, VMA testée ou estimée) et FC
     (FC max, plage d'endurance), passées par physio_now["hr"]."""
     threshold, vma = physio_now.get("threshold_pace"), physio_now.get("vma")
-    return {"threshold": threshold["pace_s_km"] if threshold else None,
-            "vma": vma["pace_s_km"] if vma else None, **(physio_now.get("hr") or {})}
+    t = threshold["pace_s_km"] if threshold else None
+    v = vma["pace_s_km"] if vma else None
+    # seuil cohérent avec la VMA : jamais plus lent que 85 % de la VMA (repère de 80 à 90 % selon le
+    # niveau ; l'estimation tirée des efforts route est en retard quand la VMA testée progresse)
+    if v:
+        t = min(t, v / THRESHOLD_VMA_SHARE) if t else v / THRESHOLD_VMA_SHARE
+    return {"threshold": t, "vma": v, **(physio_now.get("hr") or {})}
 
 
 def _kept_habits(habits: list[dict]) -> list[dict]:
@@ -573,6 +578,7 @@ def maintenance_for(cfg, today: date, data: dict, availability: list[dict], max_
                                         data.get("confirmed") or ())
 
 
+THRESHOLD_VMA_SHARE = 0.85      # allure seuil au plus lent : 85 % de la VMA
 ROAD_DISTANCES = (5000, 10000, 21097.5, 42195)
 READY_SHARE = 2 / 3             # prêt sans préparation : plus longue sortie récente ≥ 2/3 de la course
 

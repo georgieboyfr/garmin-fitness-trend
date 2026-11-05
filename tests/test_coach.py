@@ -237,3 +237,10 @@ def test_km_splits_give_grade_adjusted_pace_on_a_hilly_course():
     assert rows[0]["gap_pace_s_km"] == pytest.approx(360, abs=5)        # plat : VAP = allure
     assert rows[1]["gap_pace_s_km"] < rows[1]["pace_s_km"] - 30         # en montée : VAP plus rapide
     assert "gap_pace_s_km" not in coach.km_splits([0.0, 10.0], [0.0, 3000.0], 10000)[0]   # route
+
+
+def test_threshold_pace_is_never_slower_than_85_percent_of_vma():
+    physio = {"threshold_pace": {"pace_s_km": 298.0}, "vma": {"pace_s_km": 240.0}}
+    assert coach._paces(physio)["threshold"] == pytest.approx(240 / 0.85)
+    physio = {"threshold_pace": {"pace_s_km": 270.0}, "vma": {"pace_s_km": 240.0}}
+    assert coach._paces(physio)["threshold"] == 270.0                     # estimation déjà plus rapide

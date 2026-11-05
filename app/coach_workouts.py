@@ -293,6 +293,7 @@ def vma(level: int, p: dict, compact: bool = False) -> dict:
                                          "Arrêter si l'allure s'effondre.")
 
 
+PYRAMID_VMA_SHARE = 0.92
 PYRAMIDE = [(1, 2, 3, 2, 1), (1, 2, 3, 4, 3, 2, 1), (2, 3, 4, 4, 3, 2)]   # min d'effort
 
 
@@ -300,7 +301,9 @@ def pyramid(level: int, p: dict, compact: bool = False) -> dict:
     """Pyramide : efforts de 1 à 4 min qui montent puis redescendent, entre l'allure 5 km et le
     seuil, récupération au trot de la moitié de l'effort précédent."""
     blocks = PYRAMIDE[min(level, len(PYRAMIDE) - 1)]
-    pace = p["threshold"] * 0.96 if p.get("threshold") else None
+    # entre l'allure 5 km et le seuil : 92 % de la VMA, sinon un peu plus vite que le seuil
+    pace = (p["vma"] / PYRAMID_VMA_SHARE if p.get("vma")
+            else p["threshold"] * 0.96 if p.get("threshold") else None)
     work = sum(blocks)
     rest = sum(b / 2 for b in blocks[:-1])
     steps = [_warmup(warm(compact, 20), p),
@@ -776,10 +779,12 @@ def rotate(options: list, week_in_phase: int, shift: int = 0):
 
 
 def quality(phase: str, kind: str, rank: int, trail: bool, week_in_phase: int, p: dict,
-            day_max: float, nuance: str | None = None, no_downhill: bool = False) -> dict:
+            day_max: float, nuance: str | None = None, no_downhill: bool = False,
+            avoid: str | None = None) -> dict:
     """Séance de qualité du créneau `rank` (0 : la séance clé), tournante, ramenée au temps du jour ;
     nuance du coureur une semaine de charge sur deux ; no_downhill : pas de descente travaillée
-    (dernières semaines avant la course), la variante suivante la remplace."""
+    (dernières semaines avant la course), la variante suivante la remplace ; avoid : type de la
+    séance clé, que la seconde séance de la semaine ne répète pas."""
     if kind in ("affûtage", "course"):
         s = reminder(trail, p)
         return with_gain(s if s["minutes"] <= day_max else reminder(trail, p, compact=True), p)
@@ -795,7 +800,7 @@ def quality(phase: str, kind: str, rank: int, trail: bool, week_in_phase: int, p
     for shift in range(len(options)):
         make, level = rotate(options, week_in_phase, shift)
         s = with_gain(fit(lambda lv, compact=False, m=make: m(lv, p, compact), level, day_max), p)
-        if not (no_downhill and s["type"] in DOWNHILL_TYPES):
+        if not (no_downhill and s["type"] in DOWNHILL_TYPES) and s["type"] != avoid:
             return s
     return s
 

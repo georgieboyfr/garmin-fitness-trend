@@ -61,8 +61,16 @@ STRENGTH = {"foncier": 2, "développement": 2, "spécifique": 1, "allégée": 1,
                                 # renforcement par semaine (2 à 3 séances sur 8 à 12 semaines
                                 # améliorent l'économie de course, Balsalobre-Fernández 2016 ;
                                 # entretien ensuite)
+# courses courtes (5 et 10 km), d'après la littérature (section 10 du brief, 5 novembre 2026)
+SHORT_KINDS = ("5k", "10k")
+SHORT_PHASE_SHARES = (0.25, 0.35, 0.4)   # foncier, développement, spécifique : plus de spécifique
+SHORT_LONG_MAX = {"5k": 90, "10k": 100}  # sortie longue au plus (Pfitzinger, Daniels : 75 à 100 min)
+PRE_TAPER_LOAD = 0.85           # course de moins de 2 h : dernière semaine de charge −15 %, une séance
+TAPER_EASY_MAX = 40             # footings de la semaine de course : 40 min au plus...
+EVE_EASY_MAX = 30               # ... et 30 min pour le dernier avant la course
 NO_DOWNHILL_WEEKS = 3           # pas de descente travaillée dans les 3 semaines avant la course
 OPTIONAL_EASY_MIN = 45          # footing optionnel, quand la semaine n'a pas d'autre footing
+OPTIONAL_EASY_MAX = 60          # footing optionnel : une heure au plus (au-delà, une sortie longue)
 OPTIONAL_TAPER_MIN = 30         # footing optionnel en semaine d'affûtage
 LONG_START_WEEKS = 4            # départ : la plus longue sortie ordinaire des 4 dernières semaines
 # plusieurs courses (étape 6) : repères généraux, à valider par Greg
@@ -312,10 +320,12 @@ def fitness_after(fitness_now: float, load: float) -> float:
 # ---------- squelette : phases et types de semaines ----------
 
 def skeleton(today: date, race_date: date, race_duration_s: float | None,
-             start: date | None = None) -> list[dict]:
+             start: date | None = None, short: bool = False) -> list[dict]:
     """Semaines du plan, de sa semaine de départ (start, sinon la semaine en cours) à celle de la
     course : phase et type. Un départ fixe garde les phases, le cycle des semaines allégées et la
-    rotation des séances d'une semaine sur l'autre ; seule la charge suit la forme du jour."""
+    rotation des séances d'une semaine sur l'autre ; seule la charge suit la forme du jour. short :
+    course de 5 ou 10 km, plus de spécifique (SHORT_PHASE_SHARES). Avec une semaine d'affûtage, la
+    dernière semaine de charge est marquée pre_taper (allégée de 15 %, une séance de qualité)."""
     first, last = monday(min(start, today) if start else today), monday(race_date)
     n = (last - first).days // 7 + 1
     taper = 1 if (race_duration_s or 0) < TAPER_SHORT_S else 2
@@ -327,7 +337,8 @@ def skeleton(today: date, race_date: date, race_duration_s: float | None,
         dev = m // 2
         phases = ["développement"] * dev + ["spécifique"] * (m - dev)
     else:
-        spec, dev = round(PHASE_SHARES[2] * m), round(PHASE_SHARES[1] * m)
+        shares = SHORT_PHASE_SHARES if short else PHASE_SHARES
+        spec, dev = round(shares[2] * m), round(shares[1] * m)
         phases = ["foncier"] * (m - spec - dev) + ["développement"] * dev + ["spécifique"] * spec
     weeks = []
     for i, phase in enumerate(phases):
@@ -335,6 +346,8 @@ def skeleton(today: date, race_date: date, race_duration_s: float | None,
         # une semaine allégée récupère de semaines chargées : jamais avant 2 semaines de charge du plan
         light = from_taper % CYCLE == CYCLE - 1 and i >= MIN_CHARGE_BEFORE_LIGHT
         weeks.append({"phase": phase, "kind": "allégée" if light else "charge"})
+    if taper == 1 and weeks and weeks[-1]["kind"] == "charge":
+        weeks[-1]["pre_taper"] = True
     if taper == 2:
         weeks.append({"phase": "affûtage", "kind": "affûtage"})
     weeks.append({"phase": "course", "kind": "course"})
@@ -540,6 +553,8 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
     optionnel garde une sortie, optionnelle ; jours de renforcement suggérés (strength_days)."""
     phase, kind = week["phase"], week["kind"]
     no_down = weeks_left is not None and weeks_left <= NO_DOWNHILL_WEEKS
+    short = paces.get("race_kind") in SHORT_KINDS
+    pre_taper = bool(week.get("pre_taper"))
     paces = {"lthr": lthr, "easy_vam": DEFAULT_EASY_VAM, **paces}
     trail = is_trail(race)
     race_wd = date.fromisoformat(race["race_date"]).weekday()
@@ -581,24 +596,33 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
         n_quality = 0
     else:
         n_quality = 2 if len(usable) >= 5 and kind == "charge" else 1
+        # 5 et 10 km : deux séances dès 4 jours, en développement et en spécifique (Seiler : deux
+        # séances intenses par semaine suffisent ; Festa 2020 : 2 dures sur 4 chez des amateurs)
+        if short and kind == "charge" and phase in ("développement", "spécifique") and len(usable) >= 4:
+            n_quality = 2
+        if pre_taper:
+            n_quality = 1                               # dernière semaine de charge : une seule séance
     n_quality = min(n_quality, max_quality)
     if any(r["priority"] == "B" for _, r in side):
         n_quality = min(n_quality, 1)
     n_quality = max(0, n_quality - sum(1 for _, r in side if r["priority"] == "C"))
     others = [d for d in usable if d is not long_day]
     # bonus : le jour optionnel le plus long, ni en récupération ni à côté d'une course, hors course
-    bonus_pool = [d for d in optional if d["weekday"] not in no_hard] if kind != "course" else []
+    bonus_pool = ([d for d in optional if d["weekday"] not in no_hard]
+                  if kind != "course" and not short else [])
     bonus_day = max(bonus_pool, key=lambda d: (d["max_min"], d["weekday"])) if bonus_pool else None
     total_min = budget = load * 60 / rates["easy"]                       # en minutes d'endurance
     q_sessions, quality_days = [], [{"weekday": wd} for wd in side_wd]
     q_pool = [d for d in others if d["weekday"] not in no_hard]
     for rank in range(n_quality):
-        proto = wk.quality(phase, kind, rank, trail, week_in_phase, paces, 999, nuance, no_down)
+        avoid = q_sessions[0]["type"] if q_sessions else None
+        proto = wk.quality(phase, kind, rank, trail, week_in_phase, paces, 999, nuance, no_down, avoid)
         hills = proto["type"] in HILL_TYPES
         d = _pick_day(q_pool, long_day, quality_days, kind, race_wd, habit_by_day, hills)
         if d is None:
             break
-        q = wk.quality(phase, kind, rank, trail, week_in_phase, paces, d["max_min"], nuance, no_down)
+        q = wk.quality(phase, kind, rank, trail, week_in_phase, paces, d["max_min"], nuance, no_down,
+                       avoid)
         ideal = ideal_session(proto, q, d)
         if kind == "charge" and q["hard"] and rates.get("quality_min"):
             q = _fill(q, min(d["max_min"], rates["quality_min"]), paces)
@@ -628,8 +652,10 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
     if long_day:
         variant = wk.long_variant(phase, kind, trail, week_in_phase, no_down)
         # une semaine de charge sur deux, la sortie longue finit en allure soutenue (choix de Greg)
-        steady = (kind == "charge" and week["index"] % 2 == 0
+        steady = (kind == "charge" and week["index"] % 2 == 0 and len(q_sessions) < 2 and not pre_taper
                   and variant not in ("progressive", "spécifique", "variations"))
+        if len(q_sessions) >= 2 and variant in ("progressive", "variations"):
+            variant = "vallonnée" if trail else "classique"   # deux séances : la sortie longue reste facile
         # la sortie longue d'abord, la plus longue de la semaine ; ce sont les footings qui sautent
         # en semaine de charge, la sortie longue vise le palier suivant de sa progression (le jour et
         # la charge de la semaine le permettant) ; sinon environ un tiers de la semaine
@@ -655,9 +681,15 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
     while len(easy_days) > 1 and total_min / len(easy_days) < min_easy:
         easy_days.remove(min(easy_days, key=lambda d: (d["weekday"] in habit_by_day, d["max_min"])))
     per_easy = total_min / len(easy_days) if easy_days else 0
+    if len(q_sessions) >= 2 or pre_taper:
+        n_steady = 0                                    # deux séances : le reste en endurance (polarisé)
     for i, d in enumerate(easy_days):
         habit = habit_by_day.get(d["weekday"])
         minutes = max(min_easy, wk.floor5(min(d["max_min"], per_easy + 2.5)))
+        if kind in ("affûtage", "course"):
+            # semaine de course : footings courts, le dernier avant la course plus court encore
+            last_before = kind == "course" and d is max(easy_days, key=lambda x: x["weekday"])
+            minutes = min(minutes, EVE_EASY_MAX if last_before else TAPER_EASY_MAX)
         # variété : en trail, footings vallonnés et sur le plat en alternance ; en foncier et en
         # développement, un footing sur deux semaines finit par des lignes droites
         # en phase spécifique d'un trail, tous les footings sont vallonnés : le D+ de la course
@@ -725,7 +757,8 @@ def _optional_easy(d: dict, per_easy: float, kind: str, phase: str, trail: bool,
     short = kind in ("affûtage", "course")
     base = per_easy if per_easy >= MIN_EASY_MIN else OPTIONAL_EASY_MIN
     minutes = max(TAPER_MIN_EASY if short else MIN_EASY_MIN,
-                  wk.floor5(min(d["max_min"], OPTIONAL_TAPER_MIN if short else base + 2.5)))
+                  wk.floor5(min(d["max_min"], OPTIONAL_TAPER_MIN if short else base + 2.5,
+                                OPTIONAL_EASY_MAX)))
     habit = habit_by_day.get(d["weekday"])
     hilly = (bool(habit and habit.get("hilly"))
              or (trail and (phase == "spécifique" or week["index"] % 2 == 1)))
@@ -1152,7 +1185,8 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
     state = fitness_state(acts, today)
     # le plan part de sa semaine de départ (ajout de la course) : semaines passées comptées pour
     # les phases, le cycle et la rotation des séances, mais seules celles à venir sont construites
-    weeks = skeleton(today, race_date, race.get("duration_s"), options.get("start"))
+    short = paces.get("race_kind") in SHORT_KINDS
+    weeks = skeleton(today, race_date, race.get("duration_s"), options.get("start"), short)
     this_monday = monday(today)
     adjusts = {a["monday"]: a for a in options.get("adjust") or []}
     cap_fitness = state["peak_12m"] * PEAK_MARGIN if state["peak_12m"] else None
@@ -1226,6 +1260,8 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
             last_charge = min(weekly_load_for(fitness, target), (1 + ramp_pct / 100) * max(ref, 1.0),
                               max(max_load, week_cap(w)))
             load = min(last_charge, week_cap(w))
+            if w.get("pre_taper"):
+                load *= PRE_TAPER_LOAD                  # arriver frais : la baisse commence ici
         elif w["kind"] == "allégée":
             load = RECOVERY_LOAD * (last_charge or weekly_load_for(fitness, fitness))
         else:
@@ -1266,7 +1302,8 @@ def build_plan(race: dict, today: date, acts, availability: list[dict], max_sess
                            week_in_phase,
                            extended.get(w["index"]), cal,
                            _spread(w["index"], steady_per_week),
-                           _long_step(max(long_hist[-LONG_START_WEEKS:])),
+                           min(_long_step(max(long_hist[-LONG_START_WEEKS:])),
+                               SHORT_LONG_MAX.get(paces.get("race_kind"), math.inf)),
                            max_quality=1 if endurance else 2, nuance=nuance,
                            weeks_left=(monday(race_date) - w["monday"]).days // 7)
         long_hist.append(max([0] + [x.get("level_min", x["minutes"]) for x in built["sessions"]

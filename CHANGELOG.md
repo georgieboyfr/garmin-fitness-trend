@@ -4,6 +4,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 
 ## [Non publié]
 
+### Modifié
+- Coach, préparations 5 et 10 km : deux séances de qualité dès 4 jours en développement et en spécifique (une en foncier, en semaine allégée, la dernière semaine de charge et la semaine de course), sortie longue alors en endurance pure ; plus de spécifique ; sortie longue plafonnée (90 min pour 5 km, 100 min pour 10 km) et pas de seconde sortie longue optionnelle ; dernière semaine de charge allégée et footings courts la semaine de course, pour arriver frais.
+- Coach : allure seuil jamais plus lente que 85 % de la VMA, pyramide à 92 % de la VMA ; footing optionnel d'une heure au plus.
+
 ## [1.0.0] - 2026-11-05
 
 Phase 4 (coach) terminée, sur décision de Greg : le reste de l'étape 10 (durée ou distance au choix, séance de remplacement avec compatibilité, compatibilité dans le bilan) et le coach conversationnel (phase 4 bis) passent en phase 5 ; la validation sur 2 semaines réelles se fera en usage. Image `1.0.0` et `latest`. Pas de migration de base depuis la 1.0.0-alpha.

@@ -826,3 +826,47 @@ def test_session_fitting_the_day_has_no_ideal():
     days = cp.chosen_days(avail((0, "oui", 120), (1, "oui", 120), (3, "oui", 120), (5, "oui", 150)), 4)
     w = cp.build_week(week(phase="développement"), days, 300, RATES, RACE, {"threshold": 298}, [], 170, 0)
     assert not any(s.get("ideal") for s in w["sessions"])
+
+
+TEN = {**RACE, "trail": False, "distance_m": 10000, "gain_m": 0, "race_date": "2027-03-27",
+       "duration_s": 2640}
+
+
+def test_short_race_gets_two_quality_sessions_from_four_days_but_one_before_the_race():
+    days = cp.chosen_days(avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 80), (5, "oui", 120)), 4)
+    p = {"race_kind": "10k", "race": 264.0, "threshold": 277.0, "vma": 240.0}
+    dev = cp.build_week(week(phase="développement"), days, 220, RATES, TEN, p, [], 170, 0)
+    hard = sorted(s["weekday"] for s in dev["sessions"] if s["hard"])
+    assert len(hard) == 2 and hard[1] - hard[0] > 1                       # 48 h au moins entre les deux
+    long_ = next(s for s in dev["sessions"] if s["type"] == "sortie longue")
+    assert not any(x["kind"] == "work" for x in long_["steps"])           # sortie longue en endurance
+    assert not any(s["type"] == "footing soutenu" for s in dev["sessions"])   # polarisé
+    types = [s["type"] for s in dev["sessions"] if s["hard"]]
+    assert types[0] != types[1]
+    fon = cp.build_week(week(phase="foncier"), days, 220, RATES, TEN, p, [], 170, 0)
+    assert sum(s["hard"] for s in fon["sessions"]) == 1                   # foncier : une seule
+    pre_week = {**week(phase="spécifique"), "pre_taper": True}
+    pre = cp.build_week(pre_week, days, 220, RATES, TEN, p, [], 170, 0)
+    assert sum(s["hard"] for s in pre["sessions"]) == 1                   # dernière semaine : une seule
+    marathon = cp.build_week(week(phase="développement"), days, 220, RATES, RACE,
+                             {**p, "race_kind": "marathon"}, [], 170, 0)
+    assert sum(s["hard"] for s in marathon["sessions"]) == 1              # longues distances : inchangé
+
+
+def test_short_race_plan_caps_the_long_run_lightens_the_last_week_and_shortens_race_week_runs():
+    acts = [run(TODAY - timedelta(days=i), 60, 90, 0.0) for i in range(1, 200, 2)]
+    acts += [run(TODAY - timedelta(days=i), 130, 160, 0.0) for i in (5, 12, 19)]     # de longues sorties
+    a = avail((0, "oui", 60), (1, "oui", 60), (3, "oui", 80), (5, "oui", 150))
+    plan = cp.build_plan(TEN, TODAY, acts, a, 4, [], {"race_kind": "10k", "race": 264.0}, 170)
+    longs = [s["minutes"] for w in plan["weeks"] for s in w["sessions"] if s["type"] == "sortie longue"]
+    assert longs and max(longs) <= cp.SHORT_LONG_MAX["10k"]
+    phases = [w["phase"] for w in plan["weeks"]]
+    assert phases.count("spécifique") >= phases.count("foncier")         # plus de spécifique
+    pre = [w for w in plan["weeks"] if w.get("pre_taper")]
+    assert len(pre) == 1 and sum(s["hard"] for s in pre[0]["sessions"]) == 1
+    race_week = plan["weeks"][-1]
+    easy = [s for s in race_week["sessions"] if s["type"] in ("footing", "footing vallonné")]
+    assert easy and all(s["minutes"] <= cp.TAPER_EASY_MAX for s in easy)
+    assert easy[-1]["minutes"] <= cp.EVE_EASY_MAX
+    assert not any(s.get("optional") and s["type"] == "sortie longue"
+                   for w in plan["weeks"] for s in w["sessions"])
