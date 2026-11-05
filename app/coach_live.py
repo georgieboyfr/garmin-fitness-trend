@@ -220,18 +220,25 @@ class Coach:
         if not today_est:
             return None
         monday_ = coach_plan.monday(self.today)
+        plan = self.week_plan(monday_)
+        # effet des séances spécifiques, en plus de la projection par la fitness (qui ne voit que la
+        # charge) : seulement pour la course que le plan prépare
+        main = self.main_on(self.today)
+        effect = coach.specificity_effect(plan, race) if main and main["id"] == race.get("id") else None
         if recorded and recorded.get("week") == monday_.isoformat():
-            return {k: recorded[k] for k in ("optimistic_s", "realistic_s", "prudent_s")} | {
+            base = {k: recorded[k] for k in ("optimistic_s", "realistic_s", "prudent_s")} | {
                 "today": today_est, "fitness_now": recorded.get("fitness_now"),
                 "fitness_race": recorded.get("fitness_race"),
                 "in_plan": recorded.get("fitness_race") is not None}
+            return coach.with_specificity(base, effect)
         fitness_now = tracked.fitness_on(self.data["acts"], self.today)
-        fitness_race = coach.race_fitness_in_plan(self.week_plan(monday_), race)
+        fitness_race = coach.race_fitness_in_plan(plan, race)
         p = coach.projected(today_est, fitness_now, fitness_race, self.slope(self.today)["value"])
-        return {k: p[k] for k in ("optimistic_s", "realistic_s", "prudent_s")} | {
+        base = {k: p[k] for k in ("optimistic_s", "realistic_s", "prudent_s")} | {
             "today": today_est, "fitness_now": round(fitness_now, 1) if fitness_now is not None else None,
             "fitness_race": round(fitness_race, 1) if fitness_race is not None else None,
             "in_plan": fitness_race is not None}
+        return coach.with_specificity(base, effect)
 
     def slope(self, day: date) -> dict:
         if day not in self._slopes:

@@ -23,6 +23,7 @@
       <div><span class="muted">Prudent</span> <b data-chrono="{{ p.prudent_s }}"></b></div>
       {% if r.target_s %}<div><span class="muted">Objectif</span> <b data-chrono="{{ r.target_s }}"></b>{% if r.target_verdict %} <span class="pill verdict-{{ r.target_verdict.key }}">{{ r.target_verdict.label }}</span>{% endif %}</div>{% endif %}
       {% if p.today %}<div><span class="muted">Avec ta forme d'aujourd'hui</span> <b data-chrono="{{ p.today.realistic_s }}"></b></div>{% endif %}
+      {% if p.specificity %}<div><span class="muted">Charge seule {{ tip("Le temps prévu par la fitness seule, sans l'effet des séances spécifiques (−" ~ (p.specificity.pct | string | replace(".", ",")) ~ " %, repère de la littérature : 1 à 3 % selon la durée du spécifique).") }}</span> <b data-chrono="{{ p.load_only.realistic_s }}"></b></div>{% endif %}
     </div>
     {% else %}<p class="muted">Estimation impossible pour l'instant.</p>{% endif %}
   </div>

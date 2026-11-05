@@ -267,3 +267,17 @@ def test_tested_vma_is_a_road_reference_up_to_15_km():
     assert r and r["reference"]["label"] == "VMA testée"
     assert 44 * 60 < r["realistic_s"] < 46 * 60                  # 15 km/h : environ 44:50 sur 10 km
     assert estimator.predict_road(vma, date(2026, 11, 5), 21097) is None   # au-delà de 15 km : non
+
+
+def test_specificity_effect_grows_with_specific_weeks_and_is_bounded():
+    def plan(n):
+        weeks = [{"phase": "spécifique", "kind": "charge", "monday": f"2027-01-{4 + 7 * i:02d}"}
+                 for i in range(n)]
+        return {"weeks": weeks + [{"phase": "course", "kind": "course", "monday": "2027-03-01"}]}
+    race = {"race_date": "2027-03-06"}
+    assert coach.specificity_effect(plan(1), race)["pct"] == 1.0          # au moins 1 %
+    assert coach.specificity_effect(plan(4), race)["pct"] == 2.0          # 0,5 % par semaine
+    assert coach.specificity_effect(plan(4)["weeks"] and {"weeks": [], "maintenance": True}, race) is None
+    p = coach.with_specificity({"optimistic_s": 2600, "realistic_s": 2700, "prudent_s": 2800},
+                               {"pct": 2.0, "weeks": 4})
+    assert p["realistic_s"] == 2646 and p["load_only"]["realistic_s"] == 2700

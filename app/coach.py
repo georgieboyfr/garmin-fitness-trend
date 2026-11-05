@@ -491,6 +491,38 @@ def projected(estimate: dict, fitness_now: float | None, fitness_race: float | N
         "fitness_delta": round(delta, 1)}
 
 
+SPEC_PCT_PER_WEEK = 0.5         # effet des séances spécifiques : 0,5 % par semaine de charge du spécifique...
+SPEC_PCT_BOUNDS = (1.0, 3.0)    # ... entre 1 et 3 % (Muñoz et al. 2014 : 3,6 à 5 % sur 10 km en 10 semaines
+                                # de plan structuré chez des amateurs, charge comprise)
+
+
+def specificity_effect(plan: dict | None, race: dict) -> dict | None:
+    """Effet des séances spécifiques que la projection par la fitness ne voit pas (elle ne compte
+    que la charge) : de 1 à 3 % selon les semaines de charge du spécifique à venir avant la course,
+    0,5 % par semaine. None sans semaine spécifique à venir, ou pour une course hors du plan."""
+    if not plan or plan.get("maintenance"):
+        return None
+    weeks = [w for w in plan["weeks"] if w["phase"] == "spécifique" and w["kind"] == "charge"
+             and w["monday"] <= race["race_date"]]
+    if not weeks:
+        return None
+    low, high = SPEC_PCT_BOUNDS
+    pct = min(high, max(low, SPEC_PCT_PER_WEEK * len(weeks)))
+    return {"pct": round(pct, 1), "weeks": len(weeks)}
+
+
+def with_specificity(proposal: dict, effect: dict | None) -> dict:
+    """Temps prévu avec l'effet des séances spécifiques, le temps « charge seule » gardé à côté."""
+    if not effect:
+        return proposal
+    factor = 1 - effect["pct"] / 100
+    out = {**proposal, "load_only": {k: proposal[k] for k in ("optimistic_s", "realistic_s", "prudent_s")},
+           "specificity": effect}
+    for k in ("optimistic_s", "realistic_s", "prudent_s"):
+        out[k] = round(proposal[k] * factor)
+    return out
+
+
 VERDICTS = {"ambitious": "trop ambitieux", "realistic": "réaliste", "cautious": "prudent"}
 
 
