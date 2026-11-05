@@ -88,6 +88,9 @@ def test_segments_split_climbs_and_descents():
     assert [s["label"] for s in segs] == ["Montée", "Descente", "Plat"]
     assert segs[0]["gain_m"] == 200 and segs[1]["loss_m"] == 200 and segs[0]["end_km"] == 2.0
     assert segs[-1]["passage_s"] == 2000 and segs[0]["time_s"] == round(2000 / 3)
+    # VAP : plus rapide que l'allure en montée, égale sur le plat
+    assert segs[0]["gap_pace_s_km"] < segs[0]["pace_s_km"]
+    assert segs[2]["gap_pace_s_km"] == pytest.approx(segs[2]["pace_s_km"], rel=0.02)
 
 
 def test_segments_separate_a_gentle_and_a_steep_climb():

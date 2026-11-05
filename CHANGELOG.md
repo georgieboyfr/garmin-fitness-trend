@@ -9,6 +9,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 - Coach : séance idéale proposée en plus quand le temps du jour raccourcit la séance, au choix ; unité des cibles au choix (allure, FC, % FC max, % VMA, zone, sensation), l'effort sur 10 toujours affiché.
 - Coach, contenu des phases d'après la littérature : séances du développement selon la course (VMA pour 5 et 10 km, seuil et tempo pour semi et marathon), allure de course en blocs qui s'allongent en phase spécifique (3 × 2 km à 3 × 5 km pour un semi, par exemple), pas de descente travaillée dans les 3 semaines avant un trail.
 - Coach, écran : le programme du jour en tête de Cette semaine avec son rôle ; choix de l'autre proposition aussi dans le Plan ; plan en un coup d'œil repliable et mémorisé ; texte de démarrage en info-bulle ; cibles toujours dans le même ordre (allure, FC, effort et sensation), avec le % de la FC max et de la VMA en info-bulle.
+- Coach et estimateur : allure et % VMA pour chaque intensité, en VAP en terrain vallonné ; colonne VAP dans les temps de passage d'une échéance et dans les tronçons de l'estimateur trail.
 - Pages Forme et Sortie : zones de FC avec leurs FC et leur % de la FC max ; VMA testée affichée sur la page Forme.
 
 ## [1.0.0-alpha] - 2026-11-04

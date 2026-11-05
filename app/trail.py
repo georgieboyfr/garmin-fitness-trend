@@ -262,8 +262,8 @@ def _fitted_grade(d, alt, i, j) -> float:
 
 def segments(profile, times, stops=None) -> list[dict]:
     """Tronçons homogènes par pente (plat, douce, moyenne, forte, vallonné), avec D+ et D− (même
-    seuil d'hystérésis que le total), temps en mouvement, allure et passage (arrêts aux ravitos
-    compris : stops = temps d'arrêt cumulé à chaque point du profil)."""
+    seuil d'hystérésis que le total), temps en mouvement, allure, VAP (courbe de Strava) et passage
+    (arrêts aux ravitos compris : stops = temps d'arrêt cumulé à chaque point du profil)."""
     d, alt = profile["distance"], profile["altitude"]
     threshold = profile.get("threshold_m", 0.0)
     every = max(1, int(SEGMENT_STEP_M / STEP_M))
@@ -304,10 +304,16 @@ def segments(profile, times, stops=None) -> list[dict]:
         else:
             merged.append([i, j, cls])
     out = []
+    # VAP : courbe de Strava, comme la fiche de sortie, sur un point tous les 100 m (au pas de 10 m,
+    # les oscillations d'altitude du GPX gonflent la distance équivalente)
+    step = max(1, int(CHART_STEP_M / STEP_M))
+    pick = np.unique(np.concatenate([np.arange(0, d.size, step), [d.size - 1]]))
+    eq = np.interp(d, d[pick], grade.equivalent_distance(d[pick], alt[pick]))
     for i, j, cls in merged:
         gain, loss = hysteresis_gain_loss(alt[i:j + 1], threshold)
         length = d[j] - d[i]
         seconds = times[j] - times[i]
+        flat = eq[j] - eq[i]
         out.append({"start_km": round(d[i] / 1000, 2), "end_km": round(d[j] / 1000, 2),
                     "length_m": round(length), "gain_m": round(gain), "loss_m": round(loss),
                     "grade_pct": round(_fitted_grade(d, alt, i, j), 1),
@@ -316,6 +322,7 @@ def segments(profile, times, stops=None) -> list[dict]:
                     "time_s": round(seconds),
                     "passage_s": round(times[j] + (stops[j] if stops is not None else 0.0)),
                     "pace_s_km": round(seconds / length * 1000, 1) if length else None,
+                    "gap_pace_s_km": round(seconds / flat * 1000, 1) if flat > 0 else None,
                     "altitude_m": round(float(alt[j]))})
     return out
 

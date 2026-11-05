@@ -187,7 +187,7 @@
   <div class="chart" id="chart-trail" role="img" aria-label="Profil du parcours avec les temps de passage"></div>
   <div class="table-wrap">
     <table class="data">
-      <thead><tr><th>Tronçon</th><th>Km</th><th>Longueur</th><th>Pente</th><th>D+ / D−</th><th>Temps</th><th>Allure</th><th>Passage</th><th>Altitude</th></tr></thead>
+      <thead><tr><th>Tronçon</th><th>Km</th><th>Longueur</th><th>Pente</th><th>D+ / D−</th><th>Temps</th><th>Allure</th><th>VAP {{ tip("Allure ajustée à la pente : l'allure équivalente sur le plat, avec la courbe de Strava (comme sur la fiche d'une sortie). Proche d'un tronçon à l'autre quand l'effort est régulier.") }}</th><th>Passage</th><th>Altitude</th></tr></thead>
       <tbody>
         {% for sg in t.segments %}
         <tr>
@@ -198,6 +198,7 @@
           <td class="muted">+{{ sg.gain_m }} / −{{ sg.loss_m }}</td>
           <td data-chrono="{{ sg.time_s }}"></td>
           <td {% if sg.pace_s_km %}data-pace="{{ sg.pace_s_km }}"{% endif %}></td>
+          <td class="muted" {% if sg.gap_pace_s_km %}data-pace="{{ sg.gap_pace_s_km }}"{% endif %}></td>
           <td class="strong" data-chrono="{{ sg.passage_s }}"></td>
           <td class="muted" data-num="{{ sg.altitude_m }}" data-unit="m"></td>
         </tr>

@@ -21,7 +21,7 @@ from statistics import median
 
 import numpy as np
 
-from . import coach_plan, gpx_store, tracked, trail
+from . import coach_plan, gpx_store, grade, tracked, trail
 from .stats import FLAT_MAX_GAIN_PER_KM as HILLY_GAIN_PER_KM
 
 COACH_VERSION = 1
@@ -411,6 +411,10 @@ def km_splits(km: list[float], time: list[float], distance_m: float,
         marks.append(total_km)
     passages = np.interp(marks, km, time)
     alts = np.interp(marks, km, altitude) if altitude else None
+    # VAP : distance équivalente sur le plat (courbe de Strava, comme la fiche de sortie)
+    flat = (np.interp(marks, km, grade.equivalent_distance(np.asarray(km) * 1000, altitude)) / 1000
+            if altitude else None)
+    prev_flat = 0.0
     rows, prev_k, prev_t = [], 0.0, 0.0
     for i, (k, t) in enumerate(zip(marks, passages, strict=True)):
         gain = loss = 0.0
@@ -421,9 +425,15 @@ def km_splits(km: list[float], time: list[float], distance_m: float,
             diffs = np.diff(path)
             gain, loss = float(diffs[diffs > 0].sum()), float(-diffs[diffs < 0].sum())
         length = k - prev_k
-        rows.append({"km": round(k, 2), "length_km": round(length, 2), "split_s": round(float(t) - prev_t, 1),
-                     "passage_s": round(float(t), 1), "pace_s_km": round((float(t) - prev_t) / length, 1),
-                     "gain_m": round(gain), "loss_m": round(loss)})
+        row = {"km": round(k, 2), "length_km": round(length, 2), "split_s": round(float(t) - prev_t, 1),
+               "passage_s": round(float(t), 1), "pace_s_km": round((float(t) - prev_t) / length, 1),
+               "gain_m": round(gain), "loss_m": round(loss)}
+        if flat is not None:
+            eq_km = float(flat[i]) - prev_flat
+            row["flat_km"] = round(eq_km, 3)
+            row["gap_pace_s_km"] = round((float(t) - prev_t) / eq_km, 1) if eq_km > 0 else None
+            prev_flat = float(flat[i])
+        rows.append(row)
         prev_k, prev_t = k, float(t)
     return rows
 

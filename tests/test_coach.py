@@ -227,3 +227,13 @@ def test_km_splits_follow_the_cumulative_time_and_count_the_last_partial_km():
     hilly = coach.km_splits([0, 1, 2], [0, 600, 900], 2000, [100, 200, 150])    # une montée puis une descente
     assert hilly[0]["split_s"] == 600 and hilly[0]["gain_m"] == 100 and hilly[1]["loss_m"] == 50
     assert len(coach.km_splits([0, 2.03], [0, 600], 2030)) == 2                # 30 m de plus : pas de km
+
+
+def test_km_splits_give_grade_adjusted_pace_on_a_hilly_course():
+    km = [i / 10 for i in range(31)]                       # 3 km : plat, montée à 10 %, plat
+    alt = [0.0] * 11 + [10.0 * i for i in range(1, 11)] + [100.0] * 10
+    time = [i * 36.0 for i in range(31)]                   # allure régulière : 6:00 /km
+    rows = coach.km_splits(km, time, 3000, alt)
+    assert rows[0]["gap_pace_s_km"] == pytest.approx(360, abs=5)        # plat : VAP = allure
+    assert rows[1]["gap_pace_s_km"] < rows[1]["pace_s_km"] - 30         # en montée : VAP plus rapide
+    assert "gap_pace_s_km" not in coach.km_splits([0.0, 10.0], [0.0, 3000.0], 10000)[0]   # route

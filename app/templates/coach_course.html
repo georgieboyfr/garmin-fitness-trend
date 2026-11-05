@@ -41,15 +41,16 @@
   <p class="small muted">Allure moyenne <b id="splits-pace" data-pace="{{ (target_s or splits.base_s) / splits.distance_m * 1000 }}"></b>{% if splits.kind == "gpx" %} · {{ (splits.distance_m / 1000) | round(1) | string | replace(".", ",") }} km, D+ {{ splits.gain_m }} m{% endif %}</p>
   <div class="table-wrap">
     <table class="data coach-splits">
-      <thead><tr><th>Km</th><th>Temps du km</th><th>Allure</th><th>Passage</th>{% if splits.kind == "gpx" %}<th>D+ / D−</th>{% endif %}</tr></thead>
+      <thead><tr><th>Km</th><th>Temps du km</th><th>Allure</th><th>Passage</th>{% if splits.kind == "gpx" %}<th>VAP {{ tip("Allure ajustée à la pente : l'allure équivalente sur le plat, avec la courbe de Strava (comme sur la fiche d'une sortie). Les arrêts aux ravitos sont compris dans le km où ils tombent.") }}</th><th>D+ / D−</th>{% endif %}</tr></thead>
       <tbody>
         {% for k in splits.kms %}
-        <tr data-split="{{ k.split_s }}" data-passage="{{ k.passage_s }}" data-length="{{ k.length_km }}">
+        <tr data-split="{{ k.split_s }}" data-passage="{{ k.passage_s }}" data-length="{{ k.length_km }}"{% if k.flat_km %} data-flat="{{ k.flat_km }}"{% endif %}>
           <td class="strong">{{ k.km | string | replace(".0", "") | replace(".", ",") }}{% for a in splits.aid if a.km > k.km - k.length_km and a.km <= k.km %} <span class="pill priority-C" title="Ravitaillement">{{ a.name }}</span>{% endfor %}</td>
           <td class="js-split" data-chrono="{{ k.split_s * factor }}"></td>
           <td class="js-pace muted" data-pace="{{ k.pace_s_km * factor }}"></td>
           <td class="js-passage strong" data-chrono="{{ k.passage_s * factor }}"></td>
-          {% if splits.kind == "gpx" %}<td class="muted">+{{ k.gain_m }} / −{{ k.loss_m }}</td>{% endif %}
+          {% if splits.kind == "gpx" %}<td class="js-gap muted" {% if k.gap_pace_s_km %}data-pace="{{ k.gap_pace_s_km * factor }}"{% endif %}></td>
+          <td class="muted">+{{ k.gain_m }} / −{{ k.loss_m }}</td>{% endif %}
         </tr>
         {% endfor %}
       </tbody>
@@ -86,6 +87,8 @@
       document.querySelectorAll("tr[data-split]").forEach((tr) => {
         tr.querySelector(".js-split").textContent = GFT.chrono(Number(tr.dataset.split) * f);
         tr.querySelector(".js-pace").textContent = GFT.pace(Number(tr.dataset.split) * f / Number(tr.dataset.length));
+        const gap = tr.querySelector(".js-gap");
+        if (gap && tr.dataset.flat) gap.textContent = GFT.pace(Number(tr.dataset.split) * f / Number(tr.dataset.flat));
         tr.querySelector(".js-passage").textContent = GFT.chrono(Number(tr.dataset.passage) * f);
       });
       document.getElementById("splits-pace").textContent = GFT.pace(seconds / distance * 1000);
