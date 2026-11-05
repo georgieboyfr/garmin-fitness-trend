@@ -61,7 +61,7 @@ Course à pied uniquement (route, trail, tapis) : les autres sports sont ignoré
     95 % (l'écart dans lequel finissent 95 % des courses).
   - **Courses suivies** : prédiction enregistrée chaque semaine, courbe avec fourchette et
     objectif, puis résultat une fois la course courue et reliée à sa sortie.
-- **Coach** (pré-version 1.0.0-alpha, règles explicites, sans LLM) :
+- **Coach** (v1.0.0, règles explicites, sans LLM) :
   - Échéances A, B ou C avec objectif proposé par l'estimateur, fiche de chaque course
     (temps prévu, temps de passage km par km) ; disponibilités et habitudes déduites de
     l'historique, modifiables.
@@ -73,7 +73,16 @@ Course à pied uniquement (route, trail, tapis) : les autres sports sont ignoré
     (vacances, maladie, blessure, douleur…).
   - **Cette semaine** : séances faites détectées dans les sorties, bilan du dimanche et
     réajustement de la semaine suivante, notification ntfy ; temps prévu le jour J avec la
-    fitness projetée, objectif à revoir si l'écart dure 3 semaines.
+    fitness projetée, objectif à revoir si l'écart dure 3 semaines ; programme du jour en
+    tête, avec son rôle.
+  - Séances : cibles d'intensité au choix (allure, FC, % FC max, % VMA, zone, sensation,
+    toujours avec l'effort sur 10), allure en VAP en terrain vallonné, charge estimée face à
+    la charge faite, toujours 10 min de retour au calme ; séance idéale proposée quand le
+    temps du jour la raccourcit ; sorties optionnelles toujours proposées ; renforcement aux
+    jours suggérés. Séances selon la course (VMA pour 5 et 10 km, seuil pour semi et
+    marathon, allure de course en blocs qui s'allongent ; pas de descente travaillée dans
+    les 3 semaines avant un trail). FC d'endurance (Karvonen ou % FC max) et VMA testée
+    réglables dans l'admin.
 
 | Fiche de sortie | Sorties |
 | --- | --- |
@@ -146,8 +155,8 @@ Seul l'export le plus récent compte ; un fichier déjà traité n'est pas relu.
 | 1. Socle | Synchro Garmin, lecture des FIT, D+, import Strava, admin, image Docker | Terminée (v0.1) |
 | 2. Statistiques | Pages Volume, Sorties, Performance, Forme, Courses ; fiche de sortie ; détection des courses | Terminée (v0.2) |
 | 3. Estimateur | Temps de course estimé depuis un GPX ou une distance et la forme actuelle (route : Riegel, références ajustées par la FC ; trail : modèle allure-pente personnel par tronçon, fatigue, arrêts), validé sur les courses passées, courses suivies semaine après semaine | Terminée (v0.3, compléments en v0.4 : confiance, limites à 95 %, repères de la page Forme) |
-| 4. Coach | Plan d'entraînement adaptatif autour des courses prévues (ou maintien de forme), séances détectées, bilan du dimanche, réajustement ; coach conversationnel qui propose sans imposer | En cours (pré-version v1.0.0-alpha ; restent les unités au choix, la séance de remplacement, le bilan détaillé, la validation sur 2 semaines réelles, puis le coach conversationnel) |
-| 5. Extensions | Temps par tronçon en trail, envoi des séances vers la montre, idées en attente (météo, carte de toutes les traces, suivi des chaussures…) | À venir |
+| 4. Coach | Plan d'entraînement adaptatif autour des courses prévues (ou maintien de forme), séances détectées, bilan du dimanche, réajustement | Terminée (v1.0) |
+| 5. Extensions | Envoi des séances vers la montre, sauvegarde automatique, séance de remplacement avec compatibilité, coach conversationnel (LLM), météo, sommeil et VFC, carte de toutes les traces, suivi des chaussures… | À venir |
 
 Le détail et les décisions prises sont dans le cahier des charges,
 [`Stats running — idées pertinentes.md`](Stats%20running%20—%20idées%20pertinentes.md) ;
@@ -185,6 +194,9 @@ construit l'image pour amd64 et arm64 et la publie sur
   effort de 5 min sur route et reste sous-estimée sans effort de 5 min couru à fond
   récemment (la VO2max en découle) ; la FC au seuil est la meilleure heure de course, qui
   peut être gonflée par la chaleur ou la dérive cardiaque.
-- Le coach est en pré-version : ses repères (hausse de charge, affûtage, récupération,
-  détection des séances faites) n'ont pas encore été validés sur un plan suivi en réel.
+- Les repères du coach (hausse de charge, affûtage, récupération, détection des séances
+  faites) viennent de la littérature et des choix de Greg ; ils n'ont pas encore été validés
+  sur un plan suivi plusieurs semaines en réel.
+- Le coach ne remplace pas une séance par une autre saisie à la main, et il ne parle pas
+  (pas de LLM) : ce sont des extensions prévues.
 - Un seul utilisateur.

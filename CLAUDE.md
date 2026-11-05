@@ -78,7 +78,7 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 16. v0.4.0 : tag, CHANGELOG, README, image construite par la CI (4 novembre 2026) ; reste la mise à jour du Synology et la vérification sur le téléphone (Greg)
   - Points à trancher avec Greg au fil des étapes : terrain technique et chaleur (étape 6 ou plus tard), forme projetée à la date de la course (le coach de la phase 4 la fournira ; en attendant, forme actuelle maintenue)
   - Tranché : l'estimateur a son propre onglet dans le menu (3 novembre 2026)
-- [ ] Phase 4 — Coach (section 6 du brief ; terminé quand un plan est suivi sur 2 semaines réelles sans intervention manuelle ; v1.0.0). Logique de plan à base de règles explicites, en fonctions pures testées ; tout reste utilisable sans LLM
+- [x] Phase 4 — Coach (v1.0.0, 5 novembre 2026 ; section 6 du brief ; publiée avant les 2 semaines réelles, validation en usage, décision de Greg). Logique de plan à base de règles explicites, en fonctions pures testées ; tout reste utilisable sans LLM
   - [x] 1. Calendrier du coach, séparé des courses suivies (choix de Greg du 4 novembre 2026, section 10 du brief) : échéances A, B ou C (date obligatoire), pré-remplissage possible depuis une course suivie ; démarrage en 5 minutes (disponibilités et habitudes facultatives, déduites de l'historique sinon ; objectif proposé par l'estimateur, accepté ou modifié) (fait le 4 novembre 2026, onglet Coach)
   - [x] 2. Plan périodisé vers une course A : à rebours depuis la date (foncier, développement, spécifique, affûtage de 1 à 2 semaines), charge pilotée par la fitness visée le jour J (hausse hebdomadaire plafonnée, cycle 3 semaines de charge et 1 allégée), séances typées (footing, sortie longue, seuil, fractionné, côtes ; D+ et sorties longues proches du profil pour un trail), 80/20, jamais deux séances dures d'affilée, un jour de repos par semaine (fait le 4 novembre 2026, réglages de Greg : +5 de fitness par semaine, affûtage selon la durée, fitness la plus haute atteignable, allégée −30 % ; section 10 du brief)
   - [x] 3. Écran « Cette semaine » : séances prévues, séances faites détectées automatiquement dans les activités synchronisées, séance clé et ce qui peut sauter, prochaines courses avec compte à rebours et temps prévu (fait le 4 novembre 2026, sous-onglet par défaut du Coach ; semaine figée le lundi, choix à valider, section 10 du brief)
@@ -91,15 +91,32 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
   - [x] 9 bis. Fiche d'une échéance : nom cliquable, lien vers l'estimateur, temps de passage km par km pour un temps au choix (demande de Greg du 4 novembre 2026, fait le même jour)
   - [x] Pré-version v1.0.0-alpha (étapes 1 à 9 bis) pour test sur le Synology avant la fin de la phase (demande de Greg du 4 novembre 2026 ; image `1.0.0-alpha`, pas `latest`)
   - [x] 9 ter. Retours de Greg sur le plan (liste du 5 novembre 2026, fait le même jour) : optionnelles, FC d'endurance et VMA réglables dans l'admin, retour au calme, sorties longues, charge par séance, renfo, séances selon la course et la phase, programme du jour, séance idéale quand le temps du jour la tronque, unité des cibles au choix (section 10 du brief)
-  - [ ] 10. Unités au choix (fait pour les intensités au 9 ter ; reste durée ou distance), séance de remplacement avec pourcentage de compatibilité et suggestion d'ajustement, bilan de semaine détaillé
-  - [ ] 11. Vérification ordinateur et mobile, plan suivi 2 semaines réelles sans intervention, v1.0.0
+  - [x] 10. v1.0.0 : tag, CHANGELOG, README, image construite par la CI (5 novembre 2026) ; reste la mise à jour du Synology et la vérification sur le téléphone (Greg). Le reste de l'étape 10 d'origine (durée ou distance, séance de remplacement, compatibilité dans le bilan) passe en phase 5 (décision de Greg)
   - Points à trancher avec Greg au fil des étapes : pondérations et seuils des règles (hausse de charge, durée d'affûtage, compatibilité) ; tranché : onglet « Coach » dans le menu, notification par ntfy (4 novembre 2026)
-  - Hors phase 4 (section 8 du brief, qui fait foi sur la section 6) : envoi des séances vers le calendrier Garmin en phase 5 ; coach conversationnel en phase 4 bis
-- [ ] Phase 4 bis — Coach conversationnel (section 6 du brief, LLM OVHcloud AI Endpoints ; accès et modèles à vérifier avant, section 9)
-  - [ ] 1. Saisie rapide en langage naturel en haut de l'accueil et de « Cette semaine » : étiquettes modifiables avant validation (fatigue, sommeil, douleur, motivation, disponibilités, période particulière), boutons rapides sans LLM, dictée vocale du navigateur, journal de forme affiché sur la page Forme
-  - [ ] 2. Coach conversationnel : le LLM traduit la discussion en actions structurées, le moteur de règles recalcule, le LLM explique ; rien n'est appliqué sans accord de Greg ; initiative mesurée (bilan du dimanche, alerte de fatigue, mot sur un record), mémoire des préférences
-  - [ ] 3. Vérification ordinateur et mobile, version mineure
-- [ ] Phase 5 — Extensions
+  - Hors phase 4 : envoi des séances vers le calendrier Garmin, séance de remplacement, coach conversationnel (ex-phase 4 bis), tous en phase 5
+- [ ] Phase 5 — Extensions (une idée à la fois, choisie par Greg ; version mineure à chaque idée livrée). Classement proposé le 5 novembre 2026, à revoir par Greg :
+
+| Rang | Idée | Intérêt | Difficulté |
+| --- | --- | --- | --- |
+| 1 | Sauvegarde automatique de la base et des FIT hors du conteneur (Hyper Backup ou copie datée sur un autre volume) | Protège des années d'historique et les réglages du coach ; aujourd'hui une panne de disque perd tout | Facile |
+| 2 | Envoi des séances du coach vers le calendrier Garmin (séances structurées avec cibles, `garminconnect` sait créer et planifier des workouts) | La séance du jour sur la montre, avec ses étapes et ses alertes d'allure ou de FC : plus besoin de la retenir | Moyenne à difficile (API non officielle, format des workouts) |
+| 3 | Boutons rapides sans LLM sur Cette semaine : fatigue, douleur, semaine chargée, sortie annulée, d'un geste sur mobile | Le coach réagit dans la semaine au lieu d'attendre le bilan du dimanche ; prépare le terrain du conversationnel | Facile |
+| 4 | Contrôle des repères du coach en usage : pondérations (hausse de charge, affûtage, récupération) et modèle allure-pente en forte pente comparés aux sorties réelles (VAP prévue face à la VAP réelle en montée) | Rend fiables le plan et les estimations trail ; la VAP en montée paraît optimiste | Facile à moyenne |
+| 5 | Séance de remplacement saisie par champs (type, durée ou distance, intensité, D+, jour), pourcentage de compatibilité, suggestion d'ajustement, compatibilité moyenne dans le bilan | Liberté de changer une séance en sachant ce que ça coûte au plan | Moyenne à difficile (pondérations à calibrer) |
+| 6 | Météo de chaque sortie (archives Open-Meteo) : allure et FC corrigées de la chaleur, EF et estimateur plus justes l'été | Explique les mauvaises sorties d'été, améliore les prédictions | Moyenne |
+| 7 | Sommeil, VFC et Body Battery Garmin croisés avec la charge ; alerte de fatigue | Détecte la fatigue avant qu'elle ne se voie dans les sorties | Moyenne |
+| 8 | Application installable (PWA) : icône sur le téléphone, consultation hors ligne de la semaine | Usage quotidien plus simple sur mobile | Moyenne |
+| 9 | Bilan annuel façon « Wrapped » (chiffres marquants, records, meilleure sortie) | Plaisir, à faire avant la fin de l'année | Moyenne |
+| 10 | Suivi du matériel : km par paire de chaussures, alerte de remplacement | Utile, très simple | Facile |
+| 11 | Barrières horaires sur un GPX, comparées aux temps de passage estimés | Sécurise les trails longs | Facile |
+| 12 | Durée ou distance au choix dans les séances | Confort de lecture | Facile |
+| 13 | Coach conversationnel et saisie en langage naturel (ex-phase 4 bis, LLM OVHcloud AI Endpoints : accès et modèles à vérifier, section 9 du brief) | Le plus agréable à l'usage, mais le moteur de règles fait déjà le travail | Difficile (LLM, coûts, garde-fous, rien appliqué sans accord) |
+| 14 | Carte de toutes les traces (heatmap) et tuiles explorées | Plaisir de voir son terrain de jeu | Moyenne |
+| 15 | Montées et parcours récurrents classés comme des segments privés | Motivation, suivi de progression sur ses montées | Difficile |
+| 16 | Page « Qualité des données » dans l'admin (sorties sans FC ou GPS, noms Strava non associés) | Confiance dans les chiffres | Facile |
+| 17 | Multi-utilisateurs | Famille ou club ; peu utile pour un seul coureur | Difficile |
+
+  Les autres idées notées (section 7 du brief : sortie moyenne, zones de forme en % de la fitness, progression d'une saison à l'autre, alertes intelligentes, rapport hebdomadaire, autres sources de FIT, replay fantôme, assistant SQL en langage naturel) restent en réserve.
 
 ## Commandes
 

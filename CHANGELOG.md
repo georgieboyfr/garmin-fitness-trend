@@ -4,6 +4,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 
 ## [Non publié]
 
+## [1.0.0] - 2026-11-05
+
+Phase 4 (coach) terminée, sur décision de Greg : le reste de l'étape 10 (durée ou distance au choix, séance de remplacement avec compatibilité, compatibilité dans le bilan) et le coach conversationnel (phase 4 bis) passent en phase 5 ; la validation sur 2 semaines réelles se fera en usage. Image `1.0.0` et `latest`. Pas de migration de base depuis la 1.0.0-alpha.
+
 ### Modifié
 - Coach, retours de Greg sur le plan : sorties optionnelles toujours proposées et marquées (un jour « une semaine sur n » reste optionnel si une sortie de ce jour a été faite dans les semaines d'avant) ; séance reconnue à 1 jour près ; FC d'endurance en % de la FC de réserve (Karvonen) ou de la FC max, au choix dans l'admin (134 à 148 au lieu de « sous 160 » pour Greg) ; allure VMA selon la longueur de la fraction et VMA testée saisie dans l'admin ; toujours 10 min de retour au calme à la fin ; bloc soutenu au milieu des sorties longues vallonnées ; sorties longues sur le plat avec variations d'allure, et alternative sur le plat à la même charge pour une sortie vallonnée ; charge estimée de chaque séance, comparée à celle de la sortie faite ; renforcement de 15 à 20 min aux jours suggérés.
 - Coach : séance idéale proposée en plus quand le temps du jour raccourcit la séance, au choix ; unité des cibles au choix (allure, FC, % FC max, % VMA, zone, sensation), l'effort sur 10 toujours affiché.
