@@ -42,16 +42,19 @@ VMA_SHARE = {"30/30": 1.05, 200: 1.05, 300: 1.03, 400: 1.02, 500: 1.01, 600: 1.0
 
 # intensités : FC (« easy » pour la plage d'endurance, sinon en % de la LTHR, zones de Friel),
 # effort perçu (1 à 10) et sensation (facile, moyen, dur, très dur)
-EASY = {"key": "endurance", "hr": "easy", "rpe": "3 à 4", "feel": "facile"}
-STEADY = {"key": "soutenu", "hr": (0.85, 0.92), "rpe": "5 à 6", "feel": "moyen"}
-TEMPO = {"key": "tempo", "hr": (0.90, 0.95), "rpe": "6 à 7", "feel": "moyen"}
-THRESHOLD = {"key": "seuil", "hr": (0.95, 1.00), "rpe": "7", "feel": "dur"}
-VO2 = {"key": "vma", "hr": (1.00, None), "rpe": "9", "feel": "très dur"}
-HILL_SHORT = {"key": "côte", "hr": None, "rpe": "8 à 9", "feel": "très dur"}
+# allure de l'intensité quand l'étape n'en donne pas : (repère du coureur, facteur) ; endurance à
+# son allure habituelle, soutenu à 108 % de l'allure seuil (vers l'allure marathon), VMA et côtes
+# courtes à la VMA, vif à 95 % de la VMA
+EASY = {"key": "endurance", "hr": "easy", "rpe": "3 à 4", "feel": "facile", "pace": ("easy", 1.0)}
+STEADY = {"key": "soutenu", "hr": (0.85, 0.92), "rpe": "5 à 6", "feel": "moyen", "pace": ("threshold", 1.08)}
+TEMPO = {"key": "tempo", "hr": (0.90, 0.95), "rpe": "6 à 7", "feel": "moyen", "pace": ("threshold", 1.04)}
+THRESHOLD = {"key": "seuil", "hr": (0.95, 1.00), "rpe": "7", "feel": "dur", "pace": ("threshold", 1.0)}
+VO2 = {"key": "vma", "hr": (1.00, None), "rpe": "9", "feel": "très dur", "pace": ("vma", 1.0)}
+HILL_SHORT = {"key": "côte", "hr": None, "rpe": "8 à 9", "feel": "très dur", "pace": ("vma", 1.0)}
 RACE_TRAIL = {"key": "course trail", "hr": (0.88, 0.95), "rpe": "6 à 7", "feel": "moyen"}
 RACE_ROAD = {"key": "allure course", "hr": None, "rpe": "6 à 8", "feel": "dur"}
 RECOVERY = {"key": "récupération", "hr": None, "rpe": "2", "feel": "très facile"}
-FAST = {"key": "vif", "hr": None, "rpe": "7 à 8", "feel": "dur"}
+FAST = {"key": "vif", "hr": None, "rpe": "7 à 8", "feel": "dur", "pace": ("vma", 1 / 0.95)}
 DOWN = {"key": "descente", "hr": None, "rpe": "5 à 6", "feel": "moyen"}
 HIKE = {"key": "marche", "hr": (0.85, 0.95), "rpe": "6", "feel": "moyen"}
 SPRINT = {"key": "sprint", "hr": None, "rpe": "9", "feel": "très dur"}
@@ -133,11 +136,19 @@ def target(intensity: dict, p: dict | float | None, pace: str = "", pace_s: floa
 
 def target_info(intensity: dict, p: dict | float | None, pace: str = "", pace_s: float | None = None,
                 band: float = PACE_BAND) -> dict:
-    """Cible structurée (FC, allure, % de la VMA, % de la FC max, effort, sensation) et son texte."""
+    """Cible structurée (FC, allure, % de la VMA, % de la FC max, effort, sensation) et son texte.
+    Sans allure donnée, celle de l'intensité (EASY, STEADY...) ; en terrain vallonné (p["terrain"]
+    == "hilly"), en VAP, l'allure ajustée à la pente (même courbe que la fiche de sortie)."""
     if not isinstance(p, dict):
         p = {"lthr": p}
+    if not pace_s and not pace and intensity.get("pace") and p.get(intensity["pace"][0]):
+        ref, factor = intensity["pace"]
+        pace_s = p[ref] * factor
+        band = 0 if ref == "easy" else band
     if pace_s and not pace:
         pace = pace_band(pace_s, band) if band else f"≈ {pace_text(pace_s)} /km"
+        if p.get("terrain") == "hilly":
+            pace = "VAP " + pace                 # allure ajustée à la pente : en côte, à plat équivalent
     parts = [pace] if pace else []
     hr = hr_range(intensity, p)
     info = {"key": intensity["key"], "rpe": intensity["rpe"], "feel": intensity["feel"]}
@@ -200,9 +211,9 @@ def _cooldown(minutes: float, p: dict) -> dict:
                 target_info(EASY, p))
 
 
-def _easy_s(p: dict, km: bool = True) -> float | None:
-    """Allure habituelle en endurance, sur le plat (sinon pas d'allure : l'effort guide)."""
-    return p.get("easy") if km else None
+def hilly(p: dict) -> dict:
+    """Repères du coureur en terrain vallonné : les allures deviennent des VAP."""
+    return {**p, "terrain": "hilly"}
 
 
 def resize(s: dict, extra: float, p: dict) -> dict:
@@ -307,7 +318,7 @@ def strides(total_min: float, p: dict) -> dict:
     """Footing et lignes droites d'environ total_min : le footing, 8 accélérations, le retour au calme."""
     base_min = max(15, round5(total_min - 20))
     steps = [step("steady", f"{_minutes(base_min)} en endurance", base_min,
-                  target_info(EASY, p, pace_s=_easy_s(p), band=0)),
+                  target_info(EASY, p)),
              step("work", "8 × 20 s en accélération progressive, jamais à fond", 8 * 20 / 60,
                   target_info(STRIDE, p)),
              step("recovery", "récupération 1 min au trot ou en marchant entre les accélérations", 7,
@@ -323,7 +334,7 @@ def hills_short(level: int, p: dict, compact: bool = False) -> dict:
     reps = COTES_COURTES[min(level, len(COTES_COURTES) - 1)]
     steps = [_warmup(warm(compact), p),
              step("work", f"{reps} × 30 s de montée vive, pente moyenne", reps * 0.5,
-                  target_info(HILL_SHORT, p)),
+                  target_info(HILL_SHORT, hilly(p))),
              step("recovery", "récupération : redescente au trot, 1 min 30 (3 fois l'effort)", reps * 1.5,
                   target_info(RECOVERY, p)),
              _cooldown(cool(), p)]
@@ -335,7 +346,7 @@ def hills_long(level: int, p: dict, compact: bool = False) -> dict:
     reps, work = COTES_LONGUES[min(level, len(COTES_LONGUES) - 1)]
     rest = round(work * 0.75, 1)
     steps = [_warmup(warm(compact), p),
-             step("work", f"{reps} × {work} min de montée", reps * work, target_info(THRESHOLD, p)),
+             step("work", f"{reps} × {work} min de montée", reps * work, target_info(THRESHOLD, hilly(p))),
              step("recovery", f"récupération : redescente au trot, environ {_minutes(rest)}, repartir dès "
                               "que le souffle est revenu", reps * rest, target_info(RECOVERY, p)),
              _cooldown(cool(), p)]
@@ -395,7 +406,7 @@ def easy_steps(minutes: float, p: dict, km: bool = True) -> list[dict]:
     pace = p.get("easy")
     dist = f", environ {round(minutes * 60 / pace)} km sur le plat" if km and pace else ""
     return [step("steady", f"{_minutes(minutes)} en endurance fondamentale{dist}", minutes,
-                 target_info(EASY, p, pace_s=_easy_s(p, km), band=0))]
+                 target_info(EASY, p if km else hilly(p)))]
 
 
 def fit(make, level: int, day_max: float) -> dict:
@@ -464,7 +475,7 @@ def hill_sprints(level: int, p: dict, compact: bool = False) -> dict:
 def hills_medium(level: int, p: dict, compact: bool = False) -> dict:
     reps = HILLS_MEDIUM[min(level, len(HILLS_MEDIUM) - 1)]
     steps = [_warmup(warm(compact), p),
-             step("work", f"{reps} × 1 min de montée vive", reps, target_info(HILL_SHORT, p)),
+             step("work", f"{reps} × 1 min de montée vive", reps, target_info(HILL_SHORT, hilly(p))),
              step("recovery", "récupération : redescente au trot, 2 min", reps * 2, target_info(RECOVERY, p)),
              _cooldown(cool(), p)]
     return _session("vma en côte", "VMA en côte", steps, "Pente moyenne (5 à 8 %) : monter vite en restant "
@@ -474,7 +485,8 @@ def hills_medium(level: int, p: dict, compact: bool = False) -> dict:
 def uphill_tempo(level: int, p: dict, compact: bool = False) -> dict:
     minutes = UPHILL_TEMPO[min(level, len(UPHILL_TEMPO) - 1)]
     steps = [_warmup(warm(compact), p),
-             step("work", f"{minutes} min de montée continue", minutes, target_info(THRESHOLD, p)),
+             step("work", f"{minutes} min de montée continue", minutes,
+                  target_info(THRESHOLD, hilly(p))),
              step("recovery", f"redescente souple au trot, sans forcer, environ {_minutes(minutes * 0.6)}",
                   minutes * 0.6, target_info(RECOVERY, p)),
              _cooldown(cool(), p)]
@@ -522,13 +534,13 @@ def _gain_text(gain: float) -> str:
     return f", environ {gain:.0f} m de D+" if gain else ""
 
 
-def easy_run(minutes: float, p: dict, hilly: bool, km: bool = True) -> dict:
+def easy_run(minutes: float, p: dict, hilly_route: bool, km: bool = True) -> dict:
     """Footing, sur le plat ou vallonné (moitié de la vitesse de montée en endurance)."""
-    if hilly:
+    if hilly_route:
         gain = round(p.get("easy_vam", 0) * minutes / 60 * 0.5, -1)
         text = f"{_minutes(minutes)} en endurance sur un parcours vallonné{_gain_text(gain)}"
         s = _easy_session("footing vallonné", "Footing vallonné",
-                          [step("steady", text, minutes, target_info(EASY, p))],
+                          [step("steady", text, minutes, target_info(EASY, hilly(p)))],
                           f"Il faut {WALK} : c'est voulu.")
         s["gain_m"] = gain
         return s
@@ -536,18 +548,19 @@ def easy_run(minutes: float, p: dict, hilly: bool, km: bool = True) -> dict:
                          "En aisance respiratoire : tu peux parler.")
 
 
-def steady_run(minutes: float, p: dict, hilly: bool = False) -> dict:
+def steady_run(minutes: float, p: dict, hilly_route: bool = False) -> dict:
     """Sortie soutenue (endurance active) : 15 min faciles, un bloc soutenu, 10 min de retour au
     calme ; plus chargée qu'un footing, moins qu'une séance (ni récupération ni répétitions)."""
     block = max(15, round5(minutes - 25))
-    where = "sur un parcours vallonné, l'effort plutôt que l'allure" if hilly else "sur le plat"
+    p = hilly(p) if hilly_route else p
+    where = "sur un parcours vallonné, l'effort plutôt que l'allure" if hilly_route else "sur le plat"
     steps = [step("warmup", "15 min en endurance", 15, target_info(EASY, p)),
              step("work", f"{block} min en allure soutenue, {where}", block, target_info(STEADY, p)),
              _cooldown(cool(), p)]
     s = _easy_session("footing soutenu", "Sortie soutenue", steps,
                       "Plus vite qu'un footing, sans être une séance : respiration marquée mais régulière, "
                       "tu peux encore dire quelques mots.")
-    if hilly:
+    if hilly_route:
         s["gain_m"] = round(p.get("easy_vam", 0) * (15 + block + 10) / 60 * 0.5, -1)
     return s
 
@@ -568,13 +581,13 @@ def _variations(minutes: float, p: dict) -> list[dict]:
     work = (target_info(RACE_ROAD, p, pace_s=p["race"], band=0.01) if race else target_info(STEADY, p))
     dist = f", environ {round(first * 60 / p['easy'])} km" if p.get("easy") else ""
     steps = [step("steady", f"{_minutes(first)} en endurance{dist}", first,
-                  target_info(EASY, p, pace_s=_easy_s(p), band=0)),
+                  target_info(EASY, p)),
              step("work", f"{reps} × 6 min {what}", reps * 6, work),
              step("recovery", "4 min en endurance entre les blocs, sans s'arrêter", (reps - 1) * 4,
                   target_info(EASY, p))]
     if rest >= 5:
         steps.append(step("steady", f"{_minutes(rest)} en endurance", rest,
-                          target_info(EASY, p, pace_s=_easy_s(p), band=0)))
+                          target_info(EASY, p)))
     steps.append(_cooldown(cool(), p))
     return steps
 
@@ -586,6 +599,7 @@ def long_run(variant: str, minutes: float, p: dict, km: bool = True, steady_fini
     plat, le bloc finit la sortie avant 10 min de retour au calme ; en terrain vallonné, il se place
     au milieu, pour redescendre ensuite en endurance."""
     gain = round(p.get("easy_vam", 0) * minutes / 60, -1)
+    ph = hilly(p)
     if steady_finish and variant not in ("progressive", "spécifique", "variations"):
         block = steady_finish_min(minutes)
         if variant in ("vallonnée", "descentes") or not km:
@@ -593,11 +607,11 @@ def long_run(variant: str, minutes: float, p: dict, km: bool = True, steady_fini
             second = minutes - block - first
             up = _gain_text(round(gain * 0.45, -1))
             steps = [step("steady", f"{_minutes(first)} en endurance sur sentier{up}", first,
-                          target_info(EASY, p)),
+                          target_info(EASY, ph)),
                      step("work", f"au milieu, {block} min en allure soutenue sur une portion roulante ou en "
-                                  "montée douce", block, target_info(STEADY, p)),
+                                  "montée douce", block, target_info(STEADY, ph)),
                      step("steady", f"{_minutes(second)} en endurance pour revenir, descentes relâchées",
-                          second, target_info(EASY, p))]
+                          second, target_info(EASY, ph))]
             s = _easy_session("sortie longue", "Sortie longue vallonnée et bloc soutenu", steps,
                               f"Le bloc soutenu au milieu, pour revenir en endurance ({WALK}) et finir au "
                               "calme, cuisses ménagées dans les descentes.")
@@ -625,7 +639,7 @@ def long_run(variant: str, minutes: float, p: dict, km: bool = True, steady_fini
         return s
     if variant == "vallonnée":
         steps = [step("steady", f"{_minutes(minutes)} en endurance sur sentier{_gain_text(gain)}", minutes,
-                      target_info(EASY, p))]
+                      target_info(EASY, ph))]
         s = _easy_session("sortie longue", "Sortie longue vallonnée", steps,
                           f"Le D+ correspond à ta vitesse de montée habituelle en endurance : {WALK}.")
         s["gain_m"] = gain
@@ -634,11 +648,11 @@ def long_run(variant: str, minutes: float, p: dict, km: bool = True, steady_fini
         climb = 15 if minutes < 100 else 20
         first = round5((minutes - climb) * 0.4)
         rest = minutes - climb - first
-        steps = [step("steady", f"{_minutes(first)} en endurance sur sentier", first, target_info(EASY, p)),
+        steps = [step("steady", f"{_minutes(first)} en endurance sur sentier", first, target_info(EASY, ph)),
                  step("work", f"au milieu, une montée de {climb} min à l'effort de course", climb,
-                      target_info(RACE_TRAIL, p)),
+                      target_info(RACE_TRAIL, ph)),
                  step("steady", f"{_minutes(rest)} en endurance pour revenir"
-                      f"{_gain_text(round(gain * 0.8, -1))} au total", rest, target_info(EASY, p))]
+                      f"{_gain_text(round(gain * 0.8, -1))} au total", rest, target_info(EASY, ph))]
         s = _easy_session("sortie longue", "Sortie longue spécifique", steps,
                           f"Le reste du temps en endurance ({WALK}) ; descentes relâchées, pour garder "
                           "des cuisses pour la fin de course.")
@@ -646,8 +660,9 @@ def long_run(variant: str, minutes: float, p: dict, km: bool = True, steady_fini
         return s
     if variant == "descentes":
         steps = [step("steady", f"{_minutes(minutes)} en endurance sur sentier{_gain_text(gain)}", minutes,
-                      target_info(EASY, p)),
-                 step("work", "dans 3 ou 4 descentes, 2 à 3 min plus vite, relâché", 0, target_info(DOWN, p))]
+                      target_info(EASY, ph)),
+                 step("work", "dans 3 ou 4 descentes, 2 à 3 min plus vite, relâché", 0,
+                      target_info(DOWN, ph))]
         s = _easy_session("sortie longue", "Sortie longue avec descentes", steps,
                           f"En endurance le reste du temps ({WALK}) ; travailler les descentes sans "
                           "se faire mal.")

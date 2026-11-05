@@ -28,7 +28,11 @@ def test_targets_give_pace_band_heart_rate_and_effort():
     easy = wk.easy_steps(60, P)[0]
     assert "environ 10 km" in easy["text"] and "FC 128 à 144" in easy["target"]   # zone 1 de Friel, à défaut
     hill = next(x for x in wk.hills_long(0, P)["steps"] if x["kind"] == "work")
-    assert "/km" not in hill["target"] and "FC 162 à 170" in hill["target"]   # en côte : FC et sensation
+    assert hill["target"].startswith("VAP 4:52 à 5:04 /km") and "FC 162 à 170" in hill["target"]   # en VAP
+    hilly_easy = wk.easy_run(45, HR, True)["steps"][0]["intensity"]
+    assert hilly_easy["pace_text"] == "VAP ≈ 6:00 /km" and hilly_easy["vma_pct"] == 71
+    steady = next(x for x in wk.steady_run(50, HR)["steps"] if x["kind"] == "work")["intensity"]
+    assert steady["pace_text"].startswith("5:") and steady["vma_pct"]          # soutenu : 108 % du seuil
 
 
 def test_fit_steps_down_then_shortens_warmup_when_the_day_is_short():
