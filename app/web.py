@@ -565,10 +565,12 @@ def coach_page(request: Request, vue: str = ""):
                             if (today - date.fromisoformat(r["race_date"])).days <= coach.DRIFT_SINCE_DAYS),
                            None)
         for r in cal["upcoming"]:
-            r["proposal"] = coach.proposed_target(cfg, r, today, co.data, co.factors, dem)
             r["route"] = tracked._route_label(cfg, r)
             r["predictions"] = coach.predictions(conn, r["id"])
             r["projection"] = r["predictions"][-1] if r["predictions"] else None
+            # objectif proposé : le temps prévu à la fin du plan ; verdict de l'objectif du coureur
+            r["proposal"] = co.race_day_proposal(r, r["projection"])
+            r["target_verdict"] = coach.target_verdict(r.get("target_s"), r["proposal"])
             r["target_review"] = coach.target_review(r["predictions"], r.get("target_s"),
                                                      r.get("target_kept_week"))
             if r["target_review"]:
@@ -660,21 +662,23 @@ def coach_race_page(request: Request, race_id: int):
                 status_code=404)
         row = coach.calendar([race], today)
         race = (row["upcoming"] or row["past"])[0]
-        data = tracked.load_data(cfg, conn)
-        factors = tracked.corrections(conn)
+        co = coach_live.Coach(cfg, conn, today, dem, True)
+        data = co.data
         predictions = coach.predictions(conn, race_id)
     finally:
         conn.close()
     race["route"] = tracked._route_label(cfg, race)
-    race["proposal"] = coach.proposed_target(cfg, race, today, data, factors, dem)
     race["projection"] = predictions[-1] if predictions else None
+    # objectif proposé : le temps prévu à la fin du plan (pas avec la forme du jour), et verdict
+    race["proposal"] = co.race_day_proposal(race, race["projection"]) if row["upcoming"] else None
+    race["target_verdict"] = coach.target_verdict(race.get("target_s"), race["proposal"])
     splits = coach.race_splits(cfg, race, today, data, dem)
-    predicted = (race["projection"] or race["proposal"] or {}).get("realistic_s")
+    best = race["proposal"] or race["projection"] or {}
+    predicted = best.get("realistic_s")
     choices = [(label, round(v)) for label, v in (
-        ("Prévu le jour J" if race["projection"] else "Estimé aujourd'hui", predicted),
+        ("Prévu le jour J", predicted),
         ("Objectif", race.get("target_s")),
-        ("Optimiste", (race["projection"] or race["proposal"] or {}).get("optimistic_s")),
-        ("Prudent", (race["projection"] or race["proposal"] or {}).get("prudent_s"))) if v]
+        ("Optimiste", best.get("optimistic_s")), ("Prudent", best.get("prudent_s"))) if v]
     if race["gpx_id"]:
         estimator_url = f"/estimateur?gpx={race['gpx_id']}#trail"
     else:

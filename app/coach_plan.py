@@ -608,8 +608,10 @@ def build_week(week: dict, days: list[dict], load: float, rates: dict, race: dic
     n_quality = max(0, n_quality - sum(1 for _, r in side if r["priority"] == "C"))
     others = [d for d in usable if d is not long_day]
     # bonus : le jour optionnel le plus long, ni en récupération ni à côté d'une course, hors course
+    # bonus en sortie longue : semaines de charge seulement (en semaine allégée ou d'affûtage, un
+    # footing) et jamais pour 5 et 10 km
     bonus_pool = ([d for d in optional if d["weekday"] not in no_hard]
-                  if kind != "course" and not short else [])
+                  if kind == "charge" and not short else [])
     bonus_day = max(bonus_pool, key=lambda d: (d["max_min"], d["weekday"])) if bonus_pool else None
     total_min = budget = load * 60 / rates["easy"]                       # en minutes d'endurance
     q_sessions, quality_days = [], [{"weekday": wd} for wd in side_wd]

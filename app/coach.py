@@ -491,6 +491,25 @@ def projected(estimate: dict, fitness_now: float | None, fitness_race: float | N
         "fitness_delta": round(delta, 1)}
 
 
+VERDICTS = {"ambitious": "trop ambitieux", "realistic": "réaliste", "cautious": "prudent"}
+
+
+def target_verdict(target_s: float | None, proposal: dict | None) -> dict | None:
+    """L'objectif du coureur face au temps prévu à la fin du plan : trop ambitieux s'il est plus
+    rapide que la fourchette optimiste, prudent s'il est plus lent que la fourchette prudente,
+    réaliste dedans ; écart en % au temps réaliste (négatif : plus rapide)."""
+    if not target_s or not proposal or not proposal.get("realistic_s"):
+        return None
+    if target_s < proposal["optimistic_s"]:
+        key = "ambitious"
+    elif target_s > proposal["prudent_s"]:
+        key = "cautious"
+    else:
+        key = "realistic"
+    return {"key": key, "label": VERDICTS[key],
+            "pct": round((target_s / proposal["realistic_s"] - 1) * 100, 1)}
+
+
 def target_review(preds: list[dict], target_s: float | None, kept_week: str | None = None) -> dict | None:
     """Objectif à réajuster : les DRIFT_WEEKS derniers temps prévus, semaines consécutives, tous
     plus lents (ou tous plus rapides) que l'objectif de plus de DRIFT_SHARE, et pas avant

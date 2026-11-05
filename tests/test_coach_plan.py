@@ -870,3 +870,24 @@ def test_short_race_plan_caps_the_long_run_lightens_the_last_week_and_shortens_r
     assert easy[-1]["minutes"] <= cp.EVE_EASY_MAX
     assert not any(s.get("optional") and s["type"] == "sortie longue"
                    for w in plan["weeks"] for s in w["sessions"])
+
+
+def test_light_week_offers_an_optional_footing_not_a_second_long_run():
+    days = cp.chosen_days(avail((0, "oui", 50), (1, "oui", 50), (3, "oui", 70), (5, "optionnel", 120)), 4)
+    light_week = {**week(phase="foncier"), "kind": "allégée"}
+    light = cp.build_week(light_week, days, 120, RATES, RACE, {}, [], 170, 0)
+    opt = next(s for s in light["sessions"] if s.get("optional"))
+    assert opt["type"] != "sortie longue" and opt["minutes"] <= cp.OPTIONAL_EASY_MAX
+
+
+def test_target_verdict_against_the_race_day_estimate():
+    p = {"optimistic_s": 2700, "realistic_s": 2835, "prudent_s": 2970}
+    assert coach_target_verdict(2640, p)["key"] == "ambitious"
+    assert coach_target_verdict(2800, p)["key"] == "realistic"
+    assert coach_target_verdict(3000, p)["key"] == "cautious"
+    assert coach_target_verdict(None, p) is None
+
+
+def coach_target_verdict(t, p):
+    from app import coach
+    return coach.target_verdict(t, p)

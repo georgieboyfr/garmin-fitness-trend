@@ -12,16 +12,17 @@
 
 <section class="card" id="temps">
   <div class="estimate">
-    {% set p = r.projection or r.proposal %}
+    {% set p = r.proposal or r.projection %}
     {% if p %}
     <div class="estimate-main">
-      <span class="muted">{{ "Prévu le jour J" if r.projection else "Estimé aujourd'hui" }} {{ tip("Prévu le jour J : l'estimateur avec ta forme du dimanche soir, projeté sur la fitness que le plan te donne avant la course (recalculé chaque lundi). Estimé aujourd'hui : l'estimateur avec ta forme du jour. Correction de l'admin comprise.") }}</span>
+      <span class="muted">Prévu le jour J, à la fin du plan {{ tip("L'estimateur avec ta forme d'aujourd'hui (correction de l'admin comprise), projeté sur la fitness que le plan te donne avant la course, avec ta relation personnelle entre fitness et niveau. Si tu ne suis pas le plan, ce temps bouge chaque semaine.") }}</span>
       <span class="estimate-time" data-chrono="{{ p.realistic_s }}"></span>
     </div>
     <div class="estimate-range">
       <div><span class="muted">Optimiste</span> <b data-chrono="{{ p.optimistic_s }}"></b></div>
       <div><span class="muted">Prudent</span> <b data-chrono="{{ p.prudent_s }}"></b></div>
-      {% if r.target_s %}<div><span class="muted">Objectif</span> <b data-chrono="{{ r.target_s }}"></b></div>{% endif %}
+      {% if r.target_s %}<div><span class="muted">Objectif</span> <b data-chrono="{{ r.target_s }}"></b>{% if r.target_verdict %} <span class="pill verdict-{{ r.target_verdict.key }}">{{ r.target_verdict.label }}</span>{% endif %}</div>{% endif %}
+      {% if p.today %}<div><span class="muted">Avec ta forme d'aujourd'hui</span> <b data-chrono="{{ p.today.realistic_s }}"></b></div>{% endif %}
     </div>
     {% else %}<p class="muted">Estimation impossible pour l'instant.</p>{% endif %}
   </div>

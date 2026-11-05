@@ -198,6 +198,28 @@ class Coach:
 
     # ---------- temps prévu le jour J ----------
 
+    def race_day_proposal(self, race: dict, recorded: dict | None = None) -> dict | None:
+        """Objectif proposé : le temps prévu à la fin du plan, pas celui de la forme du jour.
+        L'estimation d'aujourd'hui (correction de l'admin comprise), projetée sur la fitness que le
+        plan donne avant la course ; le temps enregistré cette semaine s'il existe (mêmes chiffres
+        que la courbe). today : l'estimation avec la forme du jour, pour comparer."""
+        today_est = coach.proposed_target(self.cfg, race, self.today, self.data, self.factors, self.dem)
+        if not today_est:
+            return None
+        monday_ = coach_plan.monday(self.today)
+        if recorded and recorded.get("week") == monday_.isoformat():
+            return {k: recorded[k] for k in ("optimistic_s", "realistic_s", "prudent_s")} | {
+                "today": today_est, "fitness_now": recorded.get("fitness_now"),
+                "fitness_race": recorded.get("fitness_race"),
+                "in_plan": recorded.get("fitness_race") is not None}
+        fitness_now = tracked.fitness_on(self.data["acts"], self.today)
+        fitness_race = coach.race_fitness_in_plan(self.week_plan(monday_), race)
+        p = coach.projected(today_est, fitness_now, fitness_race, self.slope(self.today)["value"])
+        return {k: p[k] for k in ("optimistic_s", "realistic_s", "prudent_s")} | {
+            "today": today_est, "fitness_now": round(fitness_now, 1) if fitness_now is not None else None,
+            "fitness_race": round(fitness_race, 1) if fitness_race is not None else None,
+            "in_plan": fitness_race is not None}
+
     def slope(self, day: date) -> dict:
         if day not in self._slopes:
             self._slopes[day] = estimator.fitness_slope(self.data["acts"], self.data["efforts"], day)
