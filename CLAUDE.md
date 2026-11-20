@@ -117,6 +117,16 @@ Le cahier des charges est [`Stats running — idées pertinentes.md`](Stats%20ru
 | 16 | Page « Qualité des données » dans l'admin (sorties sans FC ou GPS, noms Strava non associés) | Confiance dans les chiffres | Facile |
 | 17 | Multi-utilisateurs | Famille ou club ; peu utile pour un seul coureur | Difficile |
 
+  - [x] v1.2.0 (20 novembre 2026) : survol 3D du parcours sur la fiche de sortie (demande de Greg) ; reste la mise à jour du Synology et la vérification de la fluidité sur ordinateur et téléphone (Greg)
+    - Limites connues, à reprendre au besoin :
+      - Fluidité non mesurée sur un vrai appareil : la VM de dev n'a pas de GPU (rendu logiciel, environ 1 image/s). Le survol avance à l'horloge même si l'affichage saccade.
+      - Vue d'ensemble (ouverture et fin du survol) à orientation fixe : une partie de la trace peut passer derrière un relief. Piste : tester plusieurs caps et garder celui qui cache le moins de trace.
+      - Correction de l'altitude du centre en suivi par une propriété interne de MapLibre (`map._elevationFreeze`), sans quoi le coureur sort du cadre après une animation interrompue : à revérifier à chaque mise à jour de MapLibre (4.7.1 embarquée).
+      - Évitement du relief testé environ 6 fois par seconde, uniquement sur les tuiles d'altitude chargées ; sur une tuile pas encore reçue, pas de correction.
+      - Relief des tuiles Terrarium (AWS, résolution d'environ 30 m en montagne, zoom 15 au plus), pas le RGE ALTI de l'IGN : crêtes fines adoucies, trace parfois légèrement à flanc.
+      - Bordure du dévoilement progressif arrondie à la résolution du dégradé (environ 1/256 de la trace), masquée par la traînée de 300 m.
+      - Tuiles externes (IGN, OSM, AWS) : survol indisponible hors connexion ; photos IGN en France seulement (OSM ailleurs).
+
   Les autres idées notées (section 7 du brief : sortie moyenne, zones de forme en % de la fitness, progression d'une saison à l'autre, alertes intelligentes, rapport hebdomadaire, autres sources de FIT, replay fantôme, assistant SQL en langage naturel) restent en réserve.
 
 ## Commandes

@@ -41,7 +41,10 @@ Course à pied uniquement (route, trail, tapis) : les autres sports sont ignoré
   avec les autres passages sur le même parcours, et **forme du jour** : la FC de la sortie
   face à celle attendue à cette vitesse ajustée à la pente. Pour une course, l'estimateur
   rejoué sur sa propre trace (forme de la veille et d'aujourd'hui) face au temps réel, en
-  écart cumulé ou en temps de passage le long du parcours.
+  écart cumulé ou en temps de passage le long du parcours. **Survol 3D** du parcours sur le
+  relief (photos aériennes IGN, Plan IGN ou OSM) : trace colorée selon l'allure, la FC, la
+  pente ou l'altitude, dévoilée au fil du survol, caméra qui suit le coureur sans à-coups
+  dans les lacets et se redresse quand une crête le cache, profil cliquable, plein écran.
 - **Performance** : records route et trail sur 1 km à marathon (top 10, par année), courbe
   allure-durée, VAM, meilleures montées par palier de D+.
 - **Forme** : VMA, VO2max estimée, FC au seuil (en % de la FC max) et allure au seuil ;
@@ -158,7 +161,7 @@ Seul l'export le plus récent compte ; un fichier déjà traité n'est pas relu.
 | 2. Statistiques | Pages Volume, Sorties, Performance, Forme, Courses ; fiche de sortie ; détection des courses | Terminée (v0.2) |
 | 3. Estimateur | Temps de course estimé depuis un GPX ou une distance et la forme actuelle (route : Riegel, références ajustées par la FC ; trail : modèle allure-pente personnel par tronçon, fatigue, arrêts), validé sur les courses passées, courses suivies semaine après semaine | Terminée (v0.3, compléments en v0.4 : confiance, limites à 95 %, repères de la page Forme) |
 | 4. Coach | Plan d'entraînement adaptatif autour des courses prévues (ou maintien de forme), séances détectées, bilan du dimanche, réajustement | Terminée (v1.0) |
-| 5. Extensions | Envoi des séances vers la montre, sauvegarde automatique, séance de remplacement avec compatibilité, coach conversationnel (LLM), météo, sommeil et VFC, carte de toutes les traces, suivi des chaussures… | À venir |
+| 5. Extensions | Survol 3D des sorties (v1.2), envoi des séances vers la montre, sauvegarde automatique, séance de remplacement avec compatibilité, coach conversationnel (LLM), météo, sommeil et VFC, carte de toutes les traces, suivi des chaussures… | En cours |
 
 Le détail et les décisions prises sont dans le cahier des charges,
 [`Stats running — idées pertinentes.md`](Stats%20running%20—%20idées%20pertinentes.md) ;
@@ -174,7 +177,7 @@ python -m venv .venv
 DATA_DIR=./data-dev .venv/Scripts/python -m uvicorn app.main:app --port 8765
 ```
 
-FastAPI, templates Jinja, ECharts et Leaflet embarqués (pas d'étape de build), SQLite et
+FastAPI, templates Jinja, ECharts, Leaflet et MapLibre GL embarqués (pas d'étape de build), SQLite et
 Parquet. La CI (GitHub Actions) lance le lint et les tests à chaque push ; un tag `vX.Y.Z`
 construit l'image pour amd64 et arm64 et la publie sur
 `ghcr.io/georgieboyfr/garmin-fitness-trend`.
@@ -204,4 +207,7 @@ construit l'image pour amd64 et arm64 et la publie sur
   sur un plan suivi plusieurs semaines en réel.
 - Le coach ne remplace pas une séance par une autre saisie à la main, et il ne parle pas
   (pas de LLM) : ce sont des extensions prévues.
+- Survol 3D : il faut une connexion Internet (tuiles IGN, OSM et relief AWS Terrarium, d'une
+  résolution d'environ 30 m : crêtes fines adoucies) et une carte graphique pour qu'il soit
+  fluide ; la vue d'ensemble peut cacher une partie de la trace derrière un relief.
 - Un seul utilisateur.

@@ -4,6 +4,13 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versionnement
 
 ## [Non publié]
 
+## [1.2.0] - 2026-11-20
+
+Première extension de la phase 5. Pas de migration de base.
+
+### Ajouté
+- Fiche de sortie : survol 3D du parcours (bouton « Survol 3D », ou onglet « 3D » de la carte). Relief (MapLibre GL, tuiles d'altitude Terrarium), photos aériennes IGN, Plan IGN ou OSM ; trace colorée selon l'allure, la FC, la pente ou l'altitude, dévoilée au fil du survol ; tableau de bord (distance, temps, allure, FC, altitude, pente) et profil cliquable pour se placer. Caméra derrière le coureur ou en drone, cap lissé côté serveur (lacets et demi-tours sans à-coups), inclinée vers la verticale quand un relief cache le coureur ; vue libre, plein écran, vitesse ×0,5 à ×8 (un 10 km dure 40 s). Bibliothèque chargée seulement à l'ouverture de la 3D ; résolution réduite sur téléphone et sans carte graphique.
+
 ## [1.1.0] - 2026-11-05
 
 Estimateur et coach affinés après la v1.0.0. Au premier démarrage, la base passe en version 20 (tests de VMA). Dans l'admin, carte Physiologie, « Cibles du coach » : ressaisir la VMA testée avec la date du test.
