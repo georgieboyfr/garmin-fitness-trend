@@ -455,3 +455,10 @@ def test_coach_race_page_shows_km_splits(client, config):
     assert client.get("/coach/courses/999").status_code == 404
     r = client.get("/coach?vue=echeances")
     assert f'href="/coach/courses/{race_id}"' in r.text
+
+
+def test_flyover_endpoint(client, config):
+    assert client.get("/sorties/55/survol").status_code == 401
+    login(client)
+    r = client.get("/sorties/12345/survol")
+    assert r.status_code == 404 and "trace" in r.json()["error"]

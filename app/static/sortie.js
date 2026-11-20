@@ -135,6 +135,12 @@
         yAxis, series,
       };
     });
+    // survol du profil : position du coureur sur la vue 3D (survol.js)
+    chart?.instance.on("updateAxisPointer", (e) => {
+      const info = e.axesInfo && e.axesInfo[0];
+      if (info && P.km[info.value] != null)
+        document.dispatchEvent(new CustomEvent("profile-hover", { detail: { km: P.km[info.value] } }));
+    });
     // survol du profil : position sur la carte
     if (chart && hoverMarker && window.__map) {
       chart.instance.on("updateAxisPointer", (e) => {

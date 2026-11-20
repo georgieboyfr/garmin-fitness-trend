@@ -8,7 +8,7 @@ from datetime import timedelta
 import numpy as np
 import pyarrow.parquet as pq
 
-from . import grade, hr_speed, intervals
+from . import flyover, grade, hr_speed, intervals
 from .bests import CLIMB_GAINS_M, DISTANCES_M, DURATIONS_S, clean_distance
 from .elevation import median_filter, resample, series_distance
 from .elevation_job import dem_profile_path
@@ -249,3 +249,17 @@ def activity_detail(config, conn, activity_id: int, acts, efforts=None) -> dict 
                              a.get("terrain"))
         if s and s["status"] == "ok" else {"km": [], "track": [], "splits": []},
     }
+
+
+def flyover_data(config, conn, activity_id: int) -> dict | None:
+    """Trace du survol 3D (voir flyover.py), None sans série ou sans GPS."""
+    s = conn.execute("SELECT status FROM activity_series WHERE activity_id=?", (activity_id,)).fetchone()
+    if not s or s["status"] != "ok":
+        return None
+    e = conn.execute("SELECT source FROM activity_elevation WHERE activity_id=?", (activity_id,)).fetchone()
+    table = read_series(config.series_dir, activity_id,
+                        ["timestamp", "distance_m", "lat", "lon", "altitude_m", "heart_rate"])
+    alt_d, alt = retained_altitude(config, activity_id, table, e["source"] if e else None)
+    col = lambda name: table.column(name).to_numpy(zero_copy_only=False).astype(float)  # noqa: E731
+    return flyover.flyover(_seconds(table.column("timestamp").to_numpy(zero_copy_only=False)),
+                           col("lat"), col("lon"), series_distance(table), col("heart_rate"), alt_d, alt)

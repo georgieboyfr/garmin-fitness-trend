@@ -228,6 +228,22 @@ def sortie(request: Request, activity_id: int):
 
 
 
+@router.get("/sorties/{activity_id}/survol")
+def flyover_track(request: Request, activity_id: int):
+    """Trace du survol 3D : positions lissées, cap de la caméra, allure, FC, altitude et pente."""
+    if (error := _session_error(request)):
+        return error
+    cfg = request.app.state.config
+    conn = db.connect(cfg.db_path)
+    try:
+        data = detail.flyover_data(cfg, conn, activity_id)
+    finally:
+        conn.close()
+    if data is None:
+        return JSONResponse({"error": "pas de trace GPS pour cette sortie"}, status_code=404)
+    return JSONResponse(data)
+
+
 @router.get("/sorties/{activity_id}/estime-reel")
 def estimate_vs_actual(request: Request, activity_id: int):
     """Estimateur rejoué sur la trace d'une course réalisée (forme de la veille et d'aujourd'hui),

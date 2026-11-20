@@ -96,7 +96,17 @@
 
 {% if d.profiles.track %}
 <section class="card map-card">
+  <div class="map-bar">
+    <div class="segmented map-modes" role="group" aria-label="Type de carte">
+      <button type="button" class="btn-ghost" data-map-mode="2d" aria-pressed="true">Carte</button>
+      <button type="button" class="btn-ghost" data-map-mode="3d" aria-pressed="false">3D</button>
+    </div>
+    <button type="button" class="btn-primary fly-start" id="fly-start">
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M7 4.5v15l13-7.5z"/></svg>
+      Survol 3D</button>
+  </div>
   <div id="map" class="map" role="img" aria-label="Tracé de la sortie sur une carte"></div>
+  <div id="fly" class="fly" hidden aria-label="Survol 3D de la sortie"></div>
 </section>
 {% endif %}
 
@@ -234,4 +244,5 @@
 {% block scripts %}
 <script src="/static/vendor/leaflet/leaflet.js?v=1.9.4"></script>
 <script src="/static/sortie.js?v={{ asset_version }}"></script>
+<script src="/static/survol.js?v={{ asset_version }}"></script>
 {% endblock %}
